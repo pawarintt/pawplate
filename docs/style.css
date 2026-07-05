@@ -514,6 +514,31 @@ pre, textarea, .rich-editor {
     linear-gradient(135deg, rgba(231, 239, 227, .66), rgba(230, 241, 239, .54));
 }
 
+.filter-grid select:nth-of-type(1) {
+  background-color: #fff0e4;
+  border-color: var(--peach-line);
+}
+
+.filter-grid select:nth-of-type(2) {
+  background-color: #f4f8e9;
+  border-color: var(--sage-line);
+}
+
+.filter-grid select:nth-of-type(3) {
+  background-color: #eaf5f3;
+  border-color: var(--sky-line);
+}
+
+.filter-grid select:nth-of-type(4) {
+  background-color: #fff1f4;
+  border-color: var(--rose-line);
+}
+
+.filter-grid input {
+  background-color: #fffaf3;
+  border-color: var(--line);
+}
+
 .secondary-pane .filter-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
