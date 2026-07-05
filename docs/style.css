@@ -152,23 +152,39 @@ input[type="radio"] {
 .mode-tabs {
   display: flex;
   gap: 4px;
-  background: rgba(240, 235, 255, .78);
-  border: 1px solid var(--lilac-line);
+  background: rgba(255, 253, 248, .68);
+  border: 1px solid var(--line);
   padding: 3px;
   border-radius: 7px;
 }
 
 .mode-tabs button {
-  background: transparent;
-  color: var(--muted);
+  border-color: transparent;
+  color: var(--ink);
   min-height: 28px;
   font-size: .82rem;
 }
 
-.mode-tabs button.active {
-  background: var(--paper-strong);
-  color: var(--ink);
-  box-shadow: 0 3px 10px rgba(31, 41, 55, .08);
+#builderModeBtn {
+  background: var(--sage);
+  color: #52654d;
+}
+
+#builderModeBtn.active {
+  background: linear-gradient(180deg, #f4f8e9, var(--sage));
+  border-color: var(--sage-line);
+  box-shadow: 0 3px 10px rgba(82, 101, 77, .14);
+}
+
+#writerModeBtn {
+  background: var(--peach);
+  color: #744f35;
+}
+
+#writerModeBtn.active {
+  background: linear-gradient(180deg, #fff0e4, var(--peach));
+  border-color: var(--peach-line);
+  box-shadow: 0 3px 10px rgba(116, 79, 53, .14);
 }
 
 .split-view {
