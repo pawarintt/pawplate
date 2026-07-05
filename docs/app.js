@@ -339,7 +339,7 @@ async function loadOldReports() {
     perPage: 80,
     sort: "-created",
     filter: oldReportFilter(),
-    fields: "id,title,modality,topic,bodyPart,kind,keywords,report,sourceType,sourceDate"
+    fields: "id,title,modality,topic,bodyPart,kind,keywords,report,sourceType,sourceDate,owner"
   });
   state.oldReports = data.items;
   renderOldReports(query);
@@ -414,7 +414,8 @@ function templateData() {
     kind: getTemplateKind(),
     report: getEditorHtml(els.templateTextEditor),
     keywords: `${els.templateTitleInput.value} ${els.templateTopicInput.value} ${els.templateBodyPartInput.value} ${getTemplateKind()}`,
-    sourceType: "personal-template"
+    sourceType: "personal-template",
+    owner: state.auth?.user?.id || ""
   };
 }
 
@@ -452,7 +453,7 @@ async function loadTemplates() {
     perPage: 80,
     sort: "-updated",
     filter: templateFilter(),
-    fields: "id,title,modality,topic,bodyPart,kind,keywords,report"
+    fields: "id,title,modality,topic,bodyPart,kind,keywords,report,owner"
   });
   state.templates = data.items;
   renderTemplates(query);
@@ -526,7 +527,8 @@ function reportData() {
     report: getEditorHtml(els.reportTextEditor),
     keywords: `${els.reportTitleInput.value} ${els.reportTopicInput.value} ${els.reportBodyPartInput.value} ${els.reportKeywordInput.value}`,
     sourceType: "final-report",
-    sourceDate: new Date().toISOString()
+    sourceDate: new Date().toISOString(),
+    owner: state.auth?.user?.id || ""
   };
 }
 
@@ -592,15 +594,19 @@ els.oldReportList.addEventListener("contextmenu", event => {
   if (!button) return;
   event.preventDefault();
   const id = button.dataset.oldId;
-  showContextMenu(event.clientX, event.clientY, [
-    { label: "Use as template", run: () => { selectOldReport(id); useOldReportAsTemplate(); } },
-    { label: "Delete old report", danger: true, run: async () => {
+  const report = state.oldReports.find(item => item.id === id);
+  const actions = [
+    { label: "Use as template", run: () => { selectOldReport(id); useOldReportAsTemplate(); } }
+  ];
+  if (report?.owner === state.auth?.user?.id) {
+    actions.push({ label: "Delete saved report", danger: true, run: async () => {
       if (!confirm("Delete this old report?")) return;
       await pbDelete("old_reports", id);
       if (state.selectedOldReport?.id === id) state.selectedOldReport = null;
       await loadOldReports();
-    }}
-  ]);
+    }});
+  }
+  showContextMenu(event.clientX, event.clientY, actions);
 });
 els.useOldReportBtn.addEventListener("click", useOldReportAsTemplate);
 els.newTemplateBtn.addEventListener("click", blankTemplate);

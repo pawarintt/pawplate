@@ -58,13 +58,26 @@
           </div>
         </div>
         <div class="format-toolbar" data-editor-target="templateTextEditor">
-          <button type="button" data-command="bold">B</button>
-          <button type="button" data-command="italic"><i>I</i></button>
-          <button type="button" data-command="underline"><u>U</u></button>
-          <button class="color-swatch ink" type="button" data-command="foreColor" data-value="#1d2430" aria-label="Black text"></button>
-          <button class="color-swatch blue" type="button" data-command="foreColor" data-value="#2563eb" aria-label="Blue text"></button>
-          <button class="color-swatch rose" type="button" data-command="foreColor" data-value="#be123c" aria-label="Red text"></button>
-          <button class="color-swatch mint" type="button" data-command="foreColor" data-value="#047857" aria-label="Green text"></button>
+          <div class="format-group">
+            <button type="button" data-command="bold">B</button>
+            <button type="button" data-command="italic"><i>I</i></button>
+            <button type="button" data-command="underline"><u>U</u></button>
+          </div>
+          <div class="format-group">
+            <span>Text</span>
+            <button class="color-swatch ink" type="button" data-command="foreColor" data-value="#1d2430" aria-label="Black text"></button>
+            <button class="color-swatch blue" type="button" data-command="foreColor" data-value="#2563eb" aria-label="Blue text"></button>
+            <button class="color-swatch rose" type="button" data-command="foreColor" data-value="#be123c" aria-label="Red text"></button>
+            <button class="color-swatch mint" type="button" data-command="foreColor" data-value="#047857" aria-label="Green text"></button>
+          </div>
+          <div class="format-group">
+            <span>Highlight</span>
+            <button class="highlight-swatch lemon" type="button" data-command="backColor" data-value="#fff3a3" aria-label="Yellow highlight"></button>
+            <button class="highlight-swatch mint" type="button" data-command="backColor" data-value="#c8f3df" aria-label="Green highlight"></button>
+            <button class="highlight-swatch sky" type="button" data-command="backColor" data-value="#cfefff" aria-label="Blue highlight"></button>
+            <button class="highlight-swatch rose" type="button" data-command="backColor" data-value="#ffd6e2" aria-label="Pink highlight"></button>
+            <button class="highlight-swatch lilac" type="button" data-command="backColor" data-value="#e3d8ff" aria-label="Purple highlight"></button>
+          </div>
         </div>
         <div id="templateTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" data-placeholder="Write the reusable template here."></div>
       </section>
@@ -117,13 +130,26 @@
           <input id="reportKeywordInput" placeholder="Keywords / diagnosis">
         </div>
         <div class="format-toolbar" data-editor-target="reportTextEditor">
-          <button type="button" data-command="bold">B</button>
-          <button type="button" data-command="italic"><i>I</i></button>
-          <button type="button" data-command="underline"><u>U</u></button>
-          <button class="color-swatch ink" type="button" data-command="foreColor" data-value="#1d2430" aria-label="Black text"></button>
-          <button class="color-swatch blue" type="button" data-command="foreColor" data-value="#2563eb" aria-label="Blue text"></button>
-          <button class="color-swatch rose" type="button" data-command="foreColor" data-value="#be123c" aria-label="Red text"></button>
-          <button class="color-swatch mint" type="button" data-command="foreColor" data-value="#047857" aria-label="Green text"></button>
+          <div class="format-group">
+            <button type="button" data-command="bold">B</button>
+            <button type="button" data-command="italic"><i>I</i></button>
+            <button type="button" data-command="underline"><u>U</u></button>
+          </div>
+          <div class="format-group">
+            <span>Text</span>
+            <button class="color-swatch ink" type="button" data-command="foreColor" data-value="#1d2430" aria-label="Black text"></button>
+            <button class="color-swatch blue" type="button" data-command="foreColor" data-value="#2563eb" aria-label="Blue text"></button>
+            <button class="color-swatch rose" type="button" data-command="foreColor" data-value="#be123c" aria-label="Red text"></button>
+            <button class="color-swatch mint" type="button" data-command="foreColor" data-value="#047857" aria-label="Green text"></button>
+          </div>
+          <div class="format-group">
+            <span>Highlight</span>
+            <button class="highlight-swatch lemon" type="button" data-command="backColor" data-value="#fff3a3" aria-label="Yellow highlight"></button>
+            <button class="highlight-swatch mint" type="button" data-command="backColor" data-value="#c8f3df" aria-label="Green highlight"></button>
+            <button class="highlight-swatch sky" type="button" data-command="backColor" data-value="#cfefff" aria-label="Blue highlight"></button>
+            <button class="highlight-swatch rose" type="button" data-command="backColor" data-value="#ffd6e2" aria-label="Pink highlight"></button>
+            <button class="highlight-swatch lilac" type="button" data-command="backColor" data-value="#e3d8ff" aria-label="Purple highlight"></button>
+          </div>
         </div>
         <div id="reportTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" data-placeholder="Pick a template, then type the full report here. Saved reports return to Old Report Lookup."></div>
       </section>

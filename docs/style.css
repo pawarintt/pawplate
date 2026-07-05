@@ -521,10 +521,28 @@ textarea {
 .format-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 7px 10px;
   border-bottom: 1px solid rgba(217, 213, 204, .72);
   background: rgba(255,255,255,.38);
+}
+
+.format-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px;
+  border: 1px solid rgba(217, 213, 204, .62);
+  border-radius: 8px;
+  background: rgba(255,255,255,.54);
+}
+
+.format-group span {
+  padding: 0 5px;
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 700;
 }
 
 .format-toolbar button {
@@ -539,12 +557,25 @@ textarea {
 
 .color-swatch {
   border-radius: 999px;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.84);
 }
 
 .color-swatch.ink { background: #1d2430; }
 .color-swatch.blue { background: #2563eb; }
 .color-swatch.rose { background: #be123c; }
 .color-swatch.mint { background: #047857; }
+
+.highlight-swatch {
+  width: 34px;
+  border-radius: 999px;
+  box-shadow: inset 0 -6px 0 rgba(255,255,255,.42), inset 0 0 0 2px rgba(255,255,255,.7);
+}
+
+.highlight-swatch.lemon { background: #fff3a3; }
+.highlight-swatch.mint { background: #c8f3df; }
+.highlight-swatch.sky { background: #cfefff; }
+.highlight-swatch.rose { background: #ffd6e2; }
+.highlight-swatch.lilac { background: #e3d8ff; }
 
 .rich-editor {
   width: 100%;
