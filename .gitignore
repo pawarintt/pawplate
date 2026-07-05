@@ -1,8 +1,11 @@
 pb_data/
 pb_migrations/
+pb_public/
 pocketbase/
 Report/
+scripts/
 seed/
+index.html
 *.xlsx
 *.zip
 *.db
