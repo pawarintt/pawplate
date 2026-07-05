@@ -179,6 +179,66 @@ input[type="radio"] {
   display: none;
 }
 
+.login-view {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-view.hidden {
+  display: none;
+}
+
+.login-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid var(--lilac-line);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(240,235,255,.82), rgba(255,255,255,.92)),
+    var(--paper-strong);
+  box-shadow: var(--shadow);
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: 0;
+}
+
+.login-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.login-card button {
+  margin-top: 4px;
+  background: #25304a;
+  border-color: #25304a;
+}
+
+.login-error {
+  min-height: 20px;
+  color: var(--danger);
+  font-size: .86rem;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logout-button {
+  background: var(--rose);
+  color: var(--danger);
+  border-color: var(--rose-line);
+  min-height: 34px;
+}
+
 .lookup-pane, .editor-pane {
   background: var(--paper);
   border: 1px solid var(--line);

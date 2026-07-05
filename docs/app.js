@@ -1,9 +1,11 @@
 const CONFIG = window.PAWPLATE_CONFIG || {};
 const POCKETBASE_URL = CONFIG.pocketbaseUrl || window.location.origin;
 const API = `${POCKETBASE_URL.replace(/\/$/, "")}/api/collections`;
+const AUTH_KEY = "pawplate.auth";
 
 const state = {
   mode: "builder",
+  auth: null,
   oldReports: [],
   templates: [],
   selectedOldReport: null,
@@ -12,6 +14,13 @@ const state = {
 };
 
 const els = {
+  loginView: document.getElementById("loginView"),
+  loginForm: document.getElementById("loginForm"),
+  loginEmailInput: document.getElementById("loginEmailInput"),
+  loginPasswordInput: document.getElementById("loginPasswordInput"),
+  loginError: document.getElementById("loginError"),
+  appShell: document.getElementById("appShell"),
+  logoutBtn: document.getElementById("logoutBtn"),
   builderModeBtn: document.getElementById("builderModeBtn"),
   writerModeBtn: document.getElementById("writerModeBtn"),
   builderView: document.getElementById("builderView"),
@@ -70,6 +79,57 @@ function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function readAuth() {
+  try {
+    const auth = JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
+    if (auth?.token) return auth;
+  } catch {
+    // Broken auth cache should not block sign-in.
+  }
+  return null;
+}
+
+function setAuth(auth) {
+  state.auth = auth;
+  if (auth?.token) {
+    localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+  } else {
+    localStorage.removeItem(AUTH_KEY);
+  }
+  els.loginView.classList.toggle("hidden", Boolean(auth?.token));
+  els.appShell.classList.toggle("hidden", !auth?.token);
+}
+
+function authHeaders(extra = {}) {
+  return {
+    ...extra,
+    ...(state.auth?.token ? { Authorization: state.auth.token } : {})
+  };
+}
+
+async function login(identity, password) {
+  const response = await fetch(`${API}/users/auth-with-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity, password })
+  });
+  if (!response.ok) throw new Error("Sign in failed. Check the email and password.");
+  const auth = await response.json();
+  setAuth({ token: auth.token, user: auth.record });
+  await loadApp();
+}
+
+function logout() {
+  setAuth(null);
+  state.oldReports = [];
+  state.templates = [];
+  state.selectedOldReport = null;
+  state.selectedTemplate = null;
+  els.loginPasswordInput.value = "";
+  els.loginError.textContent = "";
+  els.loginEmailInput.focus();
+}
+
 function highlight(value, query) {
   const escaped = escapeHtml(value);
   const terms = String(query || "").trim().split(/\s+/).filter(Boolean).map(escapeRegex);
@@ -89,7 +149,9 @@ function snippet(text, query) {
 }
 
 async function pbList(collection, params = {}) {
-  const response = await fetch(`${API}/${collection}/records?${new URLSearchParams(params)}`);
+  const response = await fetch(`${API}/${collection}/records?${new URLSearchParams(params)}`, {
+    headers: authHeaders()
+  });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
@@ -97,7 +159,7 @@ async function pbList(collection, params = {}) {
 async function pbCreate(collection, data) {
   const response = await fetch(`${API}/${collection}/records`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(data)
   });
   if (!response.ok) throw new Error(await response.text());
@@ -107,7 +169,7 @@ async function pbCreate(collection, data) {
 async function pbUpdate(collection, id, data) {
   const response = await fetch(`${API}/${collection}/records/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(data)
   });
   if (!response.ok) throw new Error(await response.text());
@@ -115,7 +177,10 @@ async function pbUpdate(collection, id, data) {
 }
 
 async function pbDelete(collection, id) {
-  const response = await fetch(`${API}/${collection}/records/${id}`, { method: "DELETE" });
+  const response = await fetch(`${API}/${collection}/records/${id}`, {
+    method: "DELETE",
+    headers: authHeaders()
+  });
   if (!response.ok) throw new Error(await response.text());
 }
 
@@ -488,14 +553,38 @@ els.copyReportBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(els.reportTextEditor.value);
 });
 els.saveReportBtn.addEventListener("click", saveFullReport);
+els.loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  els.loginError.textContent = "";
+  try {
+    await login(els.loginEmailInput.value.trim(), els.loginPasswordInput.value);
+  } catch (error) {
+    els.loginError.textContent = error.message;
+  }
+});
+els.logoutBtn.addEventListener("click", logout);
 
-async function init() {
+async function loadApp() {
   blankTemplate();
   await loadFacets();
   await loadOldReports();
   await loadTemplates();
 }
 
-init().catch(error => {
-  els.oldReportList.innerHTML = `<div class="empty">PocketBase is not ready. Run Start_Radiology_Helper.bat.<br><br>${escapeHtml(error.message)}</div>`;
-});
+async function init() {
+  const auth = readAuth();
+  setAuth(auth);
+  if (!auth?.token) {
+    els.loginEmailInput.focus();
+    return;
+  }
+  try {
+    await loadApp();
+  } catch (error) {
+    logout();
+    els.loginError.textContent = "Please sign in again.";
+    console.error(error);
+  }
+}
+
+init();

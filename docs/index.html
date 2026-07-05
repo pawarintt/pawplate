@@ -7,16 +7,32 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="page">
+  <section id="loginView" class="login-view hidden">
+    <form id="loginForm" class="login-card">
+      <div>
+        <h1>Pawplate</h1>
+        <p>Sign in to your reporting workspace.</p>
+      </div>
+      <input id="loginEmailInput" type="email" autocomplete="username" placeholder="Email" required>
+      <input id="loginPasswordInput" type="password" autocomplete="current-password" placeholder="Password" required>
+      <button type="submit">Sign In</button>
+      <p id="loginError" class="login-error"></p>
+    </form>
+  </section>
+
+  <main id="appShell" class="page hidden">
     <header class="topbar">
       <div>
         <h1>Template Studio</h1>
         <p>Build, reference, report.</p>
       </div>
-      <nav class="mode-tabs" aria-label="Mode">
-        <button id="builderModeBtn" class="active" type="button">Template Builder</button>
-        <button id="writerModeBtn" type="button">Report Writer</button>
-      </nav>
+      <div class="topbar-actions">
+        <nav class="mode-tabs" aria-label="Mode">
+          <button id="builderModeBtn" class="active" type="button">Template Builder</button>
+          <button id="writerModeBtn" type="button">Report Writer</button>
+        </nav>
+        <button id="logoutBtn" class="logout-button" type="button">Sign Out</button>
+      </div>
     </header>
 
     <section id="builderView" class="split-view">
