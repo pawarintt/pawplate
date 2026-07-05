@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Radiology Template Studio</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <h1>Template Studio</h1>
+        <p>Build, reference, report.</p>
+      </div>
+      <nav class="mode-tabs" aria-label="Mode">
+        <button id="builderModeBtn" class="active" type="button">Template Builder</button>
+        <button id="writerModeBtn" type="button">Report Writer</button>
+      </nav>
+    </header>
+
+    <section id="builderView" class="split-view">
+      <section class="editor-pane primary-pane">
+        <div class="pane-head">
+          <h2>Template Editor</h2>
+          <div class="inline-actions">
+            <button id="newTemplateBtn" type="button">New</button>
+            <button id="saveTemplateBtn" type="button">Save Template</button>
+            <button id="useTemplateBtn" type="button">Use</button>
+          </div>
+        </div>
+        <div class="meta-grid">
+          <input id="templateTitleInput" placeholder="Template title">
+          <input id="templateModalityInput" placeholder="Modality">
+          <input id="templateTopicInput" placeholder="Topic">
+          <input id="templateBodyPartInput" placeholder="Body part">
+          <div class="radio-row">
+            <label><input type="radio" name="templateKind" value="normal" checked> Normal</label>
+            <label><input type="radio" name="templateKind" value="disease"> Disease</label>
+          </div>
+        </div>
+        <textarea id="templateTextEditor" spellcheck="false" placeholder="Write the reusable template here."></textarea>
+      </section>
+
+      <aside class="lookup-pane secondary-pane">
+        <div class="pane-head">
+          <h2>Old Reports</h2>
+          <input id="oldSearchInput" type="search" placeholder="pulmonary embolism, GBM, appendicitis...">
+        </div>
+        <div class="filter-grid">
+          <select id="oldModalityFilter"></select>
+          <select id="oldTopicFilter"></select>
+          <select id="oldBodyPartFilter"></select>
+          <select id="oldTypeFilter">
+            <option value="">All types</option>
+            <option value="old-report">Old reports</option>
+            <option value="reference-template">Imported templates</option>
+            <option value="final-report">My saved reports</option>
+          </select>
+          <input id="oldDateFilter" placeholder="Date contains, e.g. 2024">
+        </div>
+        <div id="oldReportList" class="result-list"></div>
+        <article class="preview">
+          <div class="preview-head">
+            <h3 id="oldPreviewTitle">Select an old report</h3>
+            <button id="useOldReportBtn" type="button">Use as Template</button>
+          </div>
+          <pre id="oldPreviewText"></pre>
+        </article>
+      </aside>
+    </section>
+
+    <section id="writerView" class="split-view hidden">
+      <section class="editor-pane primary-pane">
+        <div class="pane-head">
+          <h2>Full Report</h2>
+          <div class="inline-actions">
+            <button id="copyReportBtn" type="button">Copy</button>
+            <button id="saveReportBtn" type="button">Save Report</button>
+          </div>
+        </div>
+        <div class="meta-grid">
+          <input id="reportTitleInput" placeholder="Report title">
+          <input id="reportModalityInput" placeholder="Modality">
+          <input id="reportTopicInput" placeholder="Topic / unit">
+          <input id="reportBodyPartInput" placeholder="Body part">
+          <input id="reportKeywordInput" placeholder="Keywords / diagnosis">
+        </div>
+        <textarea id="reportTextEditor" spellcheck="false" placeholder="Pick a template, then type the full report here. Saved reports return to Old Report Lookup."></textarea>
+      </section>
+
+      <aside class="lookup-pane templates-pane">
+        <div class="pane-head">
+          <h2>Templates</h2>
+          <input id="templateSearchInput" type="search" placeholder="search">
+        </div>
+        <div class="filter-grid">
+          <select id="templateModalityFilter"></select>
+          <select id="templateTopicFilter"></select>
+          <select id="templateBodyPartFilter"></select>
+          <select id="templateTypeFilter">
+            <option value="">All types</option>
+            <option value="normal">Normal</option>
+            <option value="disease">Disease</option>
+          </select>
+        </div>
+        <div id="templateList" class="result-list"></div>
+      </aside>
+    </section>
+  </main>
+
+  <div id="contextMenu" class="context-menu hidden"></div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
