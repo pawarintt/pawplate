@@ -48,14 +48,25 @@
         <div class="meta-grid">
           <input id="templateTitleInput" placeholder="Template title">
           <input id="templateModalityInput" placeholder="Modality">
-          <input id="templateTopicInput" placeholder="Topic">
-          <input id="templateBodyPartInput" placeholder="Body part">
+          <input id="templateTopicInput" list="templateTopicOptions" placeholder="Topic">
+          <datalist id="templateTopicOptions"></datalist>
+          <input id="templateBodyPartInput" list="templateBodyPartOptions" placeholder="Body part">
+          <datalist id="templateBodyPartOptions"></datalist>
           <div class="radio-row">
             <label><input type="radio" name="templateKind" value="normal" checked> Normal</label>
             <label><input type="radio" name="templateKind" value="disease"> Disease</label>
           </div>
         </div>
-        <textarea id="templateTextEditor" spellcheck="false" placeholder="Write the reusable template here."></textarea>
+        <div class="format-toolbar" data-editor-target="templateTextEditor">
+          <button type="button" data-command="bold">B</button>
+          <button type="button" data-command="italic"><i>I</i></button>
+          <button type="button" data-command="underline"><u>U</u></button>
+          <button class="color-swatch ink" type="button" data-command="foreColor" data-value="#1d2430" aria-label="Black text"></button>
+          <button class="color-swatch blue" type="button" data-command="foreColor" data-value="#2563eb" aria-label="Blue text"></button>
+          <button class="color-swatch rose" type="button" data-command="foreColor" data-value="#be123c" aria-label="Red text"></button>
+          <button class="color-swatch mint" type="button" data-command="foreColor" data-value="#047857" aria-label="Green text"></button>
+        </div>
+        <div id="templateTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" data-placeholder="Write the reusable template here."></div>
       </section>
 
       <aside class="lookup-pane secondary-pane">
@@ -92,17 +103,29 @@
           <h2>Full Report</h2>
           <div class="inline-actions">
             <button id="copyReportBtn" type="button">Copy</button>
+            <button id="copyRichReportBtn" type="button">Copy Rich</button>
             <button id="saveReportBtn" type="button">Save Report</button>
           </div>
         </div>
         <div class="meta-grid">
           <input id="reportTitleInput" placeholder="Report title">
           <input id="reportModalityInput" placeholder="Modality">
-          <input id="reportTopicInput" placeholder="Topic / unit">
-          <input id="reportBodyPartInput" placeholder="Body part">
+          <input id="reportTopicInput" list="reportTopicOptions" placeholder="Topic / unit">
+          <datalist id="reportTopicOptions"></datalist>
+          <input id="reportBodyPartInput" list="reportBodyPartOptions" placeholder="Body part">
+          <datalist id="reportBodyPartOptions"></datalist>
           <input id="reportKeywordInput" placeholder="Keywords / diagnosis">
         </div>
-        <textarea id="reportTextEditor" spellcheck="false" placeholder="Pick a template, then type the full report here. Saved reports return to Old Report Lookup."></textarea>
+        <div class="format-toolbar" data-editor-target="reportTextEditor">
+          <button type="button" data-command="bold">B</button>
+          <button type="button" data-command="italic"><i>I</i></button>
+          <button type="button" data-command="underline"><u>U</u></button>
+          <button class="color-swatch ink" type="button" data-command="foreColor" data-value="#1d2430" aria-label="Black text"></button>
+          <button class="color-swatch blue" type="button" data-command="foreColor" data-value="#2563eb" aria-label="Blue text"></button>
+          <button class="color-swatch rose" type="button" data-command="foreColor" data-value="#be123c" aria-label="Red text"></button>
+          <button class="color-swatch mint" type="button" data-command="foreColor" data-value="#047857" aria-label="Green text"></button>
+        </div>
+        <div id="reportTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" data-placeholder="Pick a template, then type the full report here. Saved reports return to Old Report Lookup."></div>
       </section>
 
       <aside class="lookup-pane templates-pane">

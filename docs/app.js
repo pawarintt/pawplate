@@ -7,6 +7,8 @@ const state = {
   mode: "builder",
   auth: null,
   oldReports: [],
+  oldFacetRecords: [],
+  templateFacetRecords: [],
   templates: [],
   selectedOldReport: null,
   selectedTemplate: null,
@@ -41,7 +43,9 @@ const els = {
   templateTitleInput: document.getElementById("templateTitleInput"),
   templateModalityInput: document.getElementById("templateModalityInput"),
   templateTopicInput: document.getElementById("templateTopicInput"),
+  templateTopicOptions: document.getElementById("templateTopicOptions"),
   templateBodyPartInput: document.getElementById("templateBodyPartInput"),
+  templateBodyPartOptions: document.getElementById("templateBodyPartOptions"),
   templateKindRadios: [...document.querySelectorAll('input[name="templateKind"]')],
   templateTextEditor: document.getElementById("templateTextEditor"),
   templateSearchInput: document.getElementById("templateSearchInput"),
@@ -53,10 +57,13 @@ const els = {
   reportTitleInput: document.getElementById("reportTitleInput"),
   reportModalityInput: document.getElementById("reportModalityInput"),
   reportTopicInput: document.getElementById("reportTopicInput"),
+  reportTopicOptions: document.getElementById("reportTopicOptions"),
   reportBodyPartInput: document.getElementById("reportBodyPartInput"),
+  reportBodyPartOptions: document.getElementById("reportBodyPartOptions"),
   reportKeywordInput: document.getElementById("reportKeywordInput"),
   reportTextEditor: document.getElementById("reportTextEditor"),
   copyReportBtn: document.getElementById("copyReportBtn"),
+  copyRichReportBtn: document.getElementById("copyRichReportBtn"),
   saveReportBtn: document.getElementById("saveReportBtn"),
   contextMenu: document.getElementById("contextMenu")
 };
@@ -77,6 +84,89 @@ function escapeFilter(value) {
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isHtml(value) {
+  return /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
+}
+
+function plainText(value) {
+  const raw = String(value || "");
+  if (!isHtml(raw)) return raw;
+  const div = document.createElement("div");
+  div.innerHTML = raw;
+  return div.textContent || "";
+}
+
+function reportHtml(value) {
+  const raw = String(value || "");
+  return isHtml(raw) ? raw : escapeHtml(raw);
+}
+
+function getEditorHtml(editor) {
+  return editor.innerHTML.trim();
+}
+
+function getEditorText(editor) {
+  return editor.innerText.trim();
+}
+
+function setEditorHtml(editor, value) {
+  editor.innerHTML = reportHtml(value);
+}
+
+function valuesFrom(records, field) {
+  return [...new Set(records.map(item => item[field]).filter(Boolean))].sort();
+}
+
+function matching(records, filters) {
+  return records.filter(item => (
+    (!filters.modality || item.modality === filters.modality) &&
+    (!filters.topic || item.topic === filters.topic)
+  ));
+}
+
+function setDatalist(datalist, values) {
+  datalist.innerHTML = values.map(value => `<option value="${escapeHtml(value)}"></option>`).join("");
+}
+
+function updateEditorDatalists(prefix) {
+  const records = prefix === "template" ? state.templateFacetRecords : state.oldFacetRecords;
+  const modality = els[`${prefix}ModalityInput`]?.value || "";
+  const topicInput = els[`${prefix}TopicInput`];
+  const bodyInput = els[`${prefix}BodyPartInput`];
+  const topicRecords = modality ? records.filter(item => item.modality === modality) : records;
+  const topicValues = valuesFrom(topicRecords, "topic");
+  const bodyRecords = matching(records, { modality, topic: topicInput.value });
+  const bodyValues = valuesFrom(bodyRecords, "bodyPart");
+  setDatalist(els[`${prefix}TopicOptions`], topicValues);
+  setDatalist(els[`${prefix}BodyPartOptions`], bodyValues);
+  if (topicInput.value && !topicValues.includes(topicInput.value)) topicInput.value = "";
+  if (bodyInput.value && !bodyValues.includes(bodyInput.value)) bodyInput.value = "";
+}
+
+function setSelectOptions(select, values, allLabel, keepValue) {
+  select.innerHTML = optionList(values, allLabel);
+  if (values.includes(keepValue)) select.value = keepValue;
+}
+
+function updateFilterOptions(scope, changed = "") {
+  const records = scope === "old" ? state.oldFacetRecords : state.templateFacetRecords;
+  const modalityFilter = els[`${scope}ModalityFilter`];
+  const topicFilter = els[`${scope}TopicFilter`];
+  const bodyFilter = els[`${scope}BodyPartFilter`];
+  if (changed === "modality") {
+    topicFilter.value = "";
+    bodyFilter.value = "";
+  }
+  if (changed === "topic") bodyFilter.value = "";
+  const modality = modalityFilter.value;
+  const topic = topicFilter.value;
+  const topicRecords = modality ? records.filter(item => item.modality === modality) : records;
+  const bodyRecords = matching(records, { modality, topic });
+  setSelectOptions(modalityFilter, valuesFrom(records, "modality"), "All modalities", modality);
+  setSelectOptions(topicFilter, valuesFrom(topicRecords, "topic"), "All topics", topic);
+  setSelectOptions(bodyFilter, valuesFrom(bodyRecords, "bodyPart"), "All body parts", bodyFilter.value);
 }
 
 function readAuth() {
@@ -138,7 +228,7 @@ function highlight(value, query) {
 }
 
 function snippet(text, query) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  const clean = plainText(text).replace(/\s+/g, " ").trim();
   if (!clean) return "";
   const q = String(query || "").trim().toLowerCase();
   if (!q) return clean.slice(0, 210);
@@ -191,11 +281,18 @@ function optionList(values, allLabel) {
 }
 
 async function loadFacets() {
-  const response = await fetch("facets.json", { cache: "no-store" });
-  const facets = response.ok ? await response.json() : { modalities: [], topics: [], bodyParts: [] };
-  els.oldModalityFilter.innerHTML = optionList(facets.modalities || [], "All modalities");
-  els.oldTopicFilter.innerHTML = optionList(facets.topics || [], "All topics");
-  els.oldBodyPartFilter.innerHTML = optionList(facets.bodyParts || [], "All body parts");
+  state.oldFacetRecords = [];
+  for (let page = 1; page < 80; page += 1) {
+    const data = await pbList("old_reports", {
+      page,
+      perPage: 500,
+      fields: "modality,topic,bodyPart"
+    });
+    state.oldFacetRecords.push(...data.items);
+    if (page >= data.totalPages) break;
+  }
+  updateFilterOptions("old");
+  updateEditorDatalists("report");
   await loadTemplateFacets();
 }
 
@@ -206,20 +303,9 @@ async function loadTemplateFacets() {
     sort: "modality,topic,bodyPart",
     fields: "modality,topic,bodyPart"
   });
-  const keep = {
-    modality: els.templateModalityFilter.value,
-    topic: els.templateTopicFilter.value,
-    bodyPart: els.templateBodyPartFilter.value
-  };
-  const modalities = [...new Set(data.items.map(item => item.modality).filter(Boolean))].sort();
-  const topics = [...new Set(data.items.map(item => item.topic).filter(Boolean))].sort();
-  const bodyParts = [...new Set(data.items.map(item => item.bodyPart).filter(Boolean))].sort();
-  els.templateModalityFilter.innerHTML = optionList(modalities, "All modalities");
-  els.templateTopicFilter.innerHTML = optionList(topics, "All topics");
-  els.templateBodyPartFilter.innerHTML = optionList(bodyParts, "All body parts");
-  if (modalities.includes(keep.modality)) els.templateModalityFilter.value = keep.modality;
-  if (topics.includes(keep.topic)) els.templateTopicFilter.value = keep.topic;
-  if (bodyParts.includes(keep.bodyPart)) els.templateBodyPartFilter.value = keep.bodyPart;
+  state.templateFacetRecords = data.items;
+  updateFilterOptions("template");
+  updateEditorDatalists("template");
 }
 
 function showMode(mode) {
@@ -282,7 +368,7 @@ function selectOldReport(id) {
   if (!report) return;
   state.selectedOldReport = report;
   els.oldPreviewTitle.textContent = report.title || "Untitled";
-  els.oldPreviewText.textContent = report.report || "";
+  els.oldPreviewText.innerHTML = reportHtml(report.report);
   renderOldReports();
 }
 
@@ -293,7 +379,7 @@ function blankTemplate() {
   els.templateTopicInput.value = "";
   els.templateBodyPartInput.value = "";
   setTemplateKind("normal");
-  els.templateTextEditor.value = "";
+  setEditorHtml(els.templateTextEditor, "");
 }
 
 function setTemplateKind(kind) {
@@ -315,7 +401,8 @@ function useOldReportAsTemplate() {
   els.templateTopicInput.value = report.topic || "";
   els.templateBodyPartInput.value = report.bodyPart || "";
   setTemplateKind(report.kind === "reference-template" ? "normal" : "disease");
-  els.templateTextEditor.value = report.report || "";
+  setEditorHtml(els.templateTextEditor, report.report || "");
+  updateEditorDatalists("template");
 }
 
 function templateData() {
@@ -325,7 +412,7 @@ function templateData() {
     topic: els.templateTopicInput.value.trim(),
     bodyPart: els.templateBodyPartInput.value.trim(),
     kind: getTemplateKind(),
-    report: els.templateTextEditor.value,
+    report: getEditorHtml(els.templateTextEditor),
     keywords: `${els.templateTitleInput.value} ${els.templateTopicInput.value} ${els.templateBodyPartInput.value} ${getTemplateKind()}`,
     sourceType: "personal-template"
   };
@@ -333,7 +420,7 @@ function templateData() {
 
 async function saveTemplate() {
   const data = templateData();
-  if (!data.report.trim()) return;
+  if (!getEditorText(els.templateTextEditor)) return;
   if (state.templateDraftId) {
     await pbUpdate("templates", state.templateDraftId, data);
   } else {
@@ -394,7 +481,7 @@ function useTemplateForReport(template = null) {
     topic: els.templateTopicInput.value,
     bodyPart: els.templateBodyPartInput.value,
     kind: getTemplateKind(),
-    report: els.templateTextEditor.value
+    report: getEditorHtml(els.templateTextEditor)
   };
   state.selectedTemplate = source;
   els.reportTitleInput.value = source.title || "Untitled report";
@@ -402,7 +489,8 @@ function useTemplateForReport(template = null) {
   els.reportTopicInput.value = source.topic || "";
   els.reportBodyPartInput.value = source.bodyPart || "";
   els.reportKeywordInput.value = source.kind || "";
-  els.reportTextEditor.value = source.report || "";
+  setEditorHtml(els.reportTextEditor, source.report || "");
+  updateEditorDatalists("report");
   showMode("writer");
   renderTemplates();
 }
@@ -422,7 +510,8 @@ function editTemplate(id) {
   els.templateTopicInput.value = template.topic || "";
   els.templateBodyPartInput.value = template.bodyPart || "";
   setTemplateKind(template.kind || "normal");
-  els.templateTextEditor.value = template.report || "";
+  setEditorHtml(els.templateTextEditor, template.report || "");
+  updateEditorDatalists("template");
   showMode("builder");
   els.templateTextEditor.focus();
 }
@@ -434,7 +523,7 @@ function reportData() {
     topic: els.reportTopicInput.value.trim(),
     bodyPart: els.reportBodyPartInput.value.trim(),
     kind: "final-report",
-    report: els.reportTextEditor.value,
+    report: getEditorHtml(els.reportTextEditor),
     keywords: `${els.reportTitleInput.value} ${els.reportTopicInput.value} ${els.reportBodyPartInput.value} ${els.reportKeywordInput.value}`,
     sourceType: "final-report",
     sourceDate: new Date().toISOString()
@@ -464,7 +553,7 @@ function hideContextMenu() {
 
 async function saveFullReport() {
   const data = reportData();
-  if (!data.report.trim()) return;
+  if (!getEditorText(els.reportTextEditor)) return;
   await pbCreate("old_reports", data);
   els.oldSearchInput.value = data.title;
   state.selectedOldReport = null;
@@ -478,6 +567,14 @@ function debounce(fn, ms = 250) {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => fn(...args), ms);
   };
+}
+
+function runFormatCommand(button) {
+  const toolbar = button.closest(".format-toolbar");
+  const editor = document.getElementById(toolbar.dataset.editorTarget);
+  if (!editor) return;
+  editor.focus();
+  document.execCommand(button.dataset.command, false, button.dataset.value || null);
 }
 
 els.builderModeBtn.addEventListener("click", () => showMode("builder"));
@@ -517,6 +614,8 @@ els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
   els.oldTypeFilter,
   els.oldDateFilter
 ].forEach(element => element.addEventListener("input", debounce(() => {
+  if (element === els.oldModalityFilter) updateFilterOptions("old", "modality");
+  if (element === els.oldTopicFilter) updateFilterOptions("old", "topic");
   state.selectedOldReport = null;
   loadOldReports();
 })));
@@ -525,7 +624,25 @@ els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
   els.templateTopicFilter,
   els.templateBodyPartFilter,
   els.templateTypeFilter
-].forEach(element => element.addEventListener("input", debounce(loadTemplates)));
+].forEach(element => element.addEventListener("input", debounce(() => {
+  if (element === els.templateModalityFilter) updateFilterOptions("template", "modality");
+  if (element === els.templateTopicFilter) updateFilterOptions("template", "topic");
+  loadTemplates();
+})));
+[
+  els.templateModalityInput,
+  els.templateTopicInput
+].forEach(element => element.addEventListener("input", () => updateEditorDatalists("template")));
+[
+  els.reportModalityInput,
+  els.reportTopicInput
+].forEach(element => element.addEventListener("input", () => updateEditorDatalists("report")));
+document.querySelectorAll(".format-toolbar").forEach(toolbar => {
+  toolbar.addEventListener("click", event => {
+    const button = event.target.closest("[data-command]");
+    if (button) runFormatCommand(button);
+  });
+});
 els.templateList.addEventListener("click", event => {
   const button = event.target.closest("[data-template-id]");
   if (button) selectTemplate(button.dataset.templateId);
@@ -550,7 +667,21 @@ els.templateList.addEventListener("contextmenu", event => {
 els.contextMenu?.addEventListener("click", event => event.stopPropagation());
 document.addEventListener("click", hideContextMenu);
 els.copyReportBtn.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(els.reportTextEditor.value);
+  await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
+});
+els.copyRichReportBtn.addEventListener("click", async () => {
+  const html = getEditorHtml(els.reportTextEditor);
+  const text = getEditorText(els.reportTextEditor);
+  if (navigator.clipboard?.write && window.ClipboardItem) {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([text], { type: "text/plain" })
+      })
+    ]);
+    return;
+  }
+  await navigator.clipboard.writeText(text);
 });
 els.saveReportBtn.addEventListener("click", saveFullReport);
 els.loginForm.addEventListener("submit", async event => {
