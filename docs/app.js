@@ -2,6 +2,11 @@ const CONFIG = window.PAWPLATE_CONFIG || {};
 const POCKETBASE_URL = CONFIG.pocketbaseUrl || window.location.origin;
 const API = `${POCKETBASE_URL.replace(/\/$/, "")}/api/collections`;
 const AUTH_KEY = "pawplate.auth";
+const PALETTE_KEY_PREFIX = "pawplate.palette.";
+const DEFAULT_PALETTE = {
+  text: ["#2b2526", "#8f4d57", "#7f5f3b", "#52654d"],
+  highlight: ["#fff0a8", "#ffd4dc", "#dcefc8", "#efe2c3", "#d9edf0"]
+};
 
 const state = {
   mode: "builder",
@@ -63,7 +68,6 @@ const els = {
   reportKeywordInput: document.getElementById("reportKeywordInput"),
   reportTextEditor: document.getElementById("reportTextEditor"),
   copyReportBtn: document.getElementById("copyReportBtn"),
-  copyRichReportBtn: document.getElementById("copyRichReportBtn"),
   saveReportBtn: document.getElementById("saveReportBtn"),
   contextMenu: document.getElementById("contextMenu")
 };
@@ -188,6 +192,63 @@ function setAuth(auth) {
   }
   els.loginView.classList.toggle("hidden", Boolean(auth?.token));
   els.appShell.classList.toggle("hidden", !auth?.token);
+}
+
+function paletteKey() {
+  return `${PALETTE_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
+}
+
+function readPalette() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(paletteKey()) || "null");
+    if (Array.isArray(saved?.text) && Array.isArray(saved?.highlight)) {
+      return {
+        text: [...DEFAULT_PALETTE.text].map((color, index) => saved.text[index] || color),
+        highlight: [...DEFAULT_PALETTE.highlight].map((color, index) => saved.highlight[index] || color)
+      };
+    }
+  } catch {
+    // Ignore broken palette cache.
+  }
+  return structuredClone(DEFAULT_PALETTE);
+}
+
+function savePalette(palette) {
+  localStorage.setItem(paletteKey(), JSON.stringify(palette));
+}
+
+function applyPalette() {
+  const palette = readPalette();
+  document.querySelectorAll(".format-toolbar").forEach(toolbar => {
+    toolbar.querySelectorAll(".color-swatch").forEach((button, index) => {
+      const color = palette.text[index] || DEFAULT_PALETTE.text[index] || "#2b2526";
+      button.dataset.value = color;
+      button.style.backgroundColor = color;
+    });
+    toolbar.querySelectorAll(".highlight-swatch").forEach((button, index) => {
+      const color = palette.highlight[index] || DEFAULT_PALETTE.highlight[index] || "#fff0a8";
+      button.dataset.value = color;
+      button.style.backgroundColor = color;
+    });
+  });
+}
+
+function customizeSwatch(button) {
+  const isHighlight = button.classList.contains("highlight-swatch");
+  const groupKey = isHighlight ? "highlight" : "text";
+  const swatches = [...button.closest(".format-group").querySelectorAll(isHighlight ? ".highlight-swatch" : ".color-swatch")];
+  const index = swatches.indexOf(button);
+  if (index < 0) return;
+  const input = document.createElement("input");
+  input.type = "color";
+  input.value = button.dataset.value || (isHighlight ? "#fff0a8" : "#2b2526");
+  input.addEventListener("input", () => {
+    const palette = readPalette();
+    palette[groupKey][index] = input.value;
+    savePalette(palette);
+    applyPalette();
+  });
+  input.click();
 }
 
 function authHeaders(extra = {}) {
@@ -648,6 +709,12 @@ document.querySelectorAll(".format-toolbar").forEach(toolbar => {
     const button = event.target.closest("[data-command]");
     if (button) runFormatCommand(button);
   });
+  toolbar.addEventListener("contextmenu", event => {
+    const button = event.target.closest(".color-swatch, .highlight-swatch");
+    if (!button) return;
+    event.preventDefault();
+    customizeSwatch(button);
+  });
 });
 els.templateList.addEventListener("click", event => {
   const button = event.target.closest("[data-template-id]");
@@ -675,20 +742,6 @@ document.addEventListener("click", hideContextMenu);
 els.copyReportBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
 });
-els.copyRichReportBtn.addEventListener("click", async () => {
-  const html = getEditorHtml(els.reportTextEditor);
-  const text = getEditorText(els.reportTextEditor);
-  if (navigator.clipboard?.write && window.ClipboardItem) {
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        "text/html": new Blob([html], { type: "text/html" }),
-        "text/plain": new Blob([text], { type: "text/plain" })
-      })
-    ]);
-    return;
-  }
-  await navigator.clipboard.writeText(text);
-});
 els.saveReportBtn.addEventListener("click", saveFullReport);
 els.loginForm.addEventListener("submit", async event => {
   event.preventDefault();
@@ -702,6 +755,7 @@ els.loginForm.addEventListener("submit", async event => {
 els.logoutBtn.addEventListener("click", logout);
 
 async function loadApp() {
+  applyPalette();
   blankTemplate();
   await loadFacets();
   await loadOldReports();
