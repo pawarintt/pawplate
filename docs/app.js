@@ -30,6 +30,7 @@ const state = {
   templates: [],
   selectedOldReport: null,
   selectedTemplate: null,
+  selectedWorklogReport: null,
   templateDraftId: null,
   reportDraftId: null,
   reportDraftSourceDate: "",
@@ -101,6 +102,10 @@ const els = {
   worklogList: document.getElementById("worklogList"),
   interestingSearchInput: document.getElementById("interestingSearchInput"),
   interestingList: document.getElementById("interestingList"),
+  worklogPreviewTitle: document.getElementById("worklogPreviewTitle"),
+  worklogPreviewMeta: document.getElementById("worklogPreviewMeta"),
+  worklogPreviewText: document.getElementById("worklogPreviewText"),
+  editWorklogReportBtn: document.getElementById("editWorklogReportBtn"),
   contextMenu: document.getElementById("contextMenu"),
   toastStack: document.getElementById("toastStack")
 };
@@ -141,7 +146,9 @@ function reportHtml(value) {
 }
 
 function getEditorHtml(editor) {
-  return editor.innerHTML.trim();
+  const clone = editor.cloneNode(true);
+  clone.querySelectorAll(".proofing-underline").forEach(node => node.replaceWith(document.createTextNode(node.textContent || "")));
+  return clone.innerHTML.trim();
 }
 
 function getEditorText(editor) {
@@ -182,9 +189,44 @@ function proofingIssues(editor) {
   });
 }
 
+function markProofingFallback(editor, issues) {
+  editor.querySelectorAll(".proofing-underline").forEach(node => node.replaceWith(document.createTextNode(node.textContent || "")));
+  editor.normalize();
+  if (!issues.length) return;
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  const replacements = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const text = node.nodeValue || "";
+    for (const item of PROOFING_PATTERNS) {
+      const regex = new RegExp(item.pattern.source, item.pattern.flags);
+      let match;
+      while ((match = regex.exec(text))) replacements.push({ node, start: match.index, end: match.index + match[0].length });
+    }
+  }
+  replacements
+    .sort((a, b) => (a.node === b.node ? b.start - a.start : 0))
+    .slice(0, 80)
+    .forEach(({ node, start, end }) => {
+      if (!node.parentNode || node.parentNode.closest?.(".proofing-underline")) return;
+      const range = new Range();
+      range.setStart(node, start);
+      range.setEnd(node, end);
+      const span = document.createElement("span");
+      span.className = "proofing-underline";
+      try {
+        range.surroundContents(span);
+      } catch {
+        // If the editor changes under us, skip this mark and continue.
+      }
+    });
+}
+
 function updateProofing(editor) {
   if (!editor) return;
   const panel = editor === els.templateTextEditor ? els.templateProofing : els.reportProofing;
+  const issues = proofingIssues(editor);
+  markProofingFallback(editor, issues);
   if (window.CSS?.highlights) {
     const ranges = PROOFING_PATTERNS.flatMap(item => editorTextNodeRanges(editor, new RegExp(item.pattern.source, item.pattern.flags)));
     if (ranges.length) {
@@ -194,7 +236,6 @@ function updateProofing(editor) {
     }
   }
   if (!panel) return;
-  const issues = proofingIssues(editor);
   if (!issues.length) {
     panel.classList.add("hidden");
     panel.innerHTML = "";
@@ -856,8 +897,12 @@ async function loadWorkLog() {
     fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,note,isInteresting,owner"
   });
   state.workLogReports = data.items;
+  if (state.selectedWorklogReport) {
+    state.selectedWorklogReport = state.workLogReports.find(item => item.id === state.selectedWorklogReport.id) || null;
+  }
   renderWorkLog();
   renderInterestingCases();
+  renderWorklogPreview();
 }
 
 function renderWorkLog() {
@@ -892,7 +937,7 @@ function renderWorkLog() {
   els.worklogList.innerHTML = reports.map((report, index) => {
     const date = savedDate(report);
     return `
-      <button class="result-item" data-worklog-id="${report.id}" type="button">
+      <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-worklog-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
         <span>
           <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
@@ -902,6 +947,37 @@ function renderWorkLog() {
       </button>
     `;
   }).join("");
+}
+
+function selectWorklogReport(id) {
+  const report = state.workLogReports.find(item => item.id === id);
+  if (!report) return;
+  state.selectedWorklogReport = report;
+  renderWorkLog();
+  renderInterestingCases();
+  renderWorklogPreview();
+}
+
+function renderWorklogPreview() {
+  const report = state.selectedWorklogReport;
+  if (!report) {
+    els.worklogPreviewTitle.textContent = "Select a report";
+    els.worklogPreviewMeta.textContent = "";
+    els.worklogPreviewText.textContent = "Click a saved report or interesting case to preview it here.";
+    els.editWorklogReportBtn.disabled = true;
+    return;
+  }
+  const date = savedDate(report);
+  els.worklogPreviewTitle.textContent = report.title || "Untitled";
+  els.worklogPreviewMeta.innerHTML = [
+    date ? dateKey(date) : "",
+    report.modality,
+    report.topic,
+    report.bodyPart,
+    report.note
+  ].filter(Boolean).map(escapeHtml).join(" / ");
+  els.worklogPreviewText.innerHTML = reportHtml(report.report);
+  els.editWorklogReportBtn.disabled = false;
 }
 
 function renderWorklogCalendar(counts, today) {
@@ -959,7 +1035,7 @@ function renderInterestingCases() {
     return;
   }
   els.interestingList.innerHTML = reports.map((report, index) => `
-    <button class="result-item" data-interesting-id="${report.id}" type="button">
+    <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-interesting-id="${report.id}" type="button">
       <span class="result-no">${index + 1}.</span>
       <span>
         <span class="result-title">${highlight(report.title || "Untitled", query)}</span>
@@ -971,7 +1047,7 @@ function renderInterestingCases() {
 }
 
 function openSavedReport(id) {
-  const report = state.workLogReports.find(item => item.id === id);
+  const report = state.workLogReports.find(item => item.id === id) || state.selectedWorklogReport;
   if (!report) return;
   state.reportDraftId = report.id;
   state.reportDraftSourceDate = report.sourceDate || report.created || "";
@@ -1040,6 +1116,7 @@ els.oldReportList.addEventListener("contextmenu", event => {
       if (!confirm("Delete this old report?")) return;
       await pbDelete("old_reports", id);
       if (state.selectedOldReport?.id === id) state.selectedOldReport = null;
+      if (state.selectedWorklogReport?.id === id) state.selectedWorklogReport = null;
       if (state.reportDraftId === id) {
         state.reportDraftId = null;
         state.reportDraftSourceDate = "";
@@ -1168,11 +1245,14 @@ els.worklogHeatmap.addEventListener("click", event => {
 });
 els.worklogList.addEventListener("click", event => {
   const button = event.target.closest("[data-worklog-id]");
-  if (button) openSavedReport(button.dataset.worklogId);
+  if (button) selectWorklogReport(button.dataset.worklogId);
 });
 els.interestingList.addEventListener("click", event => {
   const button = event.target.closest("[data-interesting-id]");
-  if (button) openSavedReport(button.dataset.interestingId);
+  if (button) selectWorklogReport(button.dataset.interestingId);
+});
+els.editWorklogReportBtn.addEventListener("click", () => {
+  if (state.selectedWorklogReport) openSavedReport(state.selectedWorklogReport.id);
 });
 els.worklogList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-worklog-id]");
@@ -1195,6 +1275,7 @@ els.worklogList.addEventListener("contextmenu", event => {
         state.reportDraftId = null;
         state.reportDraftSourceDate = "";
       }
+      if (state.selectedWorklogReport?.id === id) state.selectedWorklogReport = null;
       await loadWorkLog();
       await loadOldReports();
       showToast("Saved report deleted", report?.title || "Report");

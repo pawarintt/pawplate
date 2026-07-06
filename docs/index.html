@@ -133,7 +133,7 @@
           <datalist id="reportBodyPartOptions"></datalist>
           <input id="reportKeywordInput" placeholder="Keywords / diagnosis">
           <input id="reportNoteInput" placeholder="Note / HN / accession">
-          <label class="interesting-toggle"><input id="reportInterestingInput" type="checkbox"> Interesting case</label>
+          <label class="interesting-toggle"><input id="reportInterestingInput" type="checkbox"><span>Interesting case</span></label>
         </div>
         <div class="format-toolbar" data-editor-target="reportTextEditor">
           <div class="format-group">
@@ -195,6 +195,14 @@
           <h2>Interesting Cases</h2>
           <input id="interestingSearchInput" type="search" placeholder="quick lookup">
         </div>
+        <article class="worklog-preview">
+          <div class="preview-head">
+            <h3 id="worklogPreviewTitle">Select a report</h3>
+            <button id="editWorklogReportBtn" type="button">Edit</button>
+          </div>
+          <div id="worklogPreviewMeta" class="preview-meta"></div>
+          <pre id="worklogPreviewText"></pre>
+        </article>
         <div id="interestingList" class="result-list"></div>
       </aside>
     </section>

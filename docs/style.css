@@ -69,36 +69,36 @@
 
 body[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #17181d;
-  --paper: rgba(31, 32, 38, .92);
-  --paper-strong: rgba(39, 39, 47, .98);
-  --ink: #fff8f2;
-  --muted: #c7b7b2;
-  --line: #4b4347;
-  --line-strong: #6d5b60;
-  --blue: #9fc9d4;
-  --blue-soft: #24363d;
-  --blue-line: #51717a;
-  --mint: #263a32;
-  --mint-line: #5e7a68;
-  --rose: #412c35;
-  --rose-line: #8b6070;
-  --lilac: #343040;
-  --lilac-line: #6b637b;
-  --peach: #49352f;
-  --peach-line: #8c6d63;
-  --sage: #30392d;
-  --sage-line: #6d7c62;
-  --sky: #273b3d;
-  --sky-line: #5d777a;
-  --yellow: #5a4d24;
-  --yellow-line: #9b8742;
-  --coffee: #e7bd93;
-  --coffee-soft: #332a27;
-  --danger: #ffafbd;
-  --danger-soft: #432932;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .22), 0 18px 46px rgba(0, 0, 0, .36);
-  --ring: 0 0 0 3px rgba(159, 201, 212, .24);
+  --bg: #101010;
+  --paper: rgba(22, 22, 22, .94);
+  --paper-strong: #1c1c1c;
+  --ink: #ffffff;
+  --muted: #a0a0a0;
+  --line: #282828;
+  --line-strong: #343434;
+  --blue: #99ffe4;
+  --blue-soft: rgba(153, 255, 228, .12);
+  --blue-line: rgba(153, 255, 228, .34);
+  --mint: rgba(153, 255, 228, .12);
+  --mint-line: rgba(153, 255, 228, .34);
+  --rose: rgba(255, 128, 128, .12);
+  --rose-line: rgba(255, 128, 128, .34);
+  --lilac: #1c1c1c;
+  --lilac-line: #343434;
+  --peach: rgba(255, 199, 153, .13);
+  --peach-line: rgba(255, 199, 153, .42);
+  --sage: rgba(153, 255, 228, .1);
+  --sage-line: rgba(153, 255, 228, .26);
+  --sky: rgba(153, 255, 228, .1);
+  --sky-line: rgba(153, 255, 228, .26);
+  --yellow: #ffc799;
+  --yellow-line: #ffc799;
+  --coffee: #ffc799;
+  --coffee-soft: rgba(255, 199, 153, .16);
+  --danger: #ff8080;
+  --danger-soft: rgba(255, 128, 128, .14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 18px 46px rgba(0, 0, 0, .42);
+  --ring: 0 0 0 3px rgba(255, 199, 153, .25);
 }
 
 body {
@@ -113,9 +113,9 @@ body {
 
 body[data-theme="dark"] {
   background:
-    radial-gradient(circle at 78% 12%, rgba(159, 201, 212, .14), transparent 26vw),
-    radial-gradient(circle at 12% 86%, rgba(249, 215, 218, .12), transparent 28vw),
-    linear-gradient(135deg, #1a1b22 0%, #17181d 52%, #242026 100%),
+    radial-gradient(circle at 84% 10%, rgba(153, 255, 228, .09), transparent 24vw),
+    radial-gradient(circle at 10% 92%, rgba(255, 199, 153, .08), transparent 26vw),
+    #101010,
     var(--bg);
 }
 
@@ -176,7 +176,7 @@ input, select {
 
 body[data-theme="dark"] input,
 body[data-theme="dark"] select {
-  background: #352c2d;
+  background: #1c1c1c;
   color: var(--ink);
   border-color: var(--line);
 }
@@ -573,7 +573,7 @@ pre, textarea, .rich-editor {
 }
 
 #writerView .meta-grid {
-  grid-template-columns: minmax(160px, 1.2fr) minmax(84px, .52fr) minmax(104px, .7fr) minmax(110px, .75fr) minmax(160px, .8fr) minmax(140px, .7fr) minmax(142px, .6fr);
+  grid-template-columns: minmax(160px, 1.1fr) minmax(84px, .48fr) minmax(104px, .64fr) minmax(110px, .68fr) minmax(150px, .72fr) minmax(130px, .64fr) minmax(164px, auto);
 }
 
 .meta-grid > input:nth-of-type(1) {
@@ -602,31 +602,31 @@ pre, textarea, .rich-editor {
 
 body[data-theme="dark"] .meta-grid > input:nth-of-type(1),
 body[data-theme="dark"] .filter-grid input {
-  background: #342d2b;
+  background: #1c1c1c;
 }
 
 body[data-theme="dark"] .meta-grid > input:nth-of-type(2),
 body[data-theme="dark"] .filter-grid select:nth-of-type(1) {
-  background: #4a352d;
+  background: rgba(255, 199, 153, .1);
 }
 
 body[data-theme="dark"] .meta-grid > input:nth-of-type(3),
 body[data-theme="dark"] .filter-grid select:nth-of-type(2) {
-  background: #35412f;
+  background: rgba(153, 255, 228, .08);
 }
 
 body[data-theme="dark"] .meta-grid > input:nth-of-type(4),
 body[data-theme="dark"] .filter-grid select:nth-of-type(3) {
-  background: #2f4241;
+  background: rgba(153, 255, 228, .08);
 }
 
 body[data-theme="dark"] .meta-grid > input:nth-of-type(5),
 body[data-theme="dark"] .filter-grid select:nth-of-type(4) {
-  background: #4a3037;
+  background: rgba(255, 128, 128, .1);
 }
 
 body[data-theme="dark"] .meta-grid > input:nth-of-type(6) {
-  background: #3d3544;
+  background: #1c1c1c;
 }
 
 .filter-grid {
@@ -677,6 +677,8 @@ body[data-theme="dark"] .meta-grid > input:nth-of-type(6) {
   color: var(--muted);
   font-size: .86rem;
   font-weight: 700;
+  white-space: nowrap;
+  justify-content: center;
 }
 
 .check-filter {
@@ -688,7 +690,12 @@ body[data-theme="dark"] .meta-grid > input:nth-of-type(6) {
 .interesting-toggle input {
   min-height: 0;
   width: auto;
+  flex: 0 0 auto;
   accent-color: var(--coffee);
+}
+
+.interesting-toggle span {
+  white-space: nowrap;
 }
 
 .secondary-pane .filter-grid {
@@ -806,8 +813,9 @@ textarea {
 
 body[data-theme="dark"] .rich-editor,
 body[data-theme="dark"] #oldPreviewText,
-body[data-theme="dark"] .preview {
-  background: linear-gradient(180deg, rgba(35, 36, 43, .94), rgba(28, 29, 35, .9));
+body[data-theme="dark"] .preview,
+body[data-theme="dark"] .worklog-preview {
+  background: #101010;
   color: var(--ink);
 }
 
@@ -816,7 +824,7 @@ body[data-theme="dark"] .secondary-pane,
 body[data-theme="dark"] .templates-pane,
 body[data-theme="dark"] .worklog-main,
 body[data-theme="dark"] .interesting-pane {
-  background: linear-gradient(180deg, rgba(48, 43, 49, .72), rgba(31, 32, 38, .92) 210px), var(--paper);
+  background: linear-gradient(180deg, #161616, #101010 220px), var(--paper);
 }
 
 body[data-theme="dark"] .pane-head,
@@ -825,15 +833,25 @@ body[data-theme="dark"] .meta-grid,
 body[data-theme="dark"] .filter-grid,
 body[data-theme="dark"] .format-toolbar,
 body[data-theme="dark"] .worklog-summary {
-  background: linear-gradient(90deg, rgba(62, 48, 55, .74), rgba(34, 39, 45, .62));
+  background: linear-gradient(90deg, rgba(255, 199, 153, .1), rgba(153, 255, 228, .07));
 }
 
 body[data-theme="dark"] .summary-card,
 body[data-theme="dark"] .format-group,
 body[data-theme="dark"] .radio-row,
 body[data-theme="dark"] .check-filter,
-body[data-theme="dark"] .interesting-toggle {
-  background: rgba(255, 248, 242, .06);
+body[data-theme="dark"] .interesting-toggle,
+body[data-theme="dark"] .worklog-preview {
+  background: #1c1c1c;
+}
+
+body[data-theme="dark"] .preview-meta {
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] #worklogPreviewText {
+  background: #101010;
+  color: var(--ink);
 }
 
 .rich-editor:empty::before {
@@ -854,6 +872,14 @@ mark {
   text-decoration-color: #d4485d;
   text-decoration-thickness: 1.5px;
   background: rgba(255, 120, 140, .08);
+}
+
+.proofing-underline {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: #d4485d;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
 }
 
 .proofing-panel {
@@ -905,7 +931,7 @@ mark {
   flex: 0 1 360px;
   min-width: 300px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(210px, 44%) minmax(0, 1fr);
   background: linear-gradient(180deg, rgba(255, 241, 244, .72), rgba(255,253,248,.86) 180px), var(--paper);
 }
 
@@ -942,7 +968,7 @@ mark {
 
 .heatmap {
   display: block;
-  padding: 10px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -951,11 +977,11 @@ mark {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .calendar-head strong {
-  font-size: .96rem;
+  font-size: .86rem;
 }
 
 .calendar-head > div {
@@ -965,7 +991,9 @@ mark {
 
 .calendar-head button {
   min-width: 32px;
-  min-height: 28px;
+  min-height: 24px;
+  padding: 3px 8px;
+  font-size: .76rem;
   background: rgba(255, 253, 248, .72);
   color: var(--ink);
   border-color: var(--line);
@@ -975,7 +1003,7 @@ mark {
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 5px;
+  gap: 3px;
 }
 
 .calendar-weekdays {
@@ -984,23 +1012,23 @@ mark {
 
 .calendar-weekdays span {
   color: var(--muted);
-  font-size: .7rem;
+  font-size: .62rem;
   font-weight: 800;
   text-align: center;
   text-transform: uppercase;
 }
 
 .calendar-day {
-  aspect-ratio: 1.28;
+  aspect-ratio: 2.35;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 5px;
   background: #fffaf3;
   color: var(--ink);
-  padding: 5px;
+  padding: 2px 5px;
   text-align: left;
   display: grid;
   align-content: space-between;
-  min-height: 42px;
+  min-height: 24px;
 }
 
 .calendar-day.empty-day {
@@ -1023,7 +1051,7 @@ mark {
 }
 
 .calendar-number {
-  font-size: .82rem;
+  font-size: .68rem;
   font-weight: 850;
 }
 
@@ -1031,19 +1059,44 @@ mark {
   justify-self: end;
   min-width: 20px;
   border-radius: 999px;
-  padding: 1px 6px;
+  padding: 0 5px;
   background: rgba(255, 253, 248, .8);
   color: var(--coffee);
-  font-size: .72rem;
+  font-size: .62rem;
   font-weight: 850;
   text-align: center;
 }
 
 .calendar-filter {
-  margin-top: 8px;
+  margin-top: 6px;
   color: var(--muted);
   font-size: .78rem;
   font-weight: 700;
+}
+
+.worklog-preview {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 253, 248, .58);
+  overflow: hidden;
+}
+
+.preview-meta {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(217, 213, 204, .6);
+  color: var(--muted);
+  font-size: .74rem;
+  line-height: 1.35;
+}
+
+#worklogPreviewText {
+  overflow: auto;
+  padding: 10px 12px 14px;
+  background: linear-gradient(180deg, rgba(255, 253, 248, .72), rgba(255, 247, 240, .56));
+  font-size: .86rem;
+  line-height: 1.45;
 }
 
 body[data-theme="dark"] .calendar-head button {
@@ -1051,13 +1104,13 @@ body[data-theme="dark"] .calendar-head button {
 }
 
 body[data-theme="dark"] .calendar-day {
-  background: rgba(255, 248, 242, .04);
+  background: #161616;
 }
 
-body[data-theme="dark"] .calendar-day.level-1 { background: #49352f; }
-body[data-theme="dark"] .calendar-day.level-2 { background: #412c35; }
-body[data-theme="dark"] .calendar-day.level-3 { background: #30392d; }
-body[data-theme="dark"] .calendar-day.level-4 { background: #273b3d; }
+body[data-theme="dark"] .calendar-day.level-1 { background: rgba(255, 199, 153, .12); }
+body[data-theme="dark"] .calendar-day.level-2 { background: rgba(255, 199, 153, .18); }
+body[data-theme="dark"] .calendar-day.level-3 { background: rgba(153, 255, 228, .16); }
+body[data-theme="dark"] .calendar-day.level-4 { background: rgba(153, 255, 228, .24); }
 
 body[data-theme="dark"] .calendar-count {
   background: rgba(255, 248, 242, .11);
