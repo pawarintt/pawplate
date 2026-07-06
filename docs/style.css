@@ -103,6 +103,8 @@ body[data-theme="dark"] {
 
 body {
   margin: 0;
+  min-height: 100vh;
+  background-color: var(--bg);
   background:
     radial-gradient(circle at 76% 18%, rgba(255, 253, 248, .72), transparent 24vw),
     radial-gradient(circle at 10% 82%, rgba(255, 249, 239, .58), transparent 28vw),
@@ -112,11 +114,8 @@ body {
 }
 
 body[data-theme="dark"] {
-  background:
-    radial-gradient(circle at 84% 10%, rgba(153, 255, 228, .09), transparent 24vw),
-    radial-gradient(circle at 10% 92%, rgba(255, 199, 153, .08), transparent 26vw),
-    #101010,
-    var(--bg);
+  background: #101010;
+  background-color: #101010;
 }
 
 button, input, select, textarea {
@@ -1456,4 +1455,172 @@ body[data-theme="dark"] .calendar-day.today {
     aspect-ratio: 1;
     min-height: 38px;
   }
+}
+
+/* Final Vesper dark normalization. Keep this last so light-theme pastel rules cannot leak through. */
+body[data-theme="dark"],
+body[data-theme="dark"] .page,
+body[data-theme="dark"] .topbar {
+  background: #101010 !important;
+  background-image: none !important;
+  color: #ffffff;
+}
+
+body[data-theme="dark"] .login-card,
+body[data-theme="dark"] .mode-tabs,
+body[data-theme="dark"] .lookup-pane,
+body[data-theme="dark"] .editor-pane,
+body[data-theme="dark"] .secondary-pane,
+body[data-theme="dark"] .templates-pane,
+body[data-theme="dark"] .worklog-main,
+body[data-theme="dark"] .interesting-pane,
+body[data-theme="dark"] .result-list,
+body[data-theme="dark"] .preview,
+body[data-theme="dark"] .worklog-preview {
+  background: #161616 !important;
+  background-image: none !important;
+  border-color: #282828 !important;
+}
+
+body[data-theme="dark"] .pane-head,
+body[data-theme="dark"] .preview-head,
+body[data-theme="dark"] .meta-grid,
+body[data-theme="dark"] .filter-grid,
+body[data-theme="dark"] .format-toolbar,
+body[data-theme="dark"] .worklog-summary,
+body[data-theme="dark"] .empty {
+  background: #101010 !important;
+  background-image: none !important;
+  border-color: #282828 !important;
+}
+
+body[data-theme="dark"] input,
+body[data-theme="dark"] select,
+body[data-theme="dark"] textarea,
+body[data-theme="dark"] .rich-editor,
+body[data-theme="dark"] pre,
+body[data-theme="dark"] #oldPreviewText,
+body[data-theme="dark"] #worklogPreviewText,
+body[data-theme="dark"] .meta-grid > input,
+body[data-theme="dark"] .filter-grid input,
+body[data-theme="dark"] .filter-grid select,
+body[data-theme="dark"] .radio-row,
+body[data-theme="dark"] .check-filter,
+body[data-theme="dark"] .interesting-toggle,
+body[data-theme="dark"] .summary-card,
+body[data-theme="dark"] .format-group,
+body[data-theme="dark"] .context-menu,
+body[data-theme="dark"] .toast {
+  background: #1c1c1c !important;
+  background-image: none !important;
+  border-color: #282828 !important;
+  color: #ffffff !important;
+}
+
+body[data-theme="dark"] .rich-editor,
+body[data-theme="dark"] #oldPreviewText,
+body[data-theme="dark"] #worklogPreviewText {
+  background: #101010 !important;
+}
+
+body[data-theme="dark"] .result-item,
+body[data-theme="dark"] .context-menu button {
+  background: transparent !important;
+  color: #ffffff !important;
+}
+
+body[data-theme="dark"] .result-item:hover,
+body[data-theme="dark"] .context-menu button:hover {
+  background: rgba(153, 255, 228, .08) !important;
+}
+
+body[data-theme="dark"] .result-item.active {
+  background: rgba(153, 255, 228, .12) !important;
+  border-left-color: #99ffe4 !important;
+}
+
+body[data-theme="dark"] #builderModeBtn,
+body[data-theme="dark"] #writerModeBtn,
+body[data-theme="dark"] #worklogModeBtn,
+body[data-theme="dark"] #newTemplateBtn,
+body[data-theme="dark"] #newReportBtn,
+body[data-theme="dark"] #copyReportBtn,
+body[data-theme="dark"] #useTemplateBtn,
+body[data-theme="dark"] #useOldReportBtn,
+body[data-theme="dark"] #closeWorklogPreviewBtn,
+body[data-theme="dark"] #editWorklogReportBtn,
+body[data-theme="dark"] .logout-button,
+body[data-theme="dark"] .theme-toggle {
+  background: #1c1c1c !important;
+  background-image: none !important;
+  border-color: #343434 !important;
+  color: #ffffff !important;
+}
+
+body[data-theme="dark"] #builderModeBtn.active,
+body[data-theme="dark"] #writerModeBtn.active,
+body[data-theme="dark"] #worklogModeBtn.active {
+  background: #1c1c1c !important;
+  border-color: rgba(255, 199, 153, .42) !important;
+  color: #ffc799 !important;
+}
+
+body[data-theme="dark"] #saveTemplateBtn,
+body[data-theme="dark"] #saveReportBtn,
+body[data-theme="dark"] .login-card button[type="submit"] {
+  background: #ffc799 !important;
+  border-color: #ffc799 !important;
+  color: #101010 !important;
+}
+
+body[data-theme="dark"] .pane-head h2,
+body[data-theme="dark"] .preview-head h3,
+body[data-theme="dark"] .topbar h1,
+body[data-theme="dark"] .result-title,
+body[data-theme="dark"] .calendar-number {
+  color: #ffffff !important;
+}
+
+body[data-theme="dark"] .topbar p,
+body[data-theme="dark"] .result-meta,
+body[data-theme="dark"] .result-snippet,
+body[data-theme="dark"] .preview-meta,
+body[data-theme="dark"] .calendar-filter,
+body[data-theme="dark"] .calendar-weekdays span,
+body[data-theme="dark"] .radio-row label,
+body[data-theme="dark"] .format-group span {
+  color: #a0a0a0 !important;
+}
+
+body[data-theme="dark"] .calendar-day {
+  background: #161616 !important;
+  border-color: #282828 !important;
+  color: #ffffff !important;
+}
+
+body[data-theme="dark"] .calendar-day.level-1 { background: rgba(255, 199, 153, .12) !important; }
+body[data-theme="dark"] .calendar-day.level-2 { background: rgba(255, 199, 153, .18) !important; }
+body[data-theme="dark"] .calendar-day.level-3 { background: rgba(153, 255, 228, .16) !important; }
+body[data-theme="dark"] .calendar-day.level-4 { background: rgba(153, 255, 228, .24) !important; }
+
+body[data-theme="dark"] .calendar-day.selected {
+  border-color: #ffc799 !important;
+  box-shadow: 0 0 0 2px rgba(255, 199, 153, .22), inset 0 0 0 1px #ffc799 !important;
+}
+
+body[data-theme="dark"] .calendar-day.today {
+  box-shadow: inset 0 0 0 2px #99ffe4 !important;
+}
+
+body[data-theme="dark"] .mode-badge {
+  background: rgba(153, 255, 228, .1) !important;
+  border-color: rgba(153, 255, 228, .34) !important;
+  color: #99ffe4 !important;
+}
+
+body[data-theme="dark"] .mode-badge.editing,
+body[data-theme="dark"] .interesting-badge {
+  background: rgba(255, 199, 153, .13) !important;
+  border-color: rgba(255, 199, 153, .42) !important;
+  color: #ffc799 !important;
 }
