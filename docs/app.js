@@ -20,6 +20,22 @@ const PROOFING_PATTERNS = [
   { pattern: /\bno significant abnormalities\b/gi, label: "no significant abnormality" },
   { pattern: /\bthere are no evidence\b/gi, label: "there are no evidence", suggestion: "there is no evidence" }
 ];
+const PROOFING_WORDS = new Set(`
+a about above absent acute after again age air airway airways all also an and another anterior appear appears are area artery assessment associated at axial
+be bilateral body bone bowel brain but by can cancer cardiac case central change changes chest chronic clear cm collection common comparison contrast could ct cta cyst
+date decreased defect demonstrates diameter diffuse dilated disease doctor effusion enhancement enlarged evidence exam examination finding findings focal follow for from
+gallbladder great has have heart hepatic history hn if in increased inferior is kidney large left lesion line liver lower lung lungs lymph mass may mediastinal mild mm
+moderate mri muscle neck new no node nodules non normal noted of old on or organ other pain partial patient per pleural pneumonia position post previous prior process
+pulmonary report right seen severe significant size small soft stable study suspicious there this to today upper urinary vascular vein vessels visualized was were with
+without within xray
+abdomen abdominal abscess accessory acetabulum adenopathy adrenal adnexa aneurysm angiogram appendicitis appendix atelectasis bladder bronchiectasis calculus calcification
+carcinoma catheter cavitary cerebellar cerebral cervical cholecystitis clavicle colitis colon compression consolidation contusion cortical cystic diverticulitis duodenum
+edema embolism emphysema epidural esophagus extremity femoral femur fibrosis fracture frontal gastrointestinal glioma hematoma hemorrhage hydronephrosis infarct infection
+ischemia jejunum joint lacunar lumbar malignancy metastasis metastatic musculoskeletal nodule obstruction occipital opacification pancreas pancreatic parietal patella
+pelvis perfusion pericardial peritoneal phlegmon pneumothorax portal prostate radiology renal sacral scapula sclerosis sigmoid spleen splenic sternum stent stone subdural
+temporal thoracic thrombus thyroid tibia tumor ultrasound ureter vertebral
+`.trim().split(/\s+/));
+const PROOFING_ABBREVIATIONS = new Set("ct mri us pa ap lat cta cxr gb cbd cva ckd copd mpa rv lv cm mm hn llq rlq rml lll rul rll lul iv s p".split(/\s+/));
 
 const state = {
   mode: "builder",
@@ -207,33 +223,73 @@ function editorTextNodeRanges(editor, matcher) {
   return ranges;
 }
 
-function proofingIssues(editor) {
-  const text = editor.innerText || "";
-  return PROOFING_PATTERNS.flatMap(item => {
-    const matches = [...text.matchAll(new RegExp(item.pattern.source, item.pattern.flags))];
-    return matches.map(match => ({
-      label: match[0],
-      suggestion: item.suggestion || item.label
-    }));
-  });
+function isSuspiciousWord(word) {
+  const clean = word.replace(/^'+|'+$/g, "");
+  if (clean.length < 4) return false;
+  if (/^\d/.test(clean)) return false;
+  if (/^[A-Z]{2,}$/.test(clean)) return false;
+  const lower = clean.toLowerCase();
+  if (PROOFING_WORDS.has(lower) || PROOFING_ABBREVIATIONS.has(lower)) return false;
+  if (/^[a-z]+(?:'[a-z]+)?$/.test(clean) && lower.length <= 5 && /^(cm|mm|ml|sec|min)s?$/.test(lower)) return false;
+  if (/[A-Z][a-z]*[A-Z][a-z]/.test(clean)) return true;
+  if (!/[aeiou]/i.test(clean) && clean.length >= 5) return true;
+  if (/(.)\1\1/i.test(clean)) return true;
+  if (/[jqxz]{2,}/i.test(clean)) return true;
+  if (clean.length >= 7 && !PROOFING_WORDS.has(lower)) return true;
+  return clean.length >= 5 && !PROOFING_WORDS.has(lower) && !PROOFING_ABBREVIATIONS.has(lower) && /[bcdfghjklmnpqrstvwxyz]{4,}/i.test(clean);
 }
 
-function markProofingFallback(editor, issues) {
-  editor.querySelectorAll(".proofing-underline").forEach(node => node.replaceWith(document.createTextNode(node.textContent || "")));
-  editor.normalize();
-  if (!issues.length) return;
+function collectProofingMatches(editor) {
+  const matches = [];
   const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-  const replacements = [];
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const text = node.nodeValue || "";
     for (const item of PROOFING_PATTERNS) {
       const regex = new RegExp(item.pattern.source, item.pattern.flags);
       let match;
-      while ((match = regex.exec(text))) replacements.push({ node, start: match.index, end: match.index + match[0].length });
+      while ((match = regex.exec(text))) {
+        matches.push({
+          node,
+          start: match.index,
+          end: match.index + match[0].length,
+          label: match[0],
+          suggestion: item.suggestion || item.label,
+          kind: "pattern"
+        });
+      }
+    }
+    const wordRegex = /\b[A-Za-z][A-Za-z']{2,}\b/g;
+    let wordMatch;
+    while ((wordMatch = wordRegex.exec(text))) {
+      const word = wordMatch[0];
+      if (!isSuspiciousWord(word)) continue;
+      matches.push({
+        node,
+        start: wordMatch.index,
+        end: wordMatch.index + word.length,
+        label: word,
+        suggestion: "check spelling",
+        kind: "word"
+      });
     }
   }
-  replacements
+  return matches;
+}
+
+function proofingIssues(editor) {
+  return collectProofingMatches(editor).map(match => ({
+    label: match.label,
+    suggestion: match.suggestion,
+    kind: match.kind
+  }));
+}
+
+function markProofingFallback(editor, issues) {
+  editor.querySelectorAll(".proofing-underline").forEach(node => node.replaceWith(document.createTextNode(node.textContent || "")));
+  editor.normalize();
+  if (!issues.length) return;
+  collectProofingMatches(editor)
     .sort((a, b) => (a.node === b.node ? b.start - a.start : 0))
     .slice(0, 80)
     .forEach(({ node, start, end }) => {
@@ -257,7 +313,12 @@ function updateProofing(editor) {
   const issues = proofingIssues(editor);
   markProofingFallback(editor, issues);
   if (window.CSS?.highlights) {
-    const ranges = PROOFING_PATTERNS.flatMap(item => editorTextNodeRanges(editor, new RegExp(item.pattern.source, item.pattern.flags)));
+    const ranges = collectProofingMatches(editor).map(match => {
+      const range = new Range();
+      range.setStart(match.node, match.start);
+      range.setEnd(match.node, match.end);
+      return range;
+    });
     if (ranges.length) {
       CSS.highlights.set(`pawplate-${editor.id}`, new Highlight(...ranges));
     } else {
