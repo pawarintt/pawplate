@@ -454,7 +454,7 @@ body[data-theme="dark"] #worklogModeBtn {
 }
 
 .guideline-reference {
-  grid-template-rows: auto minmax(96px, .45fr) minmax(0, .55fr);
+  grid-template-rows: auto minmax(156px, .44fr) minmax(220px, .56fr);
   border-bottom: 0;
 }
 
@@ -595,6 +595,7 @@ body[data-theme="dark"] #worklogModeBtn {
 
 .guideline-mini-list {
   resize: none;
+  min-height: 156px;
 }
 
 .preview {

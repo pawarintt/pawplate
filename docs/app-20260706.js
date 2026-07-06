@@ -1314,33 +1314,42 @@ function guidelineFilter(searchInput = els.guidelineSearchInput) {
 }
 
 async function loadGuidelines() {
-  await ensureGuidelineFileToken();
-  const query = els.guidelineSearchInput.value.trim();
-  const data = await pbList("guidelines", {
-    page: 1,
-    perPage: 100,
-    sort: "-updated",
-    filter: guidelineFilter(els.guidelineSearchInput),
-    fields: "id,title,modality,topic,bodyPart,tags,markdown,keywords,images,owner"
-  });
-  state.guidelines = data.items;
-  renderGuidelines(query);
-  if (!state.selectedGuideline && data.items.length) selectGuideline(data.items[0].id);
+  try {
+    await ensureGuidelineFileToken();
+    const query = els.guidelineSearchInput.value.trim();
+    const data = await pbList("guidelines", {
+      page: 1,
+      perPage: 100,
+      filter: guidelineFilter(els.guidelineSearchInput)
+    });
+    state.guidelines = data.items;
+    renderGuidelines(query);
+    if (!state.selectedGuideline && data.items.length) selectGuideline(data.items[0].id);
+  } catch (error) {
+    console.warn("Guidelines failed to load.", error);
+    state.guidelines = [];
+    els.guidelineList.innerHTML = `<div class="empty">Could not load guidelines. Refresh and try again.</div>`;
+  }
 }
 
 async function loadWriterGuidelines() {
-  await ensureGuidelineFileToken();
-  const query = els.writerGuidelineSearchInput.value.trim();
-  const data = await pbList("guidelines", {
-    page: 1,
-    perPage: 30,
-    sort: "-updated",
-    filter: guidelineFilter(els.writerGuidelineSearchInput),
-    fields: "id,title,modality,topic,bodyPart,tags,markdown,keywords,images,owner"
-  });
-  state.writerGuidelines = data.items;
-  renderWriterGuidelines(query);
-  if (!state.selectedWriterGuideline && data.items.length) selectWriterGuideline(data.items[0].id);
+  try {
+    await ensureGuidelineFileToken();
+    const query = els.writerGuidelineSearchInput.value.trim();
+    const data = await pbList("guidelines", {
+      page: 1,
+      perPage: 30,
+      filter: guidelineFilter(els.writerGuidelineSearchInput)
+    });
+    state.writerGuidelines = data.items;
+    renderWriterGuidelines(query);
+    if (!state.selectedWriterGuideline && data.items.length) selectWriterGuideline(data.items[0].id);
+  } catch (error) {
+    console.warn("Writer guidelines failed to load.", error);
+    state.writerGuidelines = [];
+    els.writerGuidelineList.innerHTML = `<div class="empty">Could not load guidelines. Open Guidelines or refresh.</div>`;
+    renderWriterGuidelinePreview(null);
+  }
 }
 
 function guidelineMeta(item) {
@@ -1349,7 +1358,7 @@ function guidelineMeta(item) {
 
 function renderGuidelines(query = els.guidelineSearchInput.value.trim()) {
   if (!state.guidelines.length) {
-    els.guidelineList.innerHTML = `<div class="empty">No personal guidelines yet. Write one in Markdown and save it here.</div>`;
+    els.guidelineList.innerHTML = `<div class="empty">No saved guidelines for this user yet. Add a title and save one here.</div>`;
     renderGuidelinePreview(null);
     return;
   }
@@ -1367,7 +1376,7 @@ function renderGuidelines(query = els.guidelineSearchInput.value.trim()) {
 
 function renderWriterGuidelines(query = els.writerGuidelineSearchInput.value.trim()) {
   if (!state.writerGuidelines.length) {
-    els.writerGuidelineList.innerHTML = `<div class="empty">No guidelines yet.</div>`;
+    els.writerGuidelineList.innerHTML = `<div class="empty">No saved guidelines for this user yet. Open Guidelines to create one.</div>`;
     renderWriterGuidelinePreview(null);
     return;
   }
