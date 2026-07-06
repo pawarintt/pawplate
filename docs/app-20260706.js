@@ -48,10 +48,15 @@ const state = {
   oldFacetRecords: [],
   templateFacetRecords: [],
   templates: [],
+  guidelines: [],
+  writerGuidelines: [],
   selectedOldReport: null,
   selectedTemplate: null,
+  selectedGuideline: null,
+  selectedWriterGuideline: null,
   selectedWorklogReport: null,
   templateDraftId: null,
+  guidelineDraftId: null,
   reportDraftId: null,
   reportDraftSourceDate: "",
   worklogMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -75,10 +80,12 @@ const els = {
   logoutBtn: document.getElementById("logoutBtn"),
   builderModeBtn: document.getElementById("builderModeBtn"),
   writerModeBtn: document.getElementById("writerModeBtn"),
+  guidelineModeBtn: document.getElementById("guidelineModeBtn"),
   worklogModeBtn: document.getElementById("worklogModeBtn"),
   themeToggleBtn: document.getElementById("themeToggleBtn"),
   builderView: document.getElementById("builderView"),
   writerView: document.getElementById("writerView"),
+  guidelineView: document.getElementById("guidelineView"),
   worklogView: document.getElementById("worklogView"),
   oldSearchInput: document.getElementById("oldSearchInput"),
   oldModalityFilter: document.getElementById("oldModalityFilter"),
@@ -110,6 +117,26 @@ const els = {
   templateBodyPartFilter: document.getElementById("templateBodyPartFilter"),
   templateTypeFilter: document.getElementById("templateTypeFilter"),
   templateList: document.getElementById("templateList"),
+  writerGuidelineSearchInput: document.getElementById("writerGuidelineSearchInput"),
+  writerGuidelineList: document.getElementById("writerGuidelineList"),
+  writerGuidelineTitle: document.getElementById("writerGuidelineTitle"),
+  writerGuidelinePreview: document.getElementById("writerGuidelinePreview"),
+  openGuidelineBuilderBtn: document.getElementById("openGuidelineBuilderBtn"),
+  guidelineModeBadge: document.getElementById("guidelineModeBadge"),
+  newGuidelineBtn: document.getElementById("newGuidelineBtn"),
+  insertGuidelineImageBtn: document.getElementById("insertGuidelineImageBtn"),
+  saveGuidelineBtn: document.getElementById("saveGuidelineBtn"),
+  guidelineTitleInput: document.getElementById("guidelineTitleInput"),
+  guidelineModalityInput: document.getElementById("guidelineModalityInput"),
+  guidelineTopicInput: document.getElementById("guidelineTopicInput"),
+  guidelineBodyPartInput: document.getElementById("guidelineBodyPartInput"),
+  guidelineTagsInput: document.getElementById("guidelineTagsInput"),
+  guidelineMarkdownInput: document.getElementById("guidelineMarkdownInput"),
+  guidelineImageInput: document.getElementById("guidelineImageInput"),
+  guidelineSearchInput: document.getElementById("guidelineSearchInput"),
+  guidelineList: document.getElementById("guidelineList"),
+  guidelinePreviewTitle: document.getElementById("guidelinePreviewTitle"),
+  guidelinePreview: document.getElementById("guidelinePreview"),
   reportTitleInput: document.getElementById("reportTitleInput"),
   reportModalityInput: document.getElementById("reportModalityInput"),
   reportTopicInput: document.getElementById("reportTopicInput"),
@@ -175,6 +202,66 @@ function reportHtml(value) {
   return isHtml(raw) ? raw : escapeHtml(raw).replace(/\n/g, "<br>");
 }
 
+function safeMarkdownUrl(url) {
+  const value = String(url || "").trim();
+  if (/^(https?:|data:image\/|blob:)/i.test(value)) return value;
+  return "";
+}
+
+function sanitizeGuidelineHtml(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  template.content.querySelectorAll("script, style, iframe, object, embed, form").forEach(node => node.remove());
+  template.content.querySelectorAll("*").forEach(node => {
+    [...node.attributes].forEach(attribute => {
+      const name = attribute.name.toLowerCase();
+      if (name.startsWith("on")) node.removeAttribute(attribute.name);
+      if ((name === "href" || name === "src") && !safeMarkdownUrl(attribute.value)) node.removeAttribute(attribute.name);
+    });
+    if (node.tagName === "A") {
+      node.setAttribute("target", "_blank");
+      node.setAttribute("rel", "noopener noreferrer");
+    }
+    if (node.tagName === "IMG") {
+      node.setAttribute("loading", "lazy");
+    }
+  });
+  return template.innerHTML;
+}
+
+function fallbackMarkdown(markdown) {
+  let html = escapeHtml(markdown)
+    .replace(/^### (.*)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.*)$/gm, "<h2>$1</h2>")
+    .replace(/^# (.*)$/gm, "<h1>$1</h1>")
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
+      const safe = safeMarkdownUrl(src);
+      return safe ? `<img src="${escapeHtml(safe)}" alt="${escapeHtml(alt)}">` : "";
+    })
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
+      const safe = safeMarkdownUrl(href);
+      return safe ? `<a href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${label}</a>` : label;
+    })
+    .replace(/^\s*[-*] (.*)$/gm, "<li>$1</li>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/\n/g, "<br>");
+  html = html.replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>");
+  return html;
+}
+
+function renderMarkdown(markdown) {
+  const raw = String(markdown || "");
+  if (window.marked?.parse) {
+    try {
+      return sanitizeGuidelineHtml(window.marked.parse(raw, { breaks: true, gfm: true }));
+    } catch {
+      return sanitizeGuidelineHtml(fallbackMarkdown(raw));
+    }
+  }
+  return sanitizeGuidelineHtml(fallbackMarkdown(raw));
+}
+
 function getEditorHtml(editor) {
   if (editor?.__pawplateEditor) return editor.__pawplateEditor.getHTML().trim();
   const clone = editor.cloneNode(true);
@@ -225,9 +312,21 @@ function updateTemplateModeBadge() {
   els.templateModeBadge.classList.toggle("editing", editing);
 }
 
+function updateGuidelineModeBadge() {
+  if (!els.guidelineModeBadge) return;
+  const editing = Boolean(state.guidelineDraftId);
+  els.guidelineModeBadge.textContent = editing ? "Editing guideline" : "New guideline";
+  els.guidelineModeBadge.classList.toggle("editing", editing);
+}
+
 function resetTemplateDraft() {
   state.templateDraftId = null;
   updateTemplateModeBadge();
+}
+
+function resetGuidelineDraft() {
+  state.guidelineDraftId = null;
+  updateGuidelineModeBadge();
 }
 
 function resetReportDraft() {
@@ -789,9 +888,14 @@ function logout() {
   setAuth(null);
   state.oldReports = [];
   state.templates = [];
+  state.guidelines = [];
+  state.writerGuidelines = [];
   state.workLogReports = [];
   state.selectedOldReport = null;
   state.selectedTemplate = null;
+  state.selectedGuideline = null;
+  state.selectedWriterGuideline = null;
+  resetGuidelineDraft();
   resetReportDraft();
   els.loginPasswordInput.value = "";
   els.loginError.textContent = "";
@@ -941,11 +1045,17 @@ function showMode(mode) {
   state.mode = mode;
   els.builderModeBtn.classList.toggle("active", mode === "builder");
   els.writerModeBtn.classList.toggle("active", mode === "writer");
+  els.guidelineModeBtn.classList.toggle("active", mode === "guidelines");
   els.worklogModeBtn.classList.toggle("active", mode === "worklog");
   els.builderView.classList.toggle("hidden", mode !== "builder");
   els.writerView.classList.toggle("hidden", mode !== "writer");
+  els.guidelineView.classList.toggle("hidden", mode !== "guidelines");
   els.worklogView.classList.toggle("hidden", mode !== "worklog");
-  if (mode === "writer") loadTemplates();
+  if (mode === "writer") {
+    loadTemplates();
+    loadWriterGuidelines();
+  }
+  if (mode === "guidelines") loadGuidelines();
   if (mode === "worklog") loadWorkLog();
 }
 
@@ -1112,6 +1222,195 @@ function renderTemplates(query = els.templateSearchInput.value.trim()) {
       </span>
     </button>
   `).join("");
+}
+
+function guidelineData() {
+  const title = els.guidelineTitleInput.value.trim() || "Untitled guideline";
+  return {
+    title,
+    modality: els.guidelineModalityInput.value.trim(),
+    topic: els.guidelineTopicInput.value.trim(),
+    bodyPart: els.guidelineBodyPartInput.value.trim(),
+    tags: els.guidelineTagsInput.value.trim(),
+    markdown: els.guidelineMarkdownInput.value,
+    keywords: `${title} ${els.guidelineModalityInput.value} ${els.guidelineTopicInput.value} ${els.guidelineBodyPartInput.value} ${els.guidelineTagsInput.value} ${els.guidelineMarkdownInput.value}`.slice(0, 8000),
+    owner: state.auth?.user?.id || ""
+  };
+}
+
+function guidelineFilter(searchInput = els.guidelineSearchInput) {
+  const clauses = [];
+  const query = searchInput?.value?.trim() || "";
+  if (query) {
+    const q = escapeFilter(query);
+    clauses.push(`(title~"${q}" || markdown~"${q}" || keywords~"${q}" || tags~"${q}" || bodyPart~"${q}" || topic~"${q}" || modality~"${q}")`);
+  }
+  return clauses.join(" && ");
+}
+
+async function loadGuidelines() {
+  const query = els.guidelineSearchInput.value.trim();
+  const data = await pbList("guidelines", {
+    page: 1,
+    perPage: 100,
+    sort: "-updated",
+    filter: guidelineFilter(els.guidelineSearchInput),
+    fields: "id,title,modality,topic,bodyPart,tags,markdown,keywords,owner"
+  });
+  state.guidelines = data.items;
+  renderGuidelines(query);
+  if (!state.selectedGuideline && data.items.length) selectGuideline(data.items[0].id);
+}
+
+async function loadWriterGuidelines() {
+  const query = els.writerGuidelineSearchInput.value.trim();
+  const data = await pbList("guidelines", {
+    page: 1,
+    perPage: 30,
+    sort: "-updated",
+    filter: guidelineFilter(els.writerGuidelineSearchInput),
+    fields: "id,title,modality,topic,bodyPart,tags,markdown,keywords,owner"
+  });
+  state.writerGuidelines = data.items;
+  renderWriterGuidelines(query);
+  if (!state.selectedWriterGuideline && data.items.length) selectWriterGuideline(data.items[0].id);
+}
+
+function guidelineMeta(item) {
+  return [item.modality, item.topic, item.bodyPart, item.tags].filter(Boolean).join(" / ") || "Guideline";
+}
+
+function renderGuidelines(query = els.guidelineSearchInput.value.trim()) {
+  if (!state.guidelines.length) {
+    els.guidelineList.innerHTML = `<div class="empty">No personal guidelines yet. Write one in Markdown and save it here.</div>`;
+    renderGuidelinePreview(null);
+    return;
+  }
+  els.guidelineList.innerHTML = state.guidelines.map((item, index) => `
+    <button class="result-item ${state.selectedGuideline?.id === item.id ? "active" : ""}" data-guideline-id="${item.id}" type="button">
+      <span class="result-no">${index + 1}.</span>
+      <span>
+        <span class="result-title">${highlight(item.title || "Untitled", query)}</span>
+        <span class="result-meta">${escapeHtml(guidelineMeta(item))}</span>
+        <span class="result-snippet">${highlight(snippet(item.markdown, query), query)}</span>
+      </span>
+    </button>
+  `).join("");
+}
+
+function renderWriterGuidelines(query = els.writerGuidelineSearchInput.value.trim()) {
+  if (!state.writerGuidelines.length) {
+    els.writerGuidelineList.innerHTML = `<div class="empty">No guidelines yet.</div>`;
+    renderWriterGuidelinePreview(null);
+    return;
+  }
+  els.writerGuidelineList.innerHTML = state.writerGuidelines.map((item, index) => `
+    <button class="result-item ${state.selectedWriterGuideline?.id === item.id ? "active" : ""}" data-writer-guideline-id="${item.id}" type="button">
+      <span class="result-no">${index + 1}.</span>
+      <span>
+        <span class="result-title">${highlight(item.title || "Untitled", query)}</span>
+        <span class="result-meta">${escapeHtml(guidelineMeta(item))}</span>
+      </span>
+    </button>
+  `).join("");
+}
+
+function renderGuidelinePreview(guideline = state.selectedGuideline) {
+  els.guidelinePreviewTitle.textContent = guideline?.title || "Markdown preview";
+  els.guidelinePreview.innerHTML = renderMarkdown(guideline?.markdown ?? els.guidelineMarkdownInput.value);
+}
+
+function renderWriterGuidelinePreview(guideline = state.selectedWriterGuideline) {
+  els.writerGuidelineTitle.textContent = guideline?.title || "Select a guideline";
+  els.writerGuidelinePreview.innerHTML = guideline ? renderMarkdown(guideline.markdown) : "";
+}
+
+function selectGuideline(id) {
+  const guideline = state.guidelines.find(item => item.id === id);
+  if (!guideline) return;
+  state.selectedGuideline = guideline;
+  renderGuidelines();
+  renderGuidelinePreview(guideline);
+}
+
+function selectWriterGuideline(id) {
+  const guideline = state.writerGuidelines.find(item => item.id === id);
+  if (!guideline) return;
+  state.selectedWriterGuideline = guideline;
+  renderWriterGuidelines();
+  renderWriterGuidelinePreview(guideline);
+}
+
+function blankGuideline() {
+  resetGuidelineDraft();
+  state.selectedGuideline = null;
+  els.guidelineTitleInput.value = "";
+  els.guidelineModalityInput.value = "";
+  els.guidelineTopicInput.value = "";
+  els.guidelineBodyPartInput.value = "";
+  els.guidelineTagsInput.value = "";
+  els.guidelineMarkdownInput.value = "";
+  renderGuidelinePreview(null);
+  els.guidelineTitleInput.focus();
+}
+
+function editGuideline(id) {
+  const guideline = state.guidelines.find(item => item.id === id) || state.writerGuidelines.find(item => item.id === id);
+  if (!guideline) return;
+  state.guidelineDraftId = guideline.id;
+  state.selectedGuideline = guideline;
+  updateGuidelineModeBadge();
+  els.guidelineTitleInput.value = guideline.title || "";
+  els.guidelineModalityInput.value = guideline.modality || "";
+  els.guidelineTopicInput.value = guideline.topic || "";
+  els.guidelineBodyPartInput.value = guideline.bodyPart || "";
+  els.guidelineTagsInput.value = guideline.tags || "";
+  els.guidelineMarkdownInput.value = guideline.markdown || "";
+  renderGuidelinePreview(guideline);
+  showMode("guidelines");
+}
+
+async function saveGuideline() {
+  const data = guidelineData();
+  if (!data.markdown.trim()) {
+    showToast("Nothing to save", "Write guideline Markdown first.", "info");
+    return false;
+  }
+  if (state.guidelineDraftId) {
+    await pbUpdate("guidelines", state.guidelineDraftId, data);
+  } else {
+    const created = await pbCreate("guidelines", data);
+    state.guidelineDraftId = created.id;
+    updateGuidelineModeBadge();
+  }
+  await loadGuidelines();
+  await loadWriterGuidelines();
+  showToast("Guideline saved", data.title);
+  return true;
+}
+
+function insertGuidelineMarkdown(text) {
+  const input = els.guidelineMarkdownInput;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = `${input.value.slice(0, start)}${text}${input.value.slice(end)}`;
+  const next = start + text.length;
+  input.focus();
+  input.setSelectionRange(next, next);
+  renderGuidelinePreview(null);
+}
+
+function insertGuidelineImage(file) {
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    showToast("Image only", "Choose a PNG, JPG, GIF, or similar image.", "info");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    insertGuidelineMarkdown(`\n![${file.name.replace(/\.[^.]+$/, "")}](${reader.result})\n`);
+  };
+  reader.readAsDataURL(file);
 }
 
 function useTemplateForReport(template = null) {
@@ -1534,6 +1833,7 @@ function runFormatCommand(button) {
 
 els.builderModeBtn.addEventListener("click", () => showMode("builder"));
 els.writerModeBtn.addEventListener("click", () => showMode("writer"));
+els.guidelineModeBtn.addEventListener("click", () => showMode("guidelines"));
 els.worklogModeBtn.addEventListener("click", () => showMode("worklog"));
 els.themeToggleBtn.addEventListener("click", toggleTheme);
 els.oldSearchInput.addEventListener("input", debounce(() => {
@@ -1588,6 +1888,28 @@ els.saveTemplateBtn.addEventListener("click", () => {
 });
 els.useTemplateBtn.addEventListener("click", () => useTemplateForReport());
 els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
+els.writerGuidelineSearchInput.addEventListener("input", debounce(() => {
+  state.selectedWriterGuideline = null;
+  loadWriterGuidelines();
+}));
+els.guidelineSearchInput.addEventListener("input", debounce(() => {
+  state.selectedGuideline = null;
+  loadGuidelines();
+}));
+els.guidelineMarkdownInput.addEventListener("input", debounce(() => renderGuidelinePreview(null), 80));
+els.newGuidelineBtn.addEventListener("click", blankGuideline);
+els.insertGuidelineImageBtn.addEventListener("click", () => els.guidelineImageInput.click());
+els.guidelineImageInput.addEventListener("change", () => {
+  insertGuidelineImage(els.guidelineImageInput.files?.[0]);
+  els.guidelineImageInput.value = "";
+});
+els.saveGuidelineBtn.addEventListener("click", () => {
+  withButtonFeedback(els.saveGuidelineBtn, "Saving...", saveGuideline, "Saved");
+});
+els.openGuidelineBuilderBtn.addEventListener("click", () => {
+  if (state.selectedWriterGuideline) editGuideline(state.selectedWriterGuideline.id);
+  else showMode("guidelines");
+});
 [
   els.oldModalityFilter,
   els.oldTopicFilter,
@@ -1648,6 +1970,14 @@ els.templateList.addEventListener("click", event => {
   const button = event.target.closest("[data-template-id]");
   if (button) selectTemplate(button.dataset.templateId);
 });
+els.guidelineList.addEventListener("click", event => {
+  const button = event.target.closest("[data-guideline-id]");
+  if (button) selectGuideline(button.dataset.guidelineId);
+});
+els.writerGuidelineList.addEventListener("click", event => {
+  const button = event.target.closest("[data-writer-guideline-id]");
+  if (button) selectWriterGuideline(button.dataset.writerGuidelineId);
+});
 els.templateList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-template-id]");
   if (!button) return;
@@ -1663,6 +1993,44 @@ els.templateList.addEventListener("contextmenu", event => {
       await loadTemplateFacets();
       await loadTemplates();
       showToast("Template deleted");
+    }}
+  ]);
+});
+els.guidelineList.addEventListener("contextmenu", event => {
+  const button = event.target.closest("[data-guideline-id]");
+  if (!button) return;
+  event.preventDefault();
+  const id = button.dataset.guidelineId;
+  showContextMenu(event.clientX, event.clientY, [
+    { label: "Edit guideline", run: () => editGuideline(id) },
+    { label: "Delete guideline", danger: true, run: async () => {
+      if (!confirm("Delete this guideline?")) return;
+      await pbDelete("guidelines", id);
+      if (state.selectedGuideline?.id === id) state.selectedGuideline = null;
+      if (state.selectedWriterGuideline?.id === id) state.selectedWriterGuideline = null;
+      if (state.guidelineDraftId === id) blankGuideline();
+      await loadGuidelines();
+      await loadWriterGuidelines();
+      showToast("Guideline deleted");
+    }}
+  ]);
+});
+els.writerGuidelineList.addEventListener("contextmenu", event => {
+  const button = event.target.closest("[data-writer-guideline-id]");
+  if (!button) return;
+  event.preventDefault();
+  const id = button.dataset.writerGuidelineId;
+  showContextMenu(event.clientX, event.clientY, [
+    { label: "Open guideline", run: () => editGuideline(id) },
+    { label: "Delete guideline", danger: true, run: async () => {
+      if (!confirm("Delete this guideline?")) return;
+      await pbDelete("guidelines", id);
+      if (state.selectedGuideline?.id === id) state.selectedGuideline = null;
+      if (state.selectedWriterGuideline?.id === id) state.selectedWriterGuideline = null;
+      if (state.guidelineDraftId === id) blankGuideline();
+      await loadGuidelines();
+      await loadWriterGuidelines();
+      showToast("Guideline deleted");
     }}
   ]);
 });
@@ -1778,11 +2146,15 @@ async function loadApp() {
   await loadPersonalDictionary();
   loadSpellchecker();
   updateTemplateModeBadge();
+  updateGuidelineModeBadge();
   updateReportModeBadge();
   blankTemplate();
+  blankGuideline();
   await loadFacets();
   await loadOldReports();
   await loadTemplates();
+  await loadGuidelines();
+  await loadWriterGuidelines();
   await loadWorkLog();
 }
 

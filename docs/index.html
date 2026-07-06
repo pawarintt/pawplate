@@ -31,6 +31,7 @@
         <nav class="mode-tabs" aria-label="Mode">
           <button id="builderModeBtn" class="active" type="button">Template Builder</button>
           <button id="writerModeBtn" type="button">Report Writer</button>
+          <button id="guidelineModeBtn" type="button">Guidelines</button>
           <button id="worklogModeBtn" type="button">Work Log</button>
         </nav>
         <button id="themeToggleBtn" class="theme-toggle" type="button">Dark</button>
@@ -165,21 +166,73 @@
       </section>
 
       <aside class="lookup-pane templates-pane">
+        <div class="writer-reference">
+          <div class="pane-head">
+            <h2>Templates</h2>
+            <input id="templateSearchInput" type="search" placeholder="search">
+          </div>
+          <div class="filter-grid">
+            <select id="templateModalityFilter"></select>
+            <select id="templateTopicFilter"></select>
+            <select id="templateBodyPartFilter"></select>
+            <select id="templateTypeFilter">
+              <option value="">All types</option>
+              <option value="normal">Normal</option>
+              <option value="disease">Disease</option>
+            </select>
+          </div>
+          <div id="templateList" class="result-list"></div>
+        </div>
+        <div class="writer-reference guideline-reference">
+          <div class="pane-head">
+            <h2>Guidelines</h2>
+            <input id="writerGuidelineSearchInput" type="search" placeholder="reference">
+          </div>
+          <div id="writerGuidelineList" class="result-list guideline-mini-list"></div>
+          <article class="guideline-mini-preview">
+            <div class="preview-head">
+              <h3 id="writerGuidelineTitle">Select a guideline</h3>
+              <button id="openGuidelineBuilderBtn" type="button">Open</button>
+            </div>
+            <div id="writerGuidelinePreview" class="markdown-preview"></div>
+          </article>
+        </div>
+      </aside>
+    </section>
+
+    <section id="guidelineView" class="split-view hidden">
+      <section class="guideline-editor-pane primary-pane">
         <div class="pane-head">
-          <h2>Templates</h2>
-          <input id="templateSearchInput" type="search" placeholder="search">
+          <h2>Guideline Builder</h2>
+          <div class="inline-actions">
+            <span id="guidelineModeBadge" class="mode-badge">New guideline</span>
+            <button id="newGuidelineBtn" type="button">New</button>
+            <button id="insertGuidelineImageBtn" type="button">Image</button>
+            <button id="saveGuidelineBtn" type="button">Save Guideline</button>
+          </div>
         </div>
-        <div class="filter-grid">
-          <select id="templateModalityFilter"></select>
-          <select id="templateTopicFilter"></select>
-          <select id="templateBodyPartFilter"></select>
-          <select id="templateTypeFilter">
-            <option value="">All types</option>
-            <option value="normal">Normal</option>
-            <option value="disease">Disease</option>
-          </select>
+        <div class="meta-grid guideline-meta-grid">
+          <input id="guidelineTitleInput" placeholder="Guideline title">
+          <input id="guidelineModalityInput" placeholder="Modality">
+          <input id="guidelineTopicInput" placeholder="Topic / unit">
+          <input id="guidelineBodyPartInput" placeholder="Body part">
+          <input id="guidelineTagsInput" placeholder="Tags / keywords">
         </div>
-        <div id="templateList" class="result-list"></div>
+        <textarea id="guidelineMarkdownInput" class="guideline-markdown" spellcheck="true" placeholder="# Thyroid nodule&#10;&#10;- Use TI-RADS for US thyroid.&#10;- Inline image: ![diagram](https://...)"></textarea>
+        <input id="guidelineImageInput" class="hidden" type="file" accept="image/*">
+      </section>
+      <aside class="guideline-preview-pane secondary-pane">
+        <div class="pane-head">
+          <h2>Guideline Preview</h2>
+          <input id="guidelineSearchInput" type="search" placeholder="search guidelines">
+        </div>
+        <div id="guidelineList" class="result-list"></div>
+        <article class="guideline-preview">
+          <div class="preview-head">
+            <h3 id="guidelinePreviewTitle">Markdown preview</h3>
+          </div>
+          <div id="guidelinePreview" class="markdown-preview"></div>
+        </article>
       </aside>
     </section>
 
@@ -218,6 +271,7 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typo-js@1.3.2/typo.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js"></script>
   <script src="app-20260706.js"></script>
 </body>
 </html>
