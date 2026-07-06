@@ -50,8 +50,37 @@ function markdownField() {
   return { name: "markdown", type: "text", required: true, hidden: false, values: { min: null, max: null, pattern: "" } };
 }
 
+function imageFileField() {
+  return {
+    name: "images",
+    type: "file",
+    required: false,
+    hidden: false,
+    maxSelect: 50,
+    maxSize: 8388608,
+    mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
+    thumbs: ["320x0", "900x0"],
+    protected: false
+  };
+}
+
 function legacyTextField(name, required = false) {
   return { name, type: "text", required, options: { min: null, max: null, pattern: "" } };
+}
+
+function legacyImageFileField() {
+  return {
+    name: "images",
+    type: "file",
+    required: false,
+    options: {
+      maxSelect: 50,
+      maxSize: 8388608,
+      mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
+      thumbs: ["320x0", "900x0"],
+      protected: false
+    }
+  };
 }
 
 async function ensureGuidelines(token) {
@@ -79,6 +108,7 @@ async function ensureGuidelines(token) {
           textField("bodyPart"),
           textField("tags"),
           markdownField(),
+          imageFileField(),
           textField("keywords")
         ],
         listRule: ownerRule,
@@ -97,6 +127,11 @@ async function ensureGuidelines(token) {
   const fields = collection[fieldKey] || [];
   const names = new Set(fields.map(field => field.name));
   const missing = [];
+  const nextFields = fields.map(field => (
+    field.name === "images"
+      ? { ...field, ...imageFileField(), id: field.id, system: field.system, presentable: field.presentable }
+      : field
+  ));
   const addText = (name, required = false) => {
     if (names.has(name)) return;
     missing.push(usesFields ? textField(name, required) : legacyTextField(name, required));
@@ -109,12 +144,15 @@ async function ensureGuidelines(token) {
   addText("tags");
   addText("markdown", true);
   addText("keywords");
+  if (!names.has("images")) {
+    missing.push(usesFields ? imageFileField() : legacyImageFileField());
+  }
 
   await request(`/api/collections/${collection.id}`, {
     method: "PATCH",
     headers: { Authorization: token },
     body: JSON.stringify({
-      ...(missing.length ? { [fieldKey]: [...fields, ...missing] } : {}),
+      [fieldKey]: [...nextFields, ...missing],
       listRule: ownerRule,
       viewRule: ownerRule,
       createRule: ownerRule,

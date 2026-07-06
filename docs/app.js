@@ -204,7 +204,7 @@ function reportHtml(value) {
 
 function safeMarkdownUrl(url) {
   const value = String(url || "").trim();
-  if (/^(https?:|data:image\/|blob:)/i.test(value)) return value;
+  if (/^(https?:|blob:)/i.test(value)) return value;
   return "";
 }
 
@@ -956,6 +956,22 @@ async function pbDelete(collection, id) {
   if (!response.ok) throw new Error(await response.text());
 }
 
+async function pbUploadFiles(collection, id, field, files) {
+  const formData = new FormData();
+  [...files].forEach(file => formData.append(`${field}+`, file));
+  const response = await fetch(`${API}/${collection}/records/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: formData
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+function pbFileUrl(collection, recordId, filename) {
+  return `${POCKETBASE_URL.replace(/\/$/, "")}/api/files/${collection}/${recordId}/${encodeURIComponent(filename)}`;
+}
+
 async function loadPersonalDictionary() {
   state.userSettingsId = "";
   state.personalDictionary = new Set(readLocalPersonalDictionary());
@@ -1255,7 +1271,7 @@ async function loadGuidelines() {
     perPage: 100,
     sort: "-updated",
     filter: guidelineFilter(els.guidelineSearchInput),
-    fields: "id,title,modality,topic,bodyPart,tags,markdown,keywords,owner"
+    fields: "id,title,modality,topic,bodyPart,tags,markdown,keywords,images,owner"
   });
   state.guidelines = data.items;
   renderGuidelines(query);
@@ -1269,7 +1285,7 @@ async function loadWriterGuidelines() {
     perPage: 30,
     sort: "-updated",
     filter: guidelineFilter(els.writerGuidelineSearchInput),
-    fields: "id,title,modality,topic,bodyPart,tags,markdown,keywords,owner"
+    fields: "id,title,modality,topic,bodyPart,tags,markdown,keywords,images,owner"
   });
   state.writerGuidelines = data.items;
   renderWriterGuidelines(query);
@@ -1376,6 +1392,10 @@ async function saveGuideline() {
     showToast("Nothing to save", "Write guideline Markdown first.", "info");
     return false;
   }
+  if (/!\[[^\]]*\]\(\s*data:image\//i.test(data.markdown)) {
+    showToast("Image too large", "Remove pasted base64 image text and use the Image button to upload it.", "error");
+    return false;
+  }
   if (state.guidelineDraftId) {
     await pbUpdate("guidelines", state.guidelineDraftId, data);
   } else {
@@ -1400,17 +1420,46 @@ function insertGuidelineMarkdown(text) {
   renderGuidelinePreview(null);
 }
 
-function insertGuidelineImage(file) {
+async function ensureGuidelineRecordForUpload() {
+  if (state.guidelineDraftId) return state.guidelineDraftId;
+  const data = guidelineData();
+  const created = await pbCreate("guidelines", {
+    ...data,
+    markdown: data.markdown.trim() || " "
+  });
+  state.guidelineDraftId = created.id;
+  updateGuidelineModeBadge();
+  await loadGuidelines();
+  return created.id;
+}
+
+async function insertGuidelineImage(file) {
   if (!file) return;
   if (!file.type.startsWith("image/")) {
     showToast("Image only", "Choose a PNG, JPG, GIF, or similar image.", "info");
     return;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    insertGuidelineMarkdown(`\n![${file.name.replace(/\.[^.]+$/, "")}](${reader.result})\n`);
-  };
-  reader.readAsDataURL(file);
+  const maxImageMb = 8;
+  if (file.size > maxImageMb * 1024 * 1024) {
+    showToast("Image too large", `Choose an image under ${maxImageMb} MB.`, "error");
+    return;
+  }
+  try {
+    showToast("Uploading image", file.name, "info");
+    const recordId = await ensureGuidelineRecordForUpload();
+    const before = state.selectedGuideline?.images || [];
+    const updated = await pbUploadFiles("guidelines", recordId, "images", [file]);
+    const uploaded = [...(updated.images || [])].find(name => !before.includes(name)) || [...(updated.images || [])].at(-1);
+    if (!uploaded) throw new Error("PocketBase did not return an uploaded image filename.");
+    const alt = file.name.replace(/\.[^.]+$/, "").replace(/[()[\]]/g, "").trim() || "image";
+    insertGuidelineMarkdown(`\n![${alt}](${pbFileUrl("guidelines", recordId, uploaded)})\n`);
+    await pbUpdate("guidelines", recordId, guidelineData());
+    await loadGuidelines();
+    await loadWriterGuidelines();
+    showToast("Image added", "Linked in the guideline Markdown.");
+  } catch (error) {
+    showToast("Image upload failed", error.message || "Please try again.", "error");
+  }
 }
 
 function useTemplateForReport(template = null) {
