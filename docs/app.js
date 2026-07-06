@@ -1004,6 +1004,19 @@ async function pbUploadFiles(collection, id, field, files) {
   return response.json();
 }
 
+function friendlyErrorMessage(error) {
+  const raw = error?.message || String(error || "");
+  try {
+    const data = JSON.parse(raw);
+    const fieldMessages = Object.values(data.data || {})
+      .map(item => item?.message)
+      .filter(Boolean);
+    return fieldMessages[0] || data.message || raw;
+  } catch {
+    return raw;
+  }
+}
+
 function pbFileUrl(collection, recordId, filename) {
   return `${POCKETBASE_URL.replace(/\/$/, "")}/api/files/${collection}/${recordId}/${encodeURIComponent(filename)}`;
 }
@@ -1458,6 +1471,25 @@ function insertGuidelineMarkdown(text) {
   renderGuidelinePreview(null);
 }
 
+function imageAltFromName(name) {
+  return String(name || "image")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[()[\]]/g, "")
+    .replace(/^_+/, "")
+    .trim() || "image";
+}
+
+function imageUrlFromHtml(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html || "";
+  const image = template.content.querySelector("img[src]");
+  return image?.getAttribute("src") || "";
+}
+
+function isImageUrl(value) {
+  return /^https?:\/\/\S+\.(?:jpe?g|png|gif|webp|svg)(?:[?#]\S*)?$/i.test(String(value || "").trim());
+}
+
 async function ensureGuidelineRecordForUpload() {
   if (state.guidelineDraftId) return state.guidelineDraftId;
   const data = guidelineData();
@@ -1470,7 +1502,7 @@ async function ensureGuidelineRecordForUpload() {
   return created.id;
 }
 
-async function insertGuidelineImage(file) {
+async function uploadGuidelineImageFile(file) {
   if (!file) return;
   if (!file.type.startsWith("image/")) {
     showToast("Image only", "Choose a PNG, JPG, GIF, or similar image.", "info");
@@ -1488,14 +1520,63 @@ async function insertGuidelineImage(file) {
     const updated = await pbUploadFiles("guidelines", recordId, "images", [file]);
     const uploaded = [...(updated.images || [])].find(name => !before.includes(name)) || [...(updated.images || [])].at(-1);
     if (!uploaded) throw new Error("PocketBase did not return an uploaded image filename.");
-    const alt = file.name.replace(/\.[^.]+$/, "").replace(/[()[\]]/g, "").trim() || "image";
+    const alt = imageAltFromName(file.name);
     insertGuidelineMarkdown(`\n![${alt}](${pbFileUrl("guidelines", recordId, uploaded)})\n`);
     await pbUpdate("guidelines", recordId, guidelineData());
     await loadGuidelines();
     await loadWriterGuidelines();
     showToast("Image added", "Linked in the guideline Markdown.");
   } catch (error) {
-    showToast("Image upload failed", error.message || "Please try again.", "error");
+    showToast("Image upload failed", friendlyErrorMessage(error), "error");
+  }
+}
+
+async function uploadGuidelineImageUrl(url) {
+  const cleanUrl = String(url || "").trim();
+  if (!isImageUrl(cleanUrl)) return false;
+  try {
+    showToast("Importing image", cleanUrl, "info");
+    const response = await fetch(cleanUrl, { mode: "cors" });
+    if (!response.ok) throw new Error(`Image request failed (${response.status}).`);
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) throw new Error("The URL did not return an image.");
+    const filename = decodeURIComponent(new URL(cleanUrl).pathname.split("/").pop() || "image.jpg");
+    await uploadGuidelineImageFile(new File([blob], filename, { type: blob.type || "image/jpeg" }));
+    return true;
+  } catch (error) {
+    insertGuidelineMarkdown(`\n![${imageAltFromName(cleanUrl.split("/").pop() || "image")}](${cleanUrl})\n`);
+    showToast("Linked external image", "This site blocks browser import, so the guideline uses the image URL.");
+    return true;
+  }
+}
+
+async function insertGuidelineImage(fileOrUrl) {
+  if (typeof fileOrUrl === "string") {
+    await uploadGuidelineImageUrl(fileOrUrl);
+    return;
+  }
+  await uploadGuidelineImageFile(fileOrUrl);
+}
+
+async function handleGuidelinePaste(event) {
+  const clipboard = event.clipboardData;
+  if (!clipboard) return;
+  const imageFile = [...clipboard.files].find(file => file.type.startsWith("image/"));
+  if (imageFile) {
+    event.preventDefault();
+    await uploadGuidelineImageFile(imageFile);
+    return;
+  }
+  const htmlUrl = imageUrlFromHtml(clipboard.getData("text/html"));
+  if (htmlUrl && isImageUrl(htmlUrl)) {
+    event.preventDefault();
+    await uploadGuidelineImageUrl(htmlUrl);
+    return;
+  }
+  const text = clipboard.getData("text/plain").trim();
+  if (isImageUrl(text)) {
+    event.preventDefault();
+    await uploadGuidelineImageUrl(text);
   }
 }
 
@@ -1983,6 +2064,9 @@ els.guidelineSearchInput.addEventListener("input", debounce(() => {
   loadGuidelines();
 }));
 els.guidelineMarkdownInput.addEventListener("input", debounce(() => renderGuidelinePreview(null), 80));
+els.guidelineMarkdownInput.addEventListener("paste", event => {
+  handleGuidelinePaste(event);
+});
 els.newGuidelineBtn.addEventListener("click", blankGuideline);
 els.insertGuidelineImageBtn.addEventListener("click", () => els.guidelineImageInput.click());
 els.guidelineImageInput.addEventListener("change", () => {

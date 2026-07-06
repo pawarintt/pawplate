@@ -58,7 +58,7 @@ function imageFileField() {
     hidden: false,
     maxSelect: 50,
     maxSize: 8388608,
-    mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
+    mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
     thumbs: ["320x0", "900x0"],
     protected: true
   };
@@ -76,7 +76,7 @@ function legacyImageFileField() {
     options: {
       maxSelect: 50,
       maxSize: 8388608,
-      mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
+      mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
       thumbs: ["320x0", "900x0"],
       protected: true
     }
