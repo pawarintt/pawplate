@@ -120,6 +120,7 @@
         <div class="pane-head">
           <h2>Full Report</h2>
           <div class="inline-actions">
+            <span id="reportModeBadge" class="mode-badge">New report</span>
             <button id="newReportBtn" type="button">New</button>
             <button id="copyReportBtn" type="button">Copy</button>
             <button id="saveReportBtn" type="button">Save Report</button>
@@ -199,7 +200,10 @@
         <article class="worklog-preview">
           <div class="preview-head">
             <h3 id="worklogPreviewTitle">Select a report</h3>
-            <button id="editWorklogReportBtn" type="button">Edit</button>
+            <div class="inline-actions">
+              <button id="closeWorklogPreviewBtn" type="button">Close</button>
+              <button id="editWorklogReportBtn" type="button">Edit</button>
+            </div>
           </div>
           <div id="worklogPreviewMeta" class="preview-meta"></div>
           <pre id="worklogPreviewText"></pre>

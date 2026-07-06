@@ -92,6 +92,7 @@ const els = {
   reportKeywordInput: document.getElementById("reportKeywordInput"),
   reportNoteInput: document.getElementById("reportNoteInput"),
   reportInterestingInput: document.getElementById("reportInterestingInput"),
+  reportModeBadge: document.getElementById("reportModeBadge"),
   reportTextEditor: document.getElementById("reportTextEditor"),
   reportProofing: document.getElementById("reportProofing"),
   newReportBtn: document.getElementById("newReportBtn"),
@@ -107,6 +108,7 @@ const els = {
   worklogPreviewMeta: document.getElementById("worklogPreviewMeta"),
   worklogPreviewText: document.getElementById("worklogPreviewText"),
   editWorklogReportBtn: document.getElementById("editWorklogReportBtn"),
+  closeWorklogPreviewBtn: document.getElementById("closeWorklogPreviewBtn"),
   contextMenu: document.getElementById("contextMenu"),
   toastStack: document.getElementById("toastStack")
 };
@@ -159,6 +161,19 @@ function getEditorText(editor) {
 function setEditorHtml(editor, value) {
   editor.innerHTML = reportHtml(value);
   updateProofing(editor);
+}
+
+function updateReportModeBadge() {
+  if (!els.reportModeBadge) return;
+  const editing = Boolean(state.reportDraftId);
+  els.reportModeBadge.textContent = editing ? "Editing saved report" : "New report";
+  els.reportModeBadge.classList.toggle("editing", editing);
+}
+
+function resetReportDraft() {
+  state.reportDraftId = null;
+  state.reportDraftSourceDate = "";
+  updateReportModeBadge();
 }
 
 function editorTextNodeRanges(editor, matcher) {
@@ -427,8 +442,7 @@ function logout() {
   state.workLogReports = [];
   state.selectedOldReport = null;
   state.selectedTemplate = null;
-  state.reportDraftId = null;
-  state.reportDraftSourceDate = "";
+  resetReportDraft();
   els.loginPasswordInput.value = "";
   els.loginError.textContent = "";
   els.loginEmailInput.focus();
@@ -708,8 +722,7 @@ function useTemplateForReport(template = null) {
     report: getEditorHtml(els.templateTextEditor)
   };
   state.selectedTemplate = source;
-  state.reportDraftId = null;
-  state.reportDraftSourceDate = "";
+  resetReportDraft();
   els.reportTitleInput.value = source.title || "Untitled report";
   els.reportModalityInput.value = source.modality || "";
   els.reportTopicInput.value = source.topic || "";
@@ -724,8 +737,7 @@ function useTemplateForReport(template = null) {
 }
 
 function blankReport() {
-  state.reportDraftId = null;
-  state.reportDraftSourceDate = "";
+  resetReportDraft();
   state.selectedTemplate = null;
   els.reportTitleInput.value = "";
   els.reportModalityInput.value = "";
@@ -861,6 +873,7 @@ async function saveFullReport() {
     const created = await pbCreate("old_reports", data);
     state.reportDraftId = created.id;
     state.reportDraftSourceDate = created.sourceDate || data.sourceDate;
+    updateReportModeBadge();
   }
   els.oldSearchInput.value = data.title;
   state.selectedOldReport = null;
@@ -976,6 +989,13 @@ function selectWorklogReport(id) {
   renderWorklogPreview();
 }
 
+function closeWorklogPreview() {
+  state.selectedWorklogReport = null;
+  renderWorkLog();
+  renderInterestingCases();
+  renderWorklogPreview();
+}
+
 function renderWorklogPreview() {
   const report = state.selectedWorklogReport;
   if (!report) {
@@ -1069,6 +1089,7 @@ function openSavedReport(id) {
   if (!report) return;
   state.reportDraftId = report.id;
   state.reportDraftSourceDate = report.sourceDate || report.created || "";
+  updateReportModeBadge();
   els.reportTitleInput.value = report.title || "";
   els.reportModalityInput.value = report.modality || "";
   els.reportTopicInput.value = report.topic || "";
@@ -1136,8 +1157,7 @@ els.oldReportList.addEventListener("contextmenu", event => {
       if (state.selectedOldReport?.id === id) state.selectedOldReport = null;
       if (state.selectedWorklogReport?.id === id) state.selectedWorklogReport = null;
       if (state.reportDraftId === id) {
-        state.reportDraftId = null;
-        state.reportDraftSourceDate = "";
+        resetReportDraft();
       }
       await loadOldReports();
       await loadWorkLog();
@@ -1273,6 +1293,7 @@ els.interestingList.addEventListener("click", event => {
 els.editWorklogReportBtn.addEventListener("click", () => {
   if (state.selectedWorklogReport) openSavedReport(state.selectedWorklogReport.id);
 });
+els.closeWorklogPreviewBtn.addEventListener("click", closeWorklogPreview);
 els.worklogList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-worklog-id]");
   if (!button) return;
@@ -1291,8 +1312,7 @@ els.worklogList.addEventListener("contextmenu", event => {
       if (!confirm("Delete this saved report?")) return;
       await pbDelete("old_reports", id);
       if (state.reportDraftId === id) {
-        state.reportDraftId = null;
-        state.reportDraftSourceDate = "";
+        resetReportDraft();
       }
       if (state.selectedWorklogReport?.id === id) state.selectedWorklogReport = null;
       await loadWorkLog();
@@ -1330,6 +1350,7 @@ els.logoutBtn.addEventListener("click", logout);
 async function loadApp() {
   applyTheme();
   applyPalette();
+  updateReportModeBadge();
   blankTemplate();
   await loadFacets();
   await loadOldReports();

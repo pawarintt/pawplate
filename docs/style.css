@@ -435,7 +435,28 @@ body[data-theme="dark"] #worklogModeBtn {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
   justify-content: flex-end;
+}
+
+.mode-badge {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--sage-line);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--sage);
+  color: #52654d;
+  font-size: .76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mode-badge.editing {
+  border-color: var(--peach-line);
+  background: var(--peach);
+  color: #744f35;
 }
 
 .inline-actions button:first-child,
@@ -845,6 +866,18 @@ body[data-theme="dark"] .worklog-preview {
   background: #1c1c1c;
 }
 
+body[data-theme="dark"] .mode-badge {
+  background: rgba(153, 255, 228, .1);
+  border-color: rgba(153, 255, 228, .34);
+  color: #99ffe4;
+}
+
+body[data-theme="dark"] .mode-badge.editing {
+  background: rgba(255, 199, 153, .13);
+  border-color: rgba(255, 199, 153, .42);
+  color: #ffc799;
+}
+
 body[data-theme="dark"] .preview-meta {
   border-color: var(--line);
 }
@@ -921,15 +954,15 @@ mark {
 }
 
 .worklog-main {
-  flex: 1 1 72%;
+  flex: 0 1 42%;
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   background: linear-gradient(180deg, rgba(230, 241, 239, .72), rgba(255,253,248,.86) 220px), var(--paper);
 }
 
 .interesting-pane {
-  flex: 0 1 360px;
-  min-width: 300px;
+  flex: 1 1 58%;
+  min-width: 420px;
   display: grid;
   grid-template-rows: auto minmax(210px, 44%) minmax(0, 1fr);
   background: linear-gradient(180deg, rgba(255, 241, 244, .72), rgba(255,253,248,.86) 180px), var(--paper);
