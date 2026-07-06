@@ -31,6 +31,10 @@ const state = {
   selectedOldReport: null,
   selectedTemplate: null,
   templateDraftId: null,
+  reportDraftId: null,
+  reportDraftSourceDate: "",
+  worklogMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  worklogSelectedDate: "",
   workLogReports: []
 };
 
@@ -381,6 +385,8 @@ function logout() {
   state.workLogReports = [];
   state.selectedOldReport = null;
   state.selectedTemplate = null;
+  state.reportDraftId = null;
+  state.reportDraftSourceDate = "";
   els.loginPasswordInput.value = "";
   els.loginError.textContent = "";
   els.loginEmailInput.focus();
@@ -660,6 +666,8 @@ function useTemplateForReport(template = null) {
     report: getEditorHtml(els.templateTextEditor)
   };
   state.selectedTemplate = source;
+  state.reportDraftId = null;
+  state.reportDraftSourceDate = "";
   els.reportTitleInput.value = source.title || "Untitled report";
   els.reportModalityInput.value = source.modality || "";
   els.reportTopicInput.value = source.topic || "";
@@ -704,7 +712,7 @@ function reportData() {
     report: getEditorHtml(els.reportTextEditor),
     keywords: `${els.reportTitleInput.value} ${els.reportTopicInput.value} ${els.reportBodyPartInput.value} ${els.reportKeywordInput.value} ${els.reportNoteInput.value}`,
     sourceType: "final-report",
-    sourceDate: new Date().toISOString(),
+    sourceDate: state.reportDraftSourceDate || new Date().toISOString(),
     note: els.reportNoteInput.value.trim(),
     isInteresting: els.reportInterestingInput.checked,
     owner: state.auth?.user?.id || ""
@@ -787,12 +795,19 @@ async function saveFullReport() {
     showToast("Nothing to save", "Type a report first.", "info");
     return false;
   }
-  await pbCreate("old_reports", data);
+  const wasExisting = Boolean(state.reportDraftId);
+  if (state.reportDraftId) {
+    await pbUpdate("old_reports", state.reportDraftId, data);
+  } else {
+    const created = await pbCreate("old_reports", data);
+    state.reportDraftId = created.id;
+    state.reportDraftSourceDate = created.sourceDate || data.sourceDate;
+  }
   els.oldSearchInput.value = data.title;
   state.selectedOldReport = null;
   await loadOldReports();
   await loadWorkLog();
-  showToast("Report saved", data.isInteresting ? "Saved and marked as interesting." : "Added to Old Reports and Work Log.");
+  showToast(wasExisting ? "Report updated" : "Report created", data.isInteresting ? "Saved and marked as interesting." : "Updated in Old Reports and Work Log.");
   showMode("builder");
   return true;
 }
@@ -804,7 +819,18 @@ function savedDate(report) {
 }
 
 function dateKey(date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function monthKey(date) {
+  return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+function sameMonth(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
 }
 
 function reportMatchesQuery(report, query) {
@@ -836,7 +862,9 @@ async function loadWorkLog() {
 
 function renderWorkLog() {
   const query = els.worklogSearchInput.value.trim();
-  const reports = state.workLogReports.filter(report => reportMatchesQuery(report, query));
+  const reports = state.workLogReports
+    .filter(report => reportMatchesQuery(report, query))
+    .filter(report => !state.worklogSelectedDate || dateKey(savedDate(report) || new Date(0)) === state.worklogSelectedDate);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const counts = new Map();
@@ -855,18 +883,10 @@ function renderWorkLog() {
     ["Interesting", interestingCount]
   ].map(([label, value]) => `<div class="summary-card"><strong>${value}</strong><span>${label}</span></div>`).join("");
 
-  const days = [];
-  for (let offset = 90; offset >= 0; offset -= 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - offset);
-    const count = counts.get(dateKey(date)) || 0;
-    const level = count >= 4 ? 4 : count;
-    days.push(`<div class="heat-day level-${level}" title="${dateKey(date)}: ${count} report${count === 1 ? "" : "s"}"></div>`);
-  }
-  els.worklogHeatmap.innerHTML = days.join("");
+  renderWorklogCalendar(counts, today);
 
   if (!reports.length) {
-    els.worklogList.innerHTML = `<div class="empty">Saved reports will build your personal work log here.</div>`;
+    els.worklogList.innerHTML = `<div class="empty">${state.worklogSelectedDate ? `No saved reports on ${escapeHtml(state.worklogSelectedDate)}.` : "Saved reports will build your personal work log here."}</div>`;
     return;
   }
   els.worklogList.innerHTML = reports.map((report, index) => {
@@ -882,6 +902,51 @@ function renderWorkLog() {
       </button>
     `;
   }).join("");
+}
+
+function renderWorklogCalendar(counts, today) {
+  const month = state.worklogMonth;
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const blanks = firstDay.getDay();
+  const cells = [];
+  for (let i = 0; i < blanks; i += 1) {
+    cells.push(`<div class="calendar-day empty-day" aria-hidden="true"></div>`);
+  }
+  for (let day = 1; day <= lastDay.getDate(); day += 1) {
+    const date = new Date(month.getFullYear(), month.getMonth(), day);
+    const key = dateKey(date);
+    const count = counts.get(key) || 0;
+    const level = count >= 4 ? 4 : count;
+    const classes = [
+      "calendar-day",
+      `level-${level}`,
+      key === dateKey(today) ? "today" : "",
+      key === state.worklogSelectedDate ? "selected" : ""
+    ].filter(Boolean).join(" ");
+    cells.push(`
+      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}">
+        <span class="calendar-number">${day}</span>
+        ${count ? `<span class="calendar-count">${count}</span>` : ""}
+      </button>
+    `);
+  }
+  els.worklogHeatmap.innerHTML = `
+    <div class="calendar-head">
+      <button type="button" data-calendar-action="prev" aria-label="Previous month">&lt;</button>
+      <strong>${escapeHtml(monthKey(month))}</strong>
+      <div>
+        ${state.worklogSelectedDate ? `<button type="button" data-calendar-action="clear">Clear</button>` : ""}
+        ${sameMonth(month, today) ? "" : `<button type="button" data-calendar-action="today">Today</button>`}
+        <button type="button" data-calendar-action="next" aria-label="Next month">&gt;</button>
+      </div>
+    </div>
+    <div class="calendar-weekdays">
+      ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => `<span>${day}</span>`).join("")}
+    </div>
+    <div class="calendar-grid">${cells.join("")}</div>
+    <div class="calendar-filter">${state.worklogSelectedDate ? `Filtered to ${escapeHtml(state.worklogSelectedDate)}` : "Click a date to filter saved reports."}</div>
+  `;
 }
 
 function renderInterestingCases() {
@@ -908,6 +973,8 @@ function renderInterestingCases() {
 function openSavedReport(id) {
   const report = state.workLogReports.find(item => item.id === id);
   if (!report) return;
+  state.reportDraftId = report.id;
+  state.reportDraftSourceDate = report.sourceDate || report.created || "";
   els.reportTitleInput.value = report.title || "";
   els.reportModalityInput.value = report.modality || "";
   els.reportTopicInput.value = report.topic || "";
@@ -957,6 +1024,12 @@ els.oldReportList.addEventListener("contextmenu", event => {
     { label: "Use as template", run: () => { selectOldReport(id); useOldReportAsTemplate(); } }
   ];
   if (report?.owner === state.auth?.user?.id) {
+    if (report.sourceType === "final-report" || report.kind === "final-report") {
+      actions.unshift({ label: "Open report", run: async () => {
+        await loadWorkLog();
+        openSavedReport(id);
+      }});
+    }
     actions.push({ label: report.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: !report.isInteresting });
       await loadOldReports();
@@ -967,6 +1040,10 @@ els.oldReportList.addEventListener("contextmenu", event => {
       if (!confirm("Delete this old report?")) return;
       await pbDelete("old_reports", id);
       if (state.selectedOldReport?.id === id) state.selectedOldReport = null;
+      if (state.reportDraftId === id) {
+        state.reportDraftId = null;
+        state.reportDraftSourceDate = "";
+      }
       await loadOldReports();
       await loadWorkLog();
       showToast("Saved report deleted", report.title || "Old report");
@@ -1063,6 +1140,32 @@ els.saveReportBtn.addEventListener("click", () => {
 });
 els.worklogSearchInput.addEventListener("input", debounce(renderWorkLog));
 els.interestingSearchInput.addEventListener("input", debounce(renderInterestingCases));
+els.worklogHeatmap.addEventListener("click", event => {
+  const actionButton = event.target.closest("[data-calendar-action]");
+  if (actionButton) {
+    const action = actionButton.dataset.calendarAction;
+    if (action === "prev") {
+      state.worklogMonth = new Date(state.worklogMonth.getFullYear(), state.worklogMonth.getMonth() - 1, 1);
+      state.worklogSelectedDate = "";
+    }
+    if (action === "next") {
+      state.worklogMonth = new Date(state.worklogMonth.getFullYear(), state.worklogMonth.getMonth() + 1, 1);
+      state.worklogSelectedDate = "";
+    }
+    if (action === "today") {
+      const today = new Date();
+      state.worklogMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      state.worklogSelectedDate = dateKey(today);
+    }
+    if (action === "clear") state.worklogSelectedDate = "";
+    renderWorkLog();
+    return;
+  }
+  const dayButton = event.target.closest("[data-worklog-date]");
+  if (!dayButton) return;
+  state.worklogSelectedDate = state.worklogSelectedDate === dayButton.dataset.worklogDate ? "" : dayButton.dataset.worklogDate;
+  renderWorkLog();
+});
 els.worklogList.addEventListener("click", event => {
   const button = event.target.closest("[data-worklog-id]");
   if (button) openSavedReport(button.dataset.worklogId);
@@ -1088,6 +1191,10 @@ els.worklogList.addEventListener("contextmenu", event => {
     { label: "Delete saved report", danger: true, run: async () => {
       if (!confirm("Delete this saved report?")) return;
       await pbDelete("old_reports", id);
+      if (state.reportDraftId === id) {
+        state.reportDraftId = null;
+        state.reportDraftSourceDate = "";
+      }
       await loadWorkLog();
       await loadOldReports();
       showToast("Saved report deleted", report?.title || "Report");
