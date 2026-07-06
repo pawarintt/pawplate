@@ -1150,6 +1150,126 @@ body[data-theme="dark"] .calendar-count {
   color: var(--ink);
 }
 
+body[data-theme="dark"] button {
+  background: #1c1c1c;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] #saveTemplateBtn,
+body[data-theme="dark"] #saveReportBtn,
+body[data-theme="dark"] .login-card button {
+  background: #ffc799;
+  color: #101010;
+  border-color: #ffc799;
+}
+
+body[data-theme="dark"] #copyReportBtn,
+body[data-theme="dark"] #newTemplateBtn,
+body[data-theme="dark"] #newReportBtn,
+body[data-theme="dark"] .theme-toggle,
+body[data-theme="dark"] .logout-button,
+body[data-theme="dark"] #useTemplateBtn,
+body[data-theme="dark"] #useOldReportBtn {
+  background: #1c1c1c;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+body[data-theme="dark"] .login-card,
+body[data-theme="dark"] .mode-tabs,
+body[data-theme="dark"] .lookup-pane,
+body[data-theme="dark"] .editor-pane,
+body[data-theme="dark"] .secondary-pane,
+body[data-theme="dark"] .templates-pane,
+body[data-theme="dark"] .worklog-main,
+body[data-theme="dark"] .interesting-pane {
+  background: #161616;
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] .pane-head,
+body[data-theme="dark"] .preview-head,
+body[data-theme="dark"] .meta-grid,
+body[data-theme="dark"] .filter-grid,
+body[data-theme="dark"] .format-toolbar,
+body[data-theme="dark"] .worklog-summary,
+body[data-theme="dark"] .result-list,
+body[data-theme="dark"] .preview,
+body[data-theme="dark"] .worklog-preview,
+body[data-theme="dark"] .empty {
+  background: #101010;
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] .rich-editor,
+body[data-theme="dark"] #oldPreviewText,
+body[data-theme="dark"] #worklogPreviewText,
+body[data-theme="dark"] textarea {
+  background: #101010;
+  color: var(--ink);
+}
+
+body[data-theme="dark"] input,
+body[data-theme="dark"] select,
+body[data-theme="dark"] .meta-grid > input,
+body[data-theme="dark"] .filter-grid input,
+body[data-theme="dark"] .filter-grid select,
+body[data-theme="dark"] .radio-row,
+body[data-theme="dark"] .check-filter,
+body[data-theme="dark"] .interesting-toggle,
+body[data-theme="dark"] .summary-card,
+body[data-theme="dark"] .format-group,
+body[data-theme="dark"] .toast,
+body[data-theme="dark"] .context-menu {
+  background: #1c1c1c;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] .pane-head h2,
+body[data-theme="dark"] .preview-head h3,
+body[data-theme="dark"] .topbar h1,
+body[data-theme="dark"] .result-title {
+  color: var(--ink);
+}
+
+body[data-theme="dark"] #builderModeBtn,
+body[data-theme="dark"] #writerModeBtn,
+body[data-theme="dark"] #worklogModeBtn {
+  background: #101010;
+  color: var(--muted);
+  border-color: transparent;
+}
+
+body[data-theme="dark"] #builderModeBtn.active,
+body[data-theme="dark"] #writerModeBtn.active,
+body[data-theme="dark"] #worklogModeBtn.active {
+  background: #1c1c1c;
+  color: #ffc799;
+  border-color: rgba(255, 199, 153, .42);
+  box-shadow: none;
+}
+
+body[data-theme="dark"] .result-item:hover,
+body[data-theme="dark"] .context-menu button:hover {
+  background: rgba(153, 255, 228, .08);
+}
+
+body[data-theme="dark"] .result-item.active {
+  background: rgba(153, 255, 228, .12);
+  border-left-color: #99ffe4;
+}
+
+body[data-theme="dark"] .calendar-day.selected {
+  border-color: #ffc799;
+  box-shadow: 0 0 0 2px rgba(255, 199, 153, .22), inset 0 0 0 1px #ffc799;
+}
+
+body[data-theme="dark"] .calendar-day.today {
+  box-shadow: inset 0 0 0 2px #99ffe4;
+}
+
 .worklog-list {
   border-bottom: 0;
 }
