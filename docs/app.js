@@ -3,10 +3,23 @@ const POCKETBASE_URL = CONFIG.pocketbaseUrl || window.location.origin;
 const API = `${POCKETBASE_URL.replace(/\/$/, "")}/api/collections`;
 const AUTH_KEY = "pawplate.auth";
 const PALETTE_KEY_PREFIX = "pawplate.palette.";
+const THEME_KEY_PREFIX = "pawplate.theme.";
 const DEFAULT_PALETTE = {
   text: ["#2b2526", "#8f4d57", "#7f5f3b", "#52654d"],
   highlight: ["#fff0a8", "#ffd4dc", "#dcefc8", "#efe2c3", "#d9edf0"]
 };
+const PROOFING_PATTERNS = [
+  { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
+  { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
+  { pattern: /\brecieved\b/gi, label: "recieved", suggestion: "received" },
+  { pattern: /\bseperate\b/gi, label: "seperate", suggestion: "separate" },
+  { pattern: /\boccured\b/gi, label: "occured", suggestion: "occurred" },
+  { pattern: /\bassesment\b/gi, label: "assesment", suggestion: "assessment" },
+  { pattern: /\bpersistance\b/gi, label: "persistance", suggestion: "persistence" },
+  { pattern: /\bno evidences\b/gi, label: "no evidences", suggestion: "no evidence" },
+  { pattern: /\bno significant abnormalities\b/gi, label: "no significant abnormality" },
+  { pattern: /\bthere are no evidence\b/gi, label: "there are no evidence", suggestion: "there is no evidence" }
+];
 
 const state = {
   mode: "builder",
@@ -17,7 +30,8 @@ const state = {
   templates: [],
   selectedOldReport: null,
   selectedTemplate: null,
-  templateDraftId: null
+  templateDraftId: null,
+  workLogReports: []
 };
 
 const els = {
@@ -30,14 +44,18 @@ const els = {
   logoutBtn: document.getElementById("logoutBtn"),
   builderModeBtn: document.getElementById("builderModeBtn"),
   writerModeBtn: document.getElementById("writerModeBtn"),
+  worklogModeBtn: document.getElementById("worklogModeBtn"),
+  themeToggleBtn: document.getElementById("themeToggleBtn"),
   builderView: document.getElementById("builderView"),
   writerView: document.getElementById("writerView"),
+  worklogView: document.getElementById("worklogView"),
   oldSearchInput: document.getElementById("oldSearchInput"),
   oldModalityFilter: document.getElementById("oldModalityFilter"),
   oldTopicFilter: document.getElementById("oldTopicFilter"),
   oldBodyPartFilter: document.getElementById("oldBodyPartFilter"),
   oldTypeFilter: document.getElementById("oldTypeFilter"),
   oldDateFilter: document.getElementById("oldDateFilter"),
+  oldInterestingFilter: document.getElementById("oldInterestingFilter"),
   oldReportList: document.getElementById("oldReportList"),
   oldPreviewTitle: document.getElementById("oldPreviewTitle"),
   oldPreviewText: document.getElementById("oldPreviewText"),
@@ -53,6 +71,7 @@ const els = {
   templateBodyPartOptions: document.getElementById("templateBodyPartOptions"),
   templateKindRadios: [...document.querySelectorAll('input[name="templateKind"]')],
   templateTextEditor: document.getElementById("templateTextEditor"),
+  templateProofing: document.getElementById("templateProofing"),
   templateSearchInput: document.getElementById("templateSearchInput"),
   templateModalityFilter: document.getElementById("templateModalityFilter"),
   templateTopicFilter: document.getElementById("templateTopicFilter"),
@@ -66,9 +85,18 @@ const els = {
   reportBodyPartInput: document.getElementById("reportBodyPartInput"),
   reportBodyPartOptions: document.getElementById("reportBodyPartOptions"),
   reportKeywordInput: document.getElementById("reportKeywordInput"),
+  reportNoteInput: document.getElementById("reportNoteInput"),
+  reportInterestingInput: document.getElementById("reportInterestingInput"),
   reportTextEditor: document.getElementById("reportTextEditor"),
+  reportProofing: document.getElementById("reportProofing"),
   copyReportBtn: document.getElementById("copyReportBtn"),
   saveReportBtn: document.getElementById("saveReportBtn"),
+  worklogSearchInput: document.getElementById("worklogSearchInput"),
+  worklogSummary: document.getElementById("worklogSummary"),
+  worklogHeatmap: document.getElementById("worklogHeatmap"),
+  worklogList: document.getElementById("worklogList"),
+  interestingSearchInput: document.getElementById("interestingSearchInput"),
+  interestingList: document.getElementById("interestingList"),
   contextMenu: document.getElementById("contextMenu")
 };
 
@@ -117,6 +145,61 @@ function getEditorText(editor) {
 
 function setEditorHtml(editor, value) {
   editor.innerHTML = reportHtml(value);
+  updateProofing(editor);
+}
+
+function editorTextNodeRanges(editor, matcher) {
+  const ranges = [];
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const text = node.nodeValue || "";
+    matcher.lastIndex = 0;
+    let match;
+    while ((match = matcher.exec(text))) {
+      const range = new Range();
+      range.setStart(node, match.index);
+      range.setEnd(node, match.index + match[0].length);
+      ranges.push(range);
+    }
+  }
+  return ranges;
+}
+
+function proofingIssues(editor) {
+  const text = editor.innerText || "";
+  return PROOFING_PATTERNS.flatMap(item => {
+    const matches = [...text.matchAll(new RegExp(item.pattern.source, item.pattern.flags))];
+    return matches.map(match => ({
+      label: match[0],
+      suggestion: item.suggestion || item.label
+    }));
+  });
+}
+
+function updateProofing(editor) {
+  if (!editor) return;
+  const panel = editor === els.templateTextEditor ? els.templateProofing : els.reportProofing;
+  if (window.CSS?.highlights) {
+    const ranges = PROOFING_PATTERNS.flatMap(item => editorTextNodeRanges(editor, new RegExp(item.pattern.source, item.pattern.flags)));
+    if (ranges.length) {
+      CSS.highlights.set(`pawplate-${editor.id}`, new Highlight(...ranges));
+    } else {
+      CSS.highlights.delete(`pawplate-${editor.id}`);
+    }
+  }
+  if (!panel) return;
+  const issues = proofingIssues(editor);
+  if (!issues.length) {
+    panel.classList.add("hidden");
+    panel.innerHTML = "";
+    return;
+  }
+  const unique = [...new Map(issues.map(issue => [issue.label.toLowerCase(), issue])).values()].slice(0, 6);
+  panel.classList.remove("hidden");
+  panel.innerHTML = unique.map(issue => (
+    `<button type="button" title="Suggested: ${escapeHtml(issue.suggestion)}">${escapeHtml(issue.label)} -> ${escapeHtml(issue.suggestion)}</button>`
+  )).join("");
 }
 
 function valuesFrom(records, field) {
@@ -198,6 +281,26 @@ function paletteKey() {
   return `${PALETTE_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
 }
 
+function themeKey() {
+  return `${THEME_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
+}
+
+function readTheme() {
+  const saved = localStorage.getItem(themeKey());
+  return saved === "dark" ? "dark" : "light";
+}
+
+function applyTheme(theme = readTheme()) {
+  document.body.dataset.theme = theme;
+  if (els.themeToggleBtn) els.themeToggleBtn.textContent = theme === "dark" ? "Light" : "Dark";
+}
+
+function toggleTheme() {
+  const next = document.body.dataset.theme === "dark" ? "light" : "dark";
+  localStorage.setItem(themeKey(), next);
+  applyTheme(next);
+}
+
 function readPalette() {
   try {
     const saved = JSON.parse(localStorage.getItem(paletteKey()) || "null");
@@ -274,6 +377,7 @@ function logout() {
   setAuth(null);
   state.oldReports = [];
   state.templates = [];
+  state.workLogReports = [];
   state.selectedOldReport = null;
   state.selectedTemplate = null;
   els.loginPasswordInput.value = "";
@@ -373,9 +477,12 @@ function showMode(mode) {
   state.mode = mode;
   els.builderModeBtn.classList.toggle("active", mode === "builder");
   els.writerModeBtn.classList.toggle("active", mode === "writer");
+  els.worklogModeBtn.classList.toggle("active", mode === "worklog");
   els.builderView.classList.toggle("hidden", mode !== "builder");
   els.writerView.classList.toggle("hidden", mode !== "writer");
+  els.worklogView.classList.toggle("hidden", mode !== "worklog");
   if (mode === "writer") loadTemplates();
+  if (mode === "worklog") loadWorkLog();
 }
 
 function oldReportFilter() {
@@ -390,6 +497,7 @@ function oldReportFilter() {
   if (els.oldBodyPartFilter.value) clauses.push(`bodyPart="${escapeFilter(els.oldBodyPartFilter.value)}"`);
   if (els.oldTypeFilter.value) clauses.push(`kind="${escapeFilter(els.oldTypeFilter.value)}"`);
   if (els.oldDateFilter.value.trim()) clauses.push(`sourceDate~"${escapeFilter(els.oldDateFilter.value.trim())}"`);
+  if (els.oldInterestingFilter.checked) clauses.push("isInteresting=true");
   return clauses.join(" && ");
 }
 
@@ -400,7 +508,7 @@ async function loadOldReports() {
     perPage: 80,
     sort: "-created",
     filter: oldReportFilter(),
-    fields: "id,title,modality,topic,bodyPart,kind,keywords,report,sourceType,sourceDate,owner"
+    fields: "id,title,modality,topic,bodyPart,kind,keywords,report,sourceType,sourceDate,note,isInteresting,owner"
   });
   state.oldReports = data.items;
   renderOldReports(query);
@@ -416,7 +524,7 @@ function renderOldReports(query = els.oldSearchInput.value.trim()) {
     <button class="result-item ${state.selectedOldReport?.id === item.id ? "active" : ""}" data-old-id="${item.id}" type="button">
       <span class="result-no">${index + 1}.</span>
       <span>
-        <span class="result-title">${highlight(item.title || "Untitled", query)}</span>
+        <span class="result-title">${highlight(item.title || "Untitled", query)}${item.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
         <span class="result-meta">${escapeHtml(item.modality || "Modality")} / ${escapeHtml(item.topic || "Topic")} / ${escapeHtml(item.bodyPart || "Body part")}</span>
         <span class="result-snippet">${highlight(snippet(item.report, query), query)}</span>
       </span>
@@ -551,6 +659,8 @@ function useTemplateForReport(template = null) {
   els.reportTopicInput.value = source.topic || "";
   els.reportBodyPartInput.value = source.bodyPart || "";
   els.reportKeywordInput.value = source.kind || "";
+  els.reportNoteInput.value = "";
+  els.reportInterestingInput.checked = false;
   setEditorHtml(els.reportTextEditor, source.report || "");
   updateEditorDatalists("report");
   showMode("writer");
@@ -586,9 +696,11 @@ function reportData() {
     bodyPart: els.reportBodyPartInput.value.trim(),
     kind: "final-report",
     report: getEditorHtml(els.reportTextEditor),
-    keywords: `${els.reportTitleInput.value} ${els.reportTopicInput.value} ${els.reportBodyPartInput.value} ${els.reportKeywordInput.value}`,
+    keywords: `${els.reportTitleInput.value} ${els.reportTopicInput.value} ${els.reportBodyPartInput.value} ${els.reportKeywordInput.value} ${els.reportNoteInput.value}`,
     sourceType: "final-report",
     sourceDate: new Date().toISOString(),
+    note: els.reportNoteInput.value.trim(),
+    isInteresting: els.reportInterestingInput.checked,
     owner: state.auth?.user?.id || ""
   };
 }
@@ -621,7 +733,130 @@ async function saveFullReport() {
   els.oldSearchInput.value = data.title;
   state.selectedOldReport = null;
   await loadOldReports();
+  await loadWorkLog();
   showMode("builder");
+}
+
+function savedDate(report) {
+  const value = report.sourceDate || report.created;
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+function dateKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function reportMatchesQuery(report, query) {
+  if (!query) return true;
+  const haystack = [
+    report.title,
+    report.modality,
+    report.topic,
+    report.bodyPart,
+    report.keywords,
+    report.note,
+    plainText(report.report)
+  ].join(" ").toLowerCase();
+  return query.toLowerCase().split(/\s+/).every(term => haystack.includes(term));
+}
+
+async function loadWorkLog() {
+  const data = await pbList("old_reports", {
+    page: 1,
+    perPage: 500,
+    sort: "-created",
+    filter: 'sourceType="final-report"',
+    fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,note,isInteresting,owner"
+  });
+  state.workLogReports = data.items;
+  renderWorkLog();
+  renderInterestingCases();
+}
+
+function renderWorkLog() {
+  const query = els.worklogSearchInput.value.trim();
+  const reports = state.workLogReports.filter(report => reportMatchesQuery(report, query));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const counts = new Map();
+  for (const report of state.workLogReports) {
+    const date = savedDate(report);
+    if (!date) continue;
+    counts.set(dateKey(date), (counts.get(dateKey(date)) || 0) + 1);
+  }
+  const todayCount = counts.get(dateKey(today)) || 0;
+  const interestingCount = state.workLogReports.filter(report => report.isInteresting).length;
+  const activeDays = counts.size;
+  els.worklogSummary.innerHTML = [
+    ["Total reports", state.workLogReports.length],
+    ["Saved today", todayCount],
+    ["Active days", activeDays],
+    ["Interesting", interestingCount]
+  ].map(([label, value]) => `<div class="summary-card"><strong>${value}</strong><span>${label}</span></div>`).join("");
+
+  const days = [];
+  for (let offset = 90; offset >= 0; offset -= 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - offset);
+    const count = counts.get(dateKey(date)) || 0;
+    const level = count >= 4 ? 4 : count;
+    days.push(`<div class="heat-day level-${level}" title="${dateKey(date)}: ${count} report${count === 1 ? "" : "s"}"></div>`);
+  }
+  els.worklogHeatmap.innerHTML = days.join("");
+
+  if (!reports.length) {
+    els.worklogList.innerHTML = `<div class="empty">Saved reports will build your personal work log here.</div>`;
+    return;
+  }
+  els.worklogList.innerHTML = reports.map((report, index) => {
+    const date = savedDate(report);
+    return `
+      <button class="result-item" data-worklog-id="${report.id}" type="button">
+        <span class="result-no">${index + 1}.</span>
+        <span>
+          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
+          <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
+          ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
+        </span>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderInterestingCases() {
+  const query = els.interestingSearchInput.value.trim();
+  const reports = state.workLogReports
+    .filter(report => report.isInteresting)
+    .filter(report => reportMatchesQuery(report, query));
+  if (!reports.length) {
+    els.interestingList.innerHTML = `<div class="empty">Mark a saved report as interesting to keep it here for quick lookup.</div>`;
+    return;
+  }
+  els.interestingList.innerHTML = reports.map((report, index) => `
+    <button class="result-item" data-interesting-id="${report.id}" type="button">
+      <span class="result-no">${index + 1}.</span>
+      <span>
+        <span class="result-title">${highlight(report.title || "Untitled", query)}</span>
+        <span class="result-meta">${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
+        ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
+      </span>
+    </button>
+  `).join("");
+}
+
+function openSavedReport(id) {
+  const report = state.workLogReports.find(item => item.id === id);
+  if (!report) return;
+  els.reportTitleInput.value = report.title || "";
+  els.reportModalityInput.value = report.modality || "";
+  els.reportTopicInput.value = report.topic || "";
+  els.reportBodyPartInput.value = report.bodyPart || "";
+  els.reportKeywordInput.value = report.keywords || "";
+  els.reportNoteInput.value = report.note || "";
+  els.reportInterestingInput.checked = Boolean(report.isInteresting);
+  setEditorHtml(els.reportTextEditor, report.report || "");
+  showMode("writer");
 }
 
 function debounce(fn, ms = 250) {
@@ -642,6 +877,8 @@ function runFormatCommand(button) {
 
 els.builderModeBtn.addEventListener("click", () => showMode("builder"));
 els.writerModeBtn.addEventListener("click", () => showMode("writer"));
+els.worklogModeBtn.addEventListener("click", () => showMode("worklog"));
+els.themeToggleBtn.addEventListener("click", toggleTheme);
 els.oldSearchInput.addEventListener("input", debounce(() => {
   state.selectedOldReport = null;
   loadOldReports();
@@ -660,6 +897,11 @@ els.oldReportList.addEventListener("contextmenu", event => {
     { label: "Use as template", run: () => { selectOldReport(id); useOldReportAsTemplate(); } }
   ];
   if (report?.owner === state.auth?.user?.id) {
+    actions.push({ label: report.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
+      await pbUpdate("old_reports", id, { isInteresting: !report.isInteresting });
+      await loadOldReports();
+      await loadWorkLog();
+    }});
     actions.push({ label: "Delete saved report", danger: true, run: async () => {
       if (!confirm("Delete this old report?")) return;
       await pbDelete("old_reports", id);
@@ -679,7 +921,8 @@ els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
   els.oldTopicFilter,
   els.oldBodyPartFilter,
   els.oldTypeFilter,
-  els.oldDateFilter
+  els.oldDateFilter,
+  els.oldInterestingFilter
 ].forEach(element => element.addEventListener("input", debounce(() => {
   if (element === els.oldModalityFilter) updateFilterOptions("old", "modality");
   if (element === els.oldTopicFilter) updateFilterOptions("old", "topic");
@@ -716,6 +959,10 @@ document.querySelectorAll(".format-toolbar").forEach(toolbar => {
     customizeSwatch(button);
   });
 });
+[els.templateTextEditor, els.reportTextEditor].forEach(editor => {
+  editor.addEventListener("input", debounce(() => updateProofing(editor), 120));
+  editor.addEventListener("blur", () => updateProofing(editor));
+});
 els.templateList.addEventListener("click", event => {
   const button = event.target.closest("[data-template-id]");
   if (button) selectTemplate(button.dataset.templateId);
@@ -743,6 +990,49 @@ els.copyReportBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
 });
 els.saveReportBtn.addEventListener("click", saveFullReport);
+els.worklogSearchInput.addEventListener("input", debounce(renderWorkLog));
+els.interestingSearchInput.addEventListener("input", debounce(renderInterestingCases));
+els.worklogList.addEventListener("click", event => {
+  const button = event.target.closest("[data-worklog-id]");
+  if (button) openSavedReport(button.dataset.worklogId);
+});
+els.interestingList.addEventListener("click", event => {
+  const button = event.target.closest("[data-interesting-id]");
+  if (button) openSavedReport(button.dataset.interestingId);
+});
+els.worklogList.addEventListener("contextmenu", event => {
+  const button = event.target.closest("[data-worklog-id]");
+  if (!button) return;
+  event.preventDefault();
+  const id = button.dataset.worklogId;
+  const report = state.workLogReports.find(item => item.id === id);
+  showContextMenu(event.clientX, event.clientY, [
+    { label: "Open report", run: () => openSavedReport(id) },
+    { label: report?.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
+      await pbUpdate("old_reports", id, { isInteresting: !report?.isInteresting });
+      await loadWorkLog();
+    }},
+    { label: "Delete saved report", danger: true, run: async () => {
+      if (!confirm("Delete this saved report?")) return;
+      await pbDelete("old_reports", id);
+      await loadWorkLog();
+      await loadOldReports();
+    }}
+  ]);
+});
+els.interestingList.addEventListener("contextmenu", event => {
+  const button = event.target.closest("[data-interesting-id]");
+  if (!button) return;
+  event.preventDefault();
+  const id = button.dataset.interestingId;
+  showContextMenu(event.clientX, event.clientY, [
+    { label: "Open report", run: () => openSavedReport(id) },
+    { label: "Remove interesting", run: async () => {
+      await pbUpdate("old_reports", id, { isInteresting: false });
+      await loadWorkLog();
+    }}
+  ]);
+});
 els.loginForm.addEventListener("submit", async event => {
   event.preventDefault();
   els.loginError.textContent = "";
@@ -755,11 +1045,13 @@ els.loginForm.addEventListener("submit", async event => {
 els.logoutBtn.addEventListener("click", logout);
 
 async function loadApp() {
+  applyTheme();
   applyPalette();
   blankTemplate();
   await loadFacets();
   await loadOldReports();
   await loadTemplates();
+  await loadWorkLog();
 }
 
 async function init() {

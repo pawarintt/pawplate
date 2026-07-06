@@ -1,16 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-US">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Radiology Template Studio</title>
+  <title>PawPlate</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
     <form id="loginForm" class="login-card">
       <div>
-        <h1>Pawplate</h1>
+        <h1>PawPlate</h1>
         <p>Sign in to your reporting workspace.</p>
       </div>
       <input id="loginEmailInput" type="email" autocomplete="username" placeholder="Email" required>
@@ -23,14 +24,16 @@
   <main id="appShell" class="page hidden">
     <header class="topbar">
       <div>
-        <h1>Template Studio</h1>
+        <h1>PawPlate</h1>
         <p>Build, reference, report.</p>
       </div>
       <div class="topbar-actions">
         <nav class="mode-tabs" aria-label="Mode">
           <button id="builderModeBtn" class="active" type="button">Template Builder</button>
           <button id="writerModeBtn" type="button">Report Writer</button>
+          <button id="worklogModeBtn" type="button">Work Log</button>
         </nav>
+        <button id="themeToggleBtn" class="theme-toggle" type="button">Dark</button>
         <button id="logoutBtn" class="logout-button" type="button">Sign Out</button>
       </div>
     </header>
@@ -79,7 +82,8 @@
             <button class="highlight-swatch lilac" type="button" data-command="backColor" data-value="#e3d8ff" aria-label="Purple highlight"></button>
           </div>
         </div>
-        <div id="templateTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" data-placeholder="Write the reusable template here."></div>
+        <div id="templateTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" lang="en-US" autocapitalize="sentences" data-placeholder="Write the reusable template here."></div>
+        <div id="templateProofing" class="proofing-panel hidden"></div>
       </section>
 
       <aside class="lookup-pane secondary-pane">
@@ -98,6 +102,7 @@
             <option value="final-report">My saved reports</option>
           </select>
           <input id="oldDateFilter" placeholder="Date contains, e.g. 2024">
+          <label class="check-filter"><input id="oldInterestingFilter" type="checkbox"> Interesting only</label>
         </div>
         <div id="oldReportList" class="result-list"></div>
         <article class="preview">
@@ -127,6 +132,8 @@
           <input id="reportBodyPartInput" list="reportBodyPartOptions" placeholder="Body part">
           <datalist id="reportBodyPartOptions"></datalist>
           <input id="reportKeywordInput" placeholder="Keywords / diagnosis">
+          <input id="reportNoteInput" placeholder="Note / HN / accession">
+          <label class="interesting-toggle"><input id="reportInterestingInput" type="checkbox"> Interesting case</label>
         </div>
         <div class="format-toolbar" data-editor-target="reportTextEditor">
           <div class="format-group">
@@ -150,7 +157,8 @@
             <button class="highlight-swatch lilac" type="button" data-command="backColor" data-value="#e3d8ff" aria-label="Purple highlight"></button>
           </div>
         </div>
-        <div id="reportTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" data-placeholder="Pick a template, then type the full report here. Saved reports return to Old Report Lookup."></div>
+        <div id="reportTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" lang="en-US" autocapitalize="sentences" data-placeholder="Pick a template, then type the full report here. Saved reports return to Old Report Lookup."></div>
+        <div id="reportProofing" class="proofing-panel hidden"></div>
       </section>
 
       <aside class="lookup-pane templates-pane">
@@ -169,6 +177,25 @@
           </select>
         </div>
         <div id="templateList" class="result-list"></div>
+      </aside>
+    </section>
+
+    <section id="worklogView" class="worklog-view hidden">
+      <section class="worklog-main">
+        <div class="pane-head">
+          <h2>Report Work Log</h2>
+          <input id="worklogSearchInput" type="search" placeholder="search saved reports">
+        </div>
+        <div id="worklogSummary" class="worklog-summary"></div>
+        <div id="worklogHeatmap" class="heatmap" aria-label="Saved reports heatmap"></div>
+        <div id="worklogList" class="result-list worklog-list"></div>
+      </section>
+      <aside class="lookup-pane interesting-pane">
+        <div class="pane-head">
+          <h2>Interesting Cases</h2>
+          <input id="interestingSearchInput" type="search" placeholder="quick lookup">
+        </div>
+        <div id="interestingList" class="result-list"></div>
       </aside>
     </section>
   </main>
