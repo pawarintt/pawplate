@@ -1408,6 +1408,29 @@ function selectWriterGuideline(id) {
   renderWriterGuidelinePreview(guideline);
 }
 
+async function refreshGuidelineViews(preferredId = state.guidelineDraftId) {
+  try {
+    await loadGuidelines();
+    await loadWriterGuidelines();
+    if (preferredId) {
+      const guideline = state.guidelines.find(item => item.id === preferredId);
+      const writerGuideline = state.writerGuidelines.find(item => item.id === preferredId);
+      if (guideline) {
+        state.selectedGuideline = guideline;
+        renderGuidelines();
+        renderGuidelinePreview(guideline);
+      }
+      if (writerGuideline) {
+        state.selectedWriterGuideline = writerGuideline;
+        renderWriterGuidelines();
+        renderWriterGuidelinePreview(writerGuideline);
+      }
+    }
+  } catch (error) {
+    console.warn("Guideline saved, but refresh failed.", error);
+  }
+}
+
 function blankGuideline() {
   resetGuidelineDraft();
   state.selectedGuideline = null;
@@ -1447,16 +1470,18 @@ async function saveGuideline() {
     showToast("Image too large", "Remove pasted base64 image text and use the Image button to upload it.", "error");
     return false;
   }
+  let saved;
   if (state.guidelineDraftId) {
-    await pbUpdate("guidelines", state.guidelineDraftId, data);
+    saved = await pbUpdate("guidelines", state.guidelineDraftId, data);
   } else {
-    const created = await pbCreate("guidelines", data);
-    state.guidelineDraftId = created.id;
+    saved = await pbCreate("guidelines", data);
+    state.guidelineDraftId = saved.id;
     updateGuidelineModeBadge();
   }
-  await loadGuidelines();
-  await loadWriterGuidelines();
+  state.selectedGuideline = saved;
+  renderGuidelinePreview(saved);
   showToast("Guideline saved", data.title);
+  refreshGuidelineViews(saved.id);
   return true;
 }
 
@@ -1497,8 +1522,9 @@ async function ensureGuidelineRecordForUpload() {
     ...data
   });
   state.guidelineDraftId = created.id;
+  state.selectedGuideline = created;
   updateGuidelineModeBadge();
-  await loadGuidelines();
+  refreshGuidelineViews(created.id);
   return created.id;
 }
 
@@ -1522,10 +1548,11 @@ async function uploadGuidelineImageFile(file) {
     if (!uploaded) throw new Error("PocketBase did not return an uploaded image filename.");
     const alt = imageAltFromName(file.name);
     insertGuidelineMarkdown(`\n![${alt}](${pbFileUrl("guidelines", recordId, uploaded)})\n`);
-    await pbUpdate("guidelines", recordId, guidelineData());
-    await loadGuidelines();
-    await loadWriterGuidelines();
+    const saved = await pbUpdate("guidelines", recordId, guidelineData());
+    state.selectedGuideline = saved;
+    renderGuidelinePreview(saved);
     showToast("Image added", "Linked in the guideline Markdown.");
+    refreshGuidelineViews(recordId);
   } catch (error) {
     showToast("Image upload failed", friendlyErrorMessage(error), "error");
   }
