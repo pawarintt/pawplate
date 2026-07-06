@@ -94,6 +94,7 @@ const els = {
   reportInterestingInput: document.getElementById("reportInterestingInput"),
   reportTextEditor: document.getElementById("reportTextEditor"),
   reportProofing: document.getElementById("reportProofing"),
+  newReportBtn: document.getElementById("newReportBtn"),
   copyReportBtn: document.getElementById("copyReportBtn"),
   saveReportBtn: document.getElementById("saveReportBtn"),
   worklogSearchInput: document.getElementById("worklogSearchInput"),
@@ -722,6 +723,23 @@ function useTemplateForReport(template = null) {
   renderTemplates();
 }
 
+function blankReport() {
+  state.reportDraftId = null;
+  state.reportDraftSourceDate = "";
+  state.selectedTemplate = null;
+  els.reportTitleInput.value = "";
+  els.reportModalityInput.value = "";
+  els.reportTopicInput.value = "";
+  els.reportBodyPartInput.value = "";
+  els.reportKeywordInput.value = "";
+  els.reportNoteInput.value = "";
+  els.reportInterestingInput.checked = false;
+  setEditorHtml(els.reportTextEditor, "");
+  updateEditorDatalists("report");
+  showMode("writer");
+  els.reportTitleInput.focus();
+}
+
 function selectTemplate(id) {
   const template = state.templates.find(item => item.id === id);
   if (!template) return;
@@ -1206,6 +1224,7 @@ els.templateList.addEventListener("contextmenu", event => {
 });
 els.contextMenu?.addEventListener("click", event => event.stopPropagation());
 document.addEventListener("click", hideContextMenu);
+els.newReportBtn.addEventListener("click", blankReport);
 els.copyReportBtn.addEventListener("click", () => {
   withButtonFeedback(els.copyReportBtn, "Copying...", async () => {
     await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
