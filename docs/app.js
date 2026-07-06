@@ -66,6 +66,8 @@ const state = {
   dictionaryReady: false,
   personalDictionary: new Set(),
   userSettingsId: "",
+  guidelineFileToken: "",
+  guidelineFileTokenExpiresAt: 0,
   tiptapReady: false,
   editorUpdateTimers: new WeakMap()
 };
@@ -202,6 +204,20 @@ function reportHtml(value) {
   return isHtml(raw) ? raw : escapeHtml(raw).replace(/\n/g, "<br>");
 }
 
+function protectedFileUrl(url) {
+  const value = String(url || "").trim();
+  if (!state.guidelineFileToken) return value;
+  try {
+    const parsed = new URL(value, window.location.href);
+    const protectedBase = `${POCKETBASE_URL.replace(/\/$/, "")}/api/files/guidelines/`;
+    if (!parsed.href.startsWith(protectedBase)) return value;
+    parsed.searchParams.set("token", state.guidelineFileToken);
+    return parsed.href;
+  } catch {
+    return value;
+  }
+}
+
 function safeMarkdownUrl(url) {
   const value = String(url || "").trim();
   if (/^(https?:|blob:)/i.test(value)) return value;
@@ -217,6 +233,7 @@ function sanitizeGuidelineHtml(html) {
       const name = attribute.name.toLowerCase();
       if (name.startsWith("on")) node.removeAttribute(attribute.name);
       if ((name === "href" || name === "src") && !safeMarkdownUrl(attribute.value)) node.removeAttribute(attribute.name);
+      if (name === "src" && node.hasAttribute(attribute.name)) node.setAttribute(attribute.name, protectedFileUrl(attribute.value));
     });
     if (node.tagName === "A") {
       node.setAttribute("target", "_blank");
@@ -895,6 +912,8 @@ function logout() {
   state.selectedTemplate = null;
   state.selectedGuideline = null;
   state.selectedWriterGuideline = null;
+  state.guidelineFileToken = "";
+  state.guidelineFileTokenExpiresAt = 0;
   resetGuidelineDraft();
   resetReportDraft();
   els.loginPasswordInput.value = "";
@@ -954,6 +973,23 @@ async function pbDelete(collection, id) {
     headers: authHeaders()
   });
   if (!response.ok) throw new Error(await response.text());
+}
+
+async function ensureGuidelineFileToken() {
+  if (!state.auth?.token) return "";
+  if (state.guidelineFileToken && Date.now() < state.guidelineFileTokenExpiresAt) return state.guidelineFileToken;
+  const response = await fetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/files/token`, {
+    method: "POST",
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    console.warn("Protected file token unavailable.", await response.text());
+    return "";
+  }
+  const data = await response.json();
+  state.guidelineFileToken = data.token || "";
+  state.guidelineFileTokenExpiresAt = Date.now() + 90 * 1000;
+  return state.guidelineFileToken;
 }
 
 async function pbUploadFiles(collection, id, field, files) {
@@ -1265,6 +1301,7 @@ function guidelineFilter(searchInput = els.guidelineSearchInput) {
 }
 
 async function loadGuidelines() {
+  await ensureGuidelineFileToken();
   const query = els.guidelineSearchInput.value.trim();
   const data = await pbList("guidelines", {
     page: 1,
@@ -1279,6 +1316,7 @@ async function loadGuidelines() {
 }
 
 async function loadWriterGuidelines() {
+  await ensureGuidelineFileToken();
   const query = els.writerGuidelineSearchInput.value.trim();
   const data = await pbList("guidelines", {
     page: 1,
@@ -1388,8 +1426,8 @@ function editGuideline(id) {
 
 async function saveGuideline() {
   const data = guidelineData();
-  if (!data.markdown.trim()) {
-    showToast("Nothing to save", "Write guideline Markdown first.", "info");
+  if (!data.title.trim()) {
+    showToast("Title needed", "Add a guideline title first.", "info");
     return false;
   }
   if (/!\[[^\]]*\]\(\s*data:image\//i.test(data.markdown)) {
@@ -1424,8 +1462,7 @@ async function ensureGuidelineRecordForUpload() {
   if (state.guidelineDraftId) return state.guidelineDraftId;
   const data = guidelineData();
   const created = await pbCreate("guidelines", {
-    ...data,
-    markdown: data.markdown.trim() || " "
+    ...data
   });
   state.guidelineDraftId = created.id;
   updateGuidelineModeBadge();

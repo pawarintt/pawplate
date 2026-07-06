@@ -47,7 +47,7 @@ function textField(name, required = false) {
 }
 
 function markdownField() {
-  return { name: "markdown", type: "text", required: true, hidden: false, values: { min: null, max: null, pattern: "" } };
+  return { name: "markdown", type: "text", required: false, hidden: false, values: { min: null, max: null, pattern: "" } };
 }
 
 function imageFileField() {
@@ -60,7 +60,7 @@ function imageFileField() {
     maxSize: 8388608,
     mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
     thumbs: ["320x0", "900x0"],
-    protected: false
+    protected: true
   };
 }
 
@@ -78,7 +78,7 @@ function legacyImageFileField() {
       maxSize: 8388608,
       mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
       thumbs: ["320x0", "900x0"],
-      protected: false
+      protected: true
     }
   };
 }
@@ -130,7 +130,9 @@ async function ensureGuidelines(token) {
   const nextFields = fields.map(field => (
     field.name === "images"
       ? { ...field, ...imageFileField(), id: field.id, system: field.system, presentable: field.presentable }
-      : field
+      : field.name === "markdown"
+        ? { ...field, required: false }
+        : field
   ));
   const addText = (name, required = false) => {
     if (names.has(name)) return;
@@ -142,7 +144,7 @@ async function ensureGuidelines(token) {
   addText("topic");
   addText("bodyPart");
   addText("tags");
-  addText("markdown", true);
+  addText("markdown");
   addText("keywords");
   if (!names.has("images")) {
     missing.push(usesFields ? imageFileField() : legacyImageFileField());
