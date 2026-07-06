@@ -4,6 +4,7 @@ const API = `${POCKETBASE_URL.replace(/\/$/, "")}/api/collections`;
 const AUTH_KEY = "pawplate.auth";
 const PALETTE_KEY_PREFIX = "pawplate.palette.";
 const THEME_KEY_PREFIX = "pawplate.theme.";
+const PERSONAL_DICTIONARY_KEY_PREFIX = "pawplate.dictionary.";
 const SPELLCHECK_DICTIONARY_URL = "https://cdn.jsdelivr.net/npm/typo-js@1.3.2/dictionaries/en_US";
 const DEFAULT_PALETTE = {
   text: ["#2b2526", "#8f4d57", "#7f5f3b", "#52654d"],
@@ -55,7 +56,9 @@ const state = {
   worklogSelectedDate: "",
   workLogReports: [],
   dictionary: null,
-  dictionaryReady: false
+  dictionaryReady: false,
+  personalDictionary: new Set(),
+  userSettingsId: ""
 };
 
 const els = {
@@ -226,12 +229,24 @@ function editorTextNodeRanges(editor, matcher) {
   return ranges;
 }
 
+function normalizeDictionaryWord(word) {
+  return String(word || "")
+    .replace(/^'+|'+$/g, "")
+    .toLowerCase();
+}
+
+function isPersonalDictionaryWord(word) {
+  const clean = normalizeDictionaryWord(word);
+  return Boolean(clean) && state.personalDictionary.has(clean);
+}
+
 function isSuspiciousWord(word) {
   const clean = word.replace(/^'+|'+$/g, "");
   if (clean.length < 4) return false;
   if (/^\d/.test(clean)) return false;
   if (/^[A-Z]{2,}$/.test(clean)) return false;
   const lower = clean.toLowerCase();
+  if (state.personalDictionary.has(lower)) return false;
   if (PROOFING_WORDS.has(lower) || PROOFING_ABBREVIATIONS.has(lower)) return false;
   if (/^[a-z]+(?:'[a-z]+)?$/.test(clean) && lower.length <= 5 && /^(cm|mm|ml|sec|min)s?$/.test(lower)) return false;
   if (/[A-Z][a-z]*[A-Z][a-z]/.test(clean)) return true;
@@ -287,6 +302,36 @@ function proofingIssues(editor) {
     suggestion: match.suggestion,
     kind: match.kind
   }));
+}
+
+function wordAtPoint(editor, x, y) {
+  const position = document.caretPositionFromPoint?.(x, y);
+  let node = position?.offsetNode;
+  let offset = position?.offset;
+  if (!node && document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(x, y);
+    node = range?.startContainer;
+    offset = range?.startOffset;
+  }
+  if (!node) return null;
+  if (node.nodeType !== Node.TEXT_NODE) {
+    node = node.childNodes?.[Math.max(0, Math.min(offset || 0, node.childNodes.length - 1))] || node;
+    if (node.nodeType !== Node.TEXT_NODE) return null;
+    offset = Math.min(node.nodeValue?.length || 0, offset || 0);
+  }
+  if (!editor.contains(node)) return null;
+  const text = node.nodeValue || "";
+  const safeOffset = Math.max(0, Math.min(offset || 0, text.length));
+  const wordRegex = /[A-Za-z][A-Za-z']{2,}/g;
+  let match;
+  while ((match = wordRegex.exec(text))) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (safeOffset >= start && safeOffset <= end) {
+      return { word: match[0], node, start, end };
+    }
+  }
+  return null;
 }
 
 function textOffsetForPoint(root, targetNode, targetOffset) {
@@ -504,6 +549,24 @@ function themeKey() {
   return `${THEME_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
 }
 
+function personalDictionaryKey() {
+  return `${PERSONAL_DICTIONARY_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
+}
+
+function readLocalPersonalDictionary() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(personalDictionaryKey()) || "[]");
+    if (Array.isArray(saved)) return saved.map(normalizeDictionaryWord).filter(Boolean);
+  } catch {
+    // Broken dictionary cache should not block proofing.
+  }
+  return [];
+}
+
+function writeLocalPersonalDictionary(words = [...state.personalDictionary]) {
+  localStorage.setItem(personalDictionaryKey(), JSON.stringify([...new Set(words.map(normalizeDictionaryWord).filter(Boolean))].sort()));
+}
+
 function readTheme() {
   const saved = localStorage.getItem(themeKey());
   return saved === "dark" ? "dark" : "light";
@@ -657,6 +720,57 @@ async function pbDelete(collection, id) {
     headers: authHeaders()
   });
   if (!response.ok) throw new Error(await response.text());
+}
+
+async function loadPersonalDictionary() {
+  state.userSettingsId = "";
+  state.personalDictionary = new Set(readLocalPersonalDictionary());
+  try {
+    const filter = `owner="${state.auth?.user?.id || ""}" && key="personalDictionary"`;
+    const data = await pbList("user_settings", {
+      perPage: 1,
+      filter,
+      fields: "id,value"
+    });
+    const record = data.items?.[0];
+    if (!record) return;
+    state.userSettingsId = record.id;
+    const words = Array.isArray(record.value?.words) ? record.value.words : [];
+    state.personalDictionary = new Set(words.map(normalizeDictionaryWord).filter(Boolean));
+    writeLocalPersonalDictionary();
+  } catch (error) {
+    console.warn("Personal dictionary sync unavailable; using local cache.", error);
+  }
+}
+
+async function savePersonalDictionary() {
+  const value = { words: [...state.personalDictionary].sort() };
+  writeLocalPersonalDictionary(value.words);
+  try {
+    if (state.userSettingsId) {
+      await pbUpdate("user_settings", state.userSettingsId, { value });
+      return;
+    }
+    const created = await pbCreate("user_settings", {
+      owner: state.auth?.user?.id || "",
+      key: "personalDictionary",
+      value
+    });
+    state.userSettingsId = created.id;
+  } catch (error) {
+    console.warn("Personal dictionary saved locally only.", error);
+  }
+}
+
+async function addPersonalDictionaryWord(word, editor = document.activeElement) {
+  const clean = normalizeDictionaryWord(word);
+  if (!clean) return;
+  state.personalDictionary.add(clean);
+  await savePersonalDictionary();
+  [els.templateTextEditor, els.reportTextEditor].forEach(item => {
+    updateProofing(item, { fallback: document.activeElement !== item });
+  });
+  showToast("Added to dictionary", clean);
 }
 
 function optionList(values, allLabel) {
@@ -1379,6 +1493,14 @@ document.querySelectorAll(".format-toolbar").forEach(toolbar => {
   editor.addEventListener("focus", () => clearProofingFallback(editor));
   editor.addEventListener("input", debounce(() => updateProofing(editor, { fallback: false }), 120));
   editor.addEventListener("blur", () => updateProofing(editor));
+  editor.addEventListener("contextmenu", event => {
+    const hit = wordAtPoint(editor, event.clientX, event.clientY);
+    if (!hit || !isSuspiciousWord(hit.word) || isPersonalDictionaryWord(hit.word)) return;
+    event.preventDefault();
+    showContextMenu(event.clientX, event.clientY, [
+      { label: `Add "${hit.word}" to dictionary`, run: () => addPersonalDictionaryWord(hit.word, editor) }
+    ]);
+  });
 });
 els.templateList.addEventListener("click", event => {
   const button = event.target.closest("[data-template-id]");
@@ -1510,6 +1632,7 @@ els.logoutBtn.addEventListener("click", logout);
 async function loadApp() {
   applyTheme();
   applyPalette();
+  await loadPersonalDictionary();
   loadSpellchecker();
   updateTemplateModeBadge();
   updateReportModeBadge();
