@@ -831,6 +831,33 @@ textarea {
     var(--paper);
 }
 
+.rich-editor.tiptap-host {
+  padding: 0;
+}
+
+.pawplate-prosemirror {
+  min-height: 100%;
+  padding: 16px 18px;
+  outline: none;
+  white-space: pre-wrap;
+}
+
+.pawplate-prosemirror p {
+  margin: 0 0 .72em;
+}
+
+.pawplate-prosemirror p:last-child {
+  margin-bottom: 0;
+}
+
+.pawplate-prosemirror .is-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--muted);
+  pointer-events: none;
+}
+
 body[data-theme="dark"] .rich-editor,
 body[data-theme="dark"] #oldPreviewText,
 body[data-theme="dark"] .preview,

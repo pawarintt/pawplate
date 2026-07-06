@@ -6,6 +6,8 @@ const PALETTE_KEY_PREFIX = "pawplate.palette.";
 const THEME_KEY_PREFIX = "pawplate.theme.";
 const PERSONAL_DICTIONARY_KEY_PREFIX = "pawplate.dictionary.";
 const SPELLCHECK_DICTIONARY_URL = "https://cdn.jsdelivr.net/npm/typo-js@1.3.2/dictionaries/en_US";
+const TIPTAP_VERSION = "2.11.7";
+const TIPTAP_CDN = "https://esm.sh";
 const DEFAULT_PALETTE = {
   text: ["#2b2526", "#8f4d57", "#7f5f3b", "#52654d"],
   highlight: ["#fff0a8", "#ffd4dc", "#dcefc8", "#efe2c3", "#d9edf0"]
@@ -58,7 +60,9 @@ const state = {
   dictionary: null,
   dictionaryReady: false,
   personalDictionary: new Set(),
-  userSettingsId: ""
+  userSettingsId: "",
+  tiptapReady: false,
+  editorUpdateTimers: new WeakMap()
 };
 
 const els = {
@@ -168,22 +172,43 @@ function plainText(value) {
 
 function reportHtml(value) {
   const raw = String(value || "");
-  return isHtml(raw) ? raw : escapeHtml(raw);
+  return isHtml(raw) ? raw : escapeHtml(raw).replace(/\n/g, "<br>");
 }
 
 function getEditorHtml(editor) {
+  if (editor?.__pawplateEditor) return editor.__pawplateEditor.getHTML().trim();
   const clone = editor.cloneNode(true);
   clone.querySelectorAll(".proofing-underline").forEach(node => node.replaceWith(document.createTextNode(node.textContent || "")));
   return clone.innerHTML.trim();
 }
 
 function getEditorText(editor) {
-  return editor.innerText.trim();
+  if (editor?.__pawplateEditor) {
+    try {
+      return editor.__pawplateEditor.getText({ blockSeparator: "\n" }).replace(/\u00a0/g, " ").trim();
+    } catch {
+      return editor.__pawplateEditor.getText().replace(/\u00a0/g, " ").trim();
+    }
+  }
+  return editor.innerText.replace(/\u00a0/g, " ").trim();
 }
 
 function setEditorHtml(editor, value) {
-  editor.innerHTML = reportHtml(value);
+  const html = reportHtml(value);
+  if (editor?.__pawplateEditor) {
+    editor.__pawplateEditor.commands.setContent(html, false);
+  } else {
+    editor.innerHTML = html;
+  }
   updateProofing(editor);
+}
+
+function focusEditor(editor) {
+  if (editor?.__pawplateEditor) {
+    editor.__pawplateEditor.commands.focus();
+    return;
+  }
+  editor?.focus();
 }
 
 function updateReportModeBadge() {
@@ -421,7 +446,7 @@ function updateProofing(editor, options = {}) {
   if (!editor) return;
   const panel = editor === els.templateTextEditor ? els.templateProofing : els.reportProofing;
   const issues = proofingIssues(editor);
-  if (options.fallback !== false) markProofingFallback(editor, issues);
+  if (options.fallback !== false && !editor.__pawplateEditor) markProofingFallback(editor, issues);
   if (window.CSS?.highlights) {
     const ranges = collectProofingMatches(editor).map(match => {
       const range = new Range();
@@ -634,6 +659,111 @@ function customizeSwatch(button) {
     applyPalette();
   });
   input.click();
+}
+
+function scheduleEditorProofing(editor) {
+  window.clearTimeout(state.editorUpdateTimers.get(editor));
+  state.editorUpdateTimers.set(editor, window.setTimeout(() => {
+    updateProofing(editor, { fallback: false });
+  }, 120));
+}
+
+async function loadTiptapModules() {
+  const version = TIPTAP_VERSION;
+  const urls = {
+    core: `${TIPTAP_CDN}/@tiptap/core@${version}`,
+    starter: `${TIPTAP_CDN}/@tiptap/starter-kit@${version}`,
+    underline: `${TIPTAP_CDN}/@tiptap/extension-underline@${version}`,
+    textStyle: `${TIPTAP_CDN}/@tiptap/extension-text-style@${version}`,
+    color: `${TIPTAP_CDN}/@tiptap/extension-color@${version}`,
+    highlight: `${TIPTAP_CDN}/@tiptap/extension-highlight@${version}`,
+    placeholder: `${TIPTAP_CDN}/@tiptap/extension-placeholder@${version}`
+  };
+  const [core, starter, underline, textStyle, color, highlight, placeholder] = await Promise.all([
+    import(urls.core),
+    import(urls.starter),
+    import(urls.underline),
+    import(urls.textStyle),
+    import(urls.color),
+    import(urls.highlight),
+    import(urls.placeholder)
+  ]);
+  return {
+    Editor: core.Editor,
+    Extension: core.Extension,
+    StarterKit: starter.default || starter.StarterKit,
+    Underline: underline.default || underline.Underline,
+    TextStyle: textStyle.default || textStyle.TextStyle,
+    Color: color.default || color.Color,
+    Highlight: highlight.default || highlight.Highlight,
+    Placeholder: placeholder.default || placeholder.Placeholder
+  };
+}
+
+async function initTiptapEditors() {
+  if (state.tiptapReady) return;
+  try {
+    const {
+      Editor,
+      Extension,
+      StarterKit,
+      Underline,
+      TextStyle,
+      Color,
+      Highlight,
+      Placeholder
+    } = await loadTiptapModules();
+    const TabSpaces = Extension.create({
+      name: "tabSpaces",
+      addKeyboardShortcuts() {
+        return {
+          Tab: () => {
+            this.editor.commands.insertContent("    ");
+            return true;
+          },
+          "Shift-Tab": () => {
+            this.editor.commands.insertContent("    ");
+            return true;
+          }
+        };
+      }
+    });
+    [els.templateTextEditor, els.reportTextEditor].forEach(element => {
+      if (!element || element.__pawplateEditor) return;
+      const placeholder = element.dataset.placeholder || "";
+      const initialContent = element.innerHTML || "";
+      element.removeAttribute("contenteditable");
+      element.classList.add("tiptap-host");
+      const editor = new Editor({
+        element,
+        content: initialContent,
+        extensions: [
+          StarterKit.configure({ history: true }),
+          Underline,
+          TextStyle,
+          Color,
+          Highlight.configure({ multicolor: true }),
+          Placeholder.configure({ placeholder }),
+          TabSpaces
+        ],
+        editorProps: {
+          attributes: {
+            class: "pawplate-prosemirror",
+            spellcheck: "true",
+            lang: "en-US",
+            autocapitalize: "sentences"
+          }
+        },
+        onUpdate: () => scheduleEditorProofing(element),
+        onFocus: () => clearProofingFallback(element),
+        onBlur: () => updateProofing(element)
+      });
+      element.__pawplateEditor = editor;
+    });
+    state.tiptapReady = true;
+  } catch (error) {
+    console.warn("TipTap unavailable; using the fallback editor.", error);
+  }
 }
 
 function authHeaders(extra = {}) {
@@ -1043,7 +1173,7 @@ function editTemplate(id) {
   setEditorHtml(els.templateTextEditor, template.report || "");
   updateEditorDatalists("template");
   showMode("builder");
-  els.templateTextEditor.focus();
+  focusEditor(els.templateTextEditor);
 }
 
 function reportData() {
@@ -1386,6 +1516,18 @@ function runFormatCommand(button) {
   const toolbar = button.closest(".format-toolbar");
   const editor = document.getElementById(toolbar.dataset.editorTarget);
   if (!editor) return;
+  const tiptap = editor.__pawplateEditor;
+  if (tiptap) {
+    const chain = tiptap.chain().focus();
+    const value = button.dataset.value || null;
+    if (button.dataset.command === "bold") chain.toggleBold().run();
+    if (button.dataset.command === "italic") chain.toggleItalic().run();
+    if (button.dataset.command === "underline") chain.toggleUnderline().run();
+    if (button.dataset.command === "foreColor" && value) chain.setColor(value).run();
+    if (button.dataset.command === "backColor" && value) chain.setHighlight({ color: value }).run();
+    updateProofing(editor, { fallback: false });
+    return;
+  }
   editor.focus();
   document.execCommand(button.dataset.command, false, button.dataset.value || null);
 }
@@ -1632,6 +1774,7 @@ els.logoutBtn.addEventListener("click", logout);
 async function loadApp() {
   applyTheme();
   applyPalette();
+  await initTiptapEditors();
   await loadPersonalDictionary();
   loadSpellchecker();
   updateTemplateModeBadge();
