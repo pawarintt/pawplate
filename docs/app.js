@@ -65,6 +65,7 @@ const els = {
   oldPreviewTitle: document.getElementById("oldPreviewTitle"),
   oldPreviewText: document.getElementById("oldPreviewText"),
   useOldReportBtn: document.getElementById("useOldReportBtn"),
+  templateModeBadge: document.getElementById("templateModeBadge"),
   newTemplateBtn: document.getElementById("newTemplateBtn"),
   saveTemplateBtn: document.getElementById("saveTemplateBtn"),
   useTemplateBtn: document.getElementById("useTemplateBtn"),
@@ -168,6 +169,18 @@ function updateReportModeBadge() {
   const editing = Boolean(state.reportDraftId);
   els.reportModeBadge.textContent = editing ? "Editing saved report" : "New report";
   els.reportModeBadge.classList.toggle("editing", editing);
+}
+
+function updateTemplateModeBadge() {
+  if (!els.templateModeBadge) return;
+  const editing = Boolean(state.templateDraftId);
+  els.templateModeBadge.textContent = editing ? "Editing template" : "New template";
+  els.templateModeBadge.classList.toggle("editing", editing);
+}
+
+function resetTemplateDraft() {
+  state.templateDraftId = null;
+  updateTemplateModeBadge();
 }
 
 function resetReportDraft() {
@@ -605,7 +618,7 @@ function selectOldReport(id) {
 }
 
 function blankTemplate() {
-  state.templateDraftId = null;
+  resetTemplateDraft();
   els.templateTitleInput.value = "";
   els.templateModalityInput.value = "";
   els.templateTopicInput.value = "";
@@ -627,7 +640,7 @@ function getTemplateKind() {
 function useOldReportAsTemplate() {
   if (!state.selectedOldReport) return;
   const report = state.selectedOldReport;
-  state.templateDraftId = null;
+  resetTemplateDraft();
   els.templateTitleInput.value = report.title || "";
   els.templateModalityInput.value = report.modality || "";
   els.templateTopicInput.value = report.topic || "";
@@ -662,6 +675,7 @@ async function saveTemplate() {
   } else {
     const created = await pbCreate("templates", data);
     state.templateDraftId = created.id;
+    updateTemplateModeBadge();
   }
   await loadTemplateFacets();
   await loadTemplates();
@@ -762,6 +776,7 @@ function editTemplate(id) {
   const template = state.templates.find(item => item.id === id);
   if (!template) return;
   state.templateDraftId = template.id;
+  updateTemplateModeBadge();
   els.templateTitleInput.value = template.title || "";
   els.templateModalityInput.value = template.modality || "";
   els.templateTopicInput.value = template.topic || "";
@@ -1350,6 +1365,7 @@ els.logoutBtn.addEventListener("click", logout);
 async function loadApp() {
   applyTheme();
   applyPalette();
+  updateTemplateModeBadge();
   updateReportModeBadge();
   blankTemplate();
   await loadFacets();
