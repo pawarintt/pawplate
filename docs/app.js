@@ -97,7 +97,8 @@ const els = {
   worklogList: document.getElementById("worklogList"),
   interestingSearchInput: document.getElementById("interestingSearchInput"),
   interestingList: document.getElementById("interestingList"),
-  contextMenu: document.getElementById("contextMenu")
+  contextMenu: document.getElementById("contextMenu"),
+  toastStack: document.getElementById("toastStack")
 };
 
 function escapeHtml(value) {
@@ -590,7 +591,10 @@ function templateData() {
 
 async function saveTemplate() {
   const data = templateData();
-  if (!getEditorText(els.templateTextEditor)) return;
+  if (!getEditorText(els.templateTextEditor)) {
+    showToast("Nothing to save", "Write a template first.", "info");
+    return false;
+  }
   if (state.templateDraftId) {
     await pbUpdate("templates", state.templateDraftId, data);
   } else {
@@ -599,6 +603,8 @@ async function saveTemplate() {
   }
   await loadTemplateFacets();
   await loadTemplates();
+  showToast("Template saved", data.title);
+  return true;
 }
 
 function templateFilter() {
@@ -717,7 +723,11 @@ function showContextMenu(x, y, actions) {
     const button = event.target.closest("[data-action-index]");
     if (!button) return;
     els.contextMenu.classList.add("hidden");
-    await actions[Number(button.dataset.actionIndex)].run();
+    try {
+      await actions[Number(button.dataset.actionIndex)].run();
+    } catch (error) {
+      showToast("Action failed", error.message || "Please try again.", "error");
+    }
   };
 }
 
@@ -726,15 +736,65 @@ function hideContextMenu() {
   els.contextMenu.classList.add("hidden");
 }
 
+function showToast(title, message = "", type = "success") {
+  if (!els.toastStack) return;
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<div><strong>${escapeHtml(title)}</strong>${message ? `<span>${escapeHtml(message)}</span>` : ""}</div>`;
+  els.toastStack.appendChild(toast);
+  window.setTimeout(() => {
+    toast.classList.add("leaving");
+    toast.addEventListener("animationend", () => toast.remove(), { once: true });
+  }, 2600);
+}
+
+async function withButtonFeedback(button, busyLabel, action, doneLabel = null) {
+  const original = button?.textContent;
+  try {
+    if (button) {
+      button.disabled = true;
+      button.classList.add("is-busy");
+      button.textContent = busyLabel;
+    }
+    const result = await action();
+    if (button) {
+      button.classList.remove("is-busy");
+      if (result !== false) {
+        button.classList.add("is-done");
+        if (doneLabel) button.textContent = doneLabel;
+      }
+      window.setTimeout(() => {
+        button.classList.remove("is-done");
+        button.disabled = false;
+        button.textContent = original;
+      }, 850);
+    }
+    return result;
+  } catch (error) {
+    if (button) {
+      button.classList.remove("is-busy", "is-done");
+      button.disabled = false;
+      button.textContent = original;
+    }
+    showToast("Action failed", error.message || "Please try again.", "error");
+    return false;
+  }
+}
+
 async function saveFullReport() {
   const data = reportData();
-  if (!getEditorText(els.reportTextEditor)) return;
+  if (!getEditorText(els.reportTextEditor)) {
+    showToast("Nothing to save", "Type a report first.", "info");
+    return false;
+  }
   await pbCreate("old_reports", data);
   els.oldSearchInput.value = data.title;
   state.selectedOldReport = null;
   await loadOldReports();
   await loadWorkLog();
+  showToast("Report saved", data.isInteresting ? "Saved and marked as interesting." : "Added to Old Reports and Work Log.");
   showMode("builder");
+  return true;
 }
 
 function savedDate(report) {
@@ -901,19 +961,24 @@ els.oldReportList.addEventListener("contextmenu", event => {
       await pbUpdate("old_reports", id, { isInteresting: !report.isInteresting });
       await loadOldReports();
       await loadWorkLog();
+      showToast(report.isInteresting ? "Removed from interesting" : "Saved as interesting", report.title || "Saved report");
     }});
     actions.push({ label: "Delete saved report", danger: true, run: async () => {
       if (!confirm("Delete this old report?")) return;
       await pbDelete("old_reports", id);
       if (state.selectedOldReport?.id === id) state.selectedOldReport = null;
       await loadOldReports();
+      await loadWorkLog();
+      showToast("Saved report deleted", report.title || "Old report");
     }});
   }
   showContextMenu(event.clientX, event.clientY, actions);
 });
 els.useOldReportBtn.addEventListener("click", useOldReportAsTemplate);
 els.newTemplateBtn.addEventListener("click", blankTemplate);
-els.saveTemplateBtn.addEventListener("click", saveTemplate);
+els.saveTemplateBtn.addEventListener("click", () => {
+  withButtonFeedback(els.saveTemplateBtn, "Saving...", saveTemplate, "Saved");
+});
 els.useTemplateBtn.addEventListener("click", () => useTemplateForReport());
 els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
 [
@@ -981,15 +1046,21 @@ els.templateList.addEventListener("contextmenu", event => {
       if (state.selectedTemplate?.id === id) state.selectedTemplate = null;
       await loadTemplateFacets();
       await loadTemplates();
+      showToast("Template deleted");
     }}
   ]);
 });
 els.contextMenu?.addEventListener("click", event => event.stopPropagation());
 document.addEventListener("click", hideContextMenu);
-els.copyReportBtn.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
+els.copyReportBtn.addEventListener("click", () => {
+  withButtonFeedback(els.copyReportBtn, "Copying...", async () => {
+    await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
+    showToast("Copied", "Plain text is ready to paste.");
+  }, "Copied");
 });
-els.saveReportBtn.addEventListener("click", saveFullReport);
+els.saveReportBtn.addEventListener("click", () => {
+  withButtonFeedback(els.saveReportBtn, "Saving...", saveFullReport, "Saved");
+});
 els.worklogSearchInput.addEventListener("input", debounce(renderWorkLog));
 els.interestingSearchInput.addEventListener("input", debounce(renderInterestingCases));
 els.worklogList.addEventListener("click", event => {
@@ -1011,12 +1082,15 @@ els.worklogList.addEventListener("contextmenu", event => {
     { label: report?.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: !report?.isInteresting });
       await loadWorkLog();
+      await loadOldReports();
+      showToast(report?.isInteresting ? "Removed from interesting" : "Saved as interesting", report?.title || "Saved report");
     }},
     { label: "Delete saved report", danger: true, run: async () => {
       if (!confirm("Delete this saved report?")) return;
       await pbDelete("old_reports", id);
       await loadWorkLog();
       await loadOldReports();
+      showToast("Saved report deleted", report?.title || "Report");
     }}
   ]);
 });
@@ -1030,6 +1104,8 @@ els.interestingList.addEventListener("contextmenu", event => {
     { label: "Remove interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: false });
       await loadWorkLog();
+      await loadOldReports();
+      showToast("Removed from interesting");
     }}
   ]);
 });
