@@ -289,10 +289,70 @@ function proofingIssues(editor) {
   }));
 }
 
-function markProofingFallback(editor, issues) {
+function textOffsetForPoint(root, targetNode, targetOffset) {
+  let offset = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node === targetNode) return offset + targetOffset;
+    offset += node.nodeValue?.length || 0;
+  }
+  return offset;
+}
+
+function pointForTextOffset(root, targetOffset) {
+  let offset = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const length = node.nodeValue?.length || 0;
+    if (offset + length >= targetOffset) {
+      return { node, offset: Math.max(0, targetOffset - offset) };
+    }
+    offset += length;
+  }
+  return { node: root, offset: root.childNodes.length };
+}
+
+function saveEditorSelection(editor) {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return null;
+  return {
+    start: textOffsetForPoint(editor, range.startContainer, range.startOffset),
+    end: textOffsetForPoint(editor, range.endContainer, range.endOffset),
+    collapsed: range.collapsed
+  };
+}
+
+function restoreEditorSelection(editor, saved) {
+  if (!saved) return;
+  const selection = window.getSelection();
+  if (!selection) return;
+  const start = pointForTextOffset(editor, saved.start);
+  const end = pointForTextOffset(editor, saved.collapsed ? saved.start : saved.end);
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function clearProofingFallback(editor) {
+  const savedSelection = saveEditorSelection(editor);
   editor.querySelectorAll(".proofing-underline").forEach(node => node.replaceWith(document.createTextNode(node.textContent || "")));
   editor.normalize();
-  if (!issues.length) return;
+  restoreEditorSelection(editor, savedSelection);
+}
+
+function markProofingFallback(editor, issues) {
+  const savedSelection = saveEditorSelection(editor);
+  clearProofingFallback(editor);
+  if (!issues.length) {
+    restoreEditorSelection(editor, savedSelection);
+    return;
+  }
   collectProofingMatches(editor)
     .sort((a, b) => (a.node === b.node ? b.start - a.start : 0))
     .slice(0, 80)
@@ -309,13 +369,14 @@ function markProofingFallback(editor, issues) {
         // If the editor changes under us, skip this mark and continue.
       }
     });
+  restoreEditorSelection(editor, savedSelection);
 }
 
-function updateProofing(editor) {
+function updateProofing(editor, options = {}) {
   if (!editor) return;
   const panel = editor === els.templateTextEditor ? els.templateProofing : els.reportProofing;
   const issues = proofingIssues(editor);
-  markProofingFallback(editor, issues);
+  if (options.fallback !== false) markProofingFallback(editor, issues);
   if (window.CSS?.highlights) {
     const ranges = collectProofingMatches(editor).map(match => {
       const range = new Range();
@@ -369,8 +430,9 @@ async function loadSpellchecker() {
     if (!affResponse.ok || !dicResponse.ok) return;
     const [affData, dicData] = await Promise.all([affResponse.text(), dicResponse.text()]);
     state.dictionary = new Typo("en_US", affData, dicData);
-    updateProofing(els.templateTextEditor);
-    updateProofing(els.reportTextEditor);
+    [els.templateTextEditor, els.reportTextEditor].forEach(editor => {
+      updateProofing(editor, { fallback: document.activeElement !== editor });
+    });
   } catch (error) {
     console.warn("Spellchecker dictionary unavailable; using fallback proofing.", error);
   }
@@ -1314,7 +1376,8 @@ document.querySelectorAll(".format-toolbar").forEach(toolbar => {
   });
 });
 [els.templateTextEditor, els.reportTextEditor].forEach(editor => {
-  editor.addEventListener("input", debounce(() => updateProofing(editor), 120));
+  editor.addEventListener("focus", () => clearProofingFallback(editor));
+  editor.addEventListener("input", debounce(() => updateProofing(editor, { fallback: false }), 120));
   editor.addEventListener("blur", () => updateProofing(editor));
 });
 els.templateList.addEventListener("click", event => {
