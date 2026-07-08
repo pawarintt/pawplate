@@ -40,6 +40,84 @@ pelvis perfusion pericardial peritoneal phlegmon pneumothorax portal prostate ra
 temporal thoracic thrombus thyroid tibia tumor ultrasound ureter vertebral
 `.trim().split(/\s+/));
 const PROOFING_ABBREVIATIONS = new Set("ct mri us pa ap lat cta cxr gb cbd cva ckd copd mpa rv lv cm mm hn llq rlq rml lll rul rll lul iv s p".split(/\s+/));
+const SNIPPET_SCHEMAS = {
+  tirads: {
+    label: "TI-RADS",
+    modalities: {
+      ultrasound: {
+        label: "Ultrasound",
+        findings: {
+          thyroidNodule: {
+            label: "Thyroid nodule",
+            fields: [
+              { key: "side", label: "Side", type: "select", options: ["right", "left", "isthmic"] },
+              { key: "region", label: "Region", type: "select", options: ["upper pole", "mid pole", "lower pole", "interpolar region"] },
+              { key: "size", label: "Size", type: "text", placeholder: "1.4 x 1.2 x 2.0 cm" },
+              { key: "composition", label: "Composition", type: "select", options: ["solid", "predominantly solid", "mixed cystic and solid", "spongiform", "cystic"] },
+              { key: "echogenicity", label: "Echogenicity", type: "select", options: ["hypoechoic", "isoechoic", "hyperechoic", "very hypoechoic", "anechoic"] },
+              { key: "shape", label: "Shape", type: "select", options: ["wider-than-tall", "taller-than-wide"] },
+              { key: "margin", label: "Margin", type: "select", options: ["smooth", "ill-defined", "lobulated", "irregular", "extrathyroidal extension"] },
+              { key: "foci", label: "Echogenic foci", type: "select", options: ["none", "comet-tail artifacts", "macrocalcifications", "peripheral rim calcifications", "punctate echogenic foci"] }
+            ]
+          }
+        }
+      }
+    }
+  },
+  birads: {
+    label: "BI-RADS",
+    modalities: {
+      mammography: {
+        label: "Mammography",
+        findings: {
+          mass: {
+            label: "Mass",
+            fields: [
+              { key: "breast", label: "Breast", type: "select", options: ["right breast", "left breast"] },
+              { key: "location", label: "Location", type: "text", placeholder: "upper outer quadrant" },
+              { key: "size", label: "Size", type: "text", placeholder: "1.2 cm" },
+              { key: "shape", label: "Shape", type: "select", options: ["oval", "round", "irregular"] },
+              { key: "margin", label: "Margin", type: "select", options: ["circumscribed", "obscured", "microlobulated", "indistinct", "spiculated"] },
+              { key: "density", label: "Density", type: "select", options: ["high density", "equal density", "low density", "fat-containing"] },
+              { key: "associated", label: "Associated", type: "text", placeholder: "no associated suspicious calcifications" }
+            ]
+          },
+          calcification: {
+            label: "Calcification",
+            fields: [
+              { key: "breast", label: "Breast", type: "select", options: ["right breast", "left breast"] },
+              { key: "location", label: "Location", type: "text", placeholder: "upper outer quadrant" },
+              { key: "morphology", label: "Morphology", type: "select", options: ["amorphous", "coarse heterogeneous", "fine pleomorphic", "fine linear", "fine-linear branching", "round", "rim", "dystrophic"] },
+              { key: "distribution", label: "Distribution", type: "select", options: ["diffuse", "regional", "grouped", "linear", "segmental"] }
+            ]
+          }
+        }
+      },
+      ultrasound: {
+        label: "Ultrasound",
+        findings: {
+          mass: {
+            label: "Mass",
+            fields: [
+              { key: "breast", label: "Breast", type: "select", options: ["right breast", "left breast"] },
+              { key: "clock", label: "Clock", type: "text", placeholder: "10 o'clock" },
+              { key: "distance", label: "Distance", type: "text", placeholder: "3 cm from the nipple" },
+              { key: "depth", label: "Depth", type: "select", options: ["anterior depth", "middle depth", "posterior depth", "subareolar region"] },
+              { key: "size", label: "Size", type: "text", placeholder: "0.8 x 0.5 x 0.4 cm" },
+              { key: "shape", label: "Shape", type: "select", options: ["oval", "round", "irregular"] },
+              { key: "orientation", label: "Orientation", type: "select", options: ["parallel", "not parallel"] },
+              { key: "margin", label: "Margin", type: "select", options: ["circumscribed", "indistinct", "angular", "microlobulated", "spiculated"] },
+              { key: "echo", label: "Echo pattern", type: "select", options: ["anechoic", "hyperechoic", "complex cystic and solid", "hypoechoic", "isoechoic", "heterogeneous"] },
+              { key: "posterior", label: "Posterior", type: "select", options: ["no posterior features", "posterior enhancement", "posterior shadowing", "combined posterior pattern"] },
+              { key: "vascularity", label: "Vascularity", type: "select", options: ["no internal vascularity", "internal vascularity", "peripheral vascularity"] }
+            ]
+          }
+        }
+      }
+    }
+  }
+};
+const SNIPPET_DEFAULTS = { system: "tirads", modality: "ultrasound", finding: "thyroidNodule", values: {} };
 
 const state = {
   mode: "builder",
@@ -68,6 +146,7 @@ const state = {
   userSettingsId: "",
   guidelineFileToken: "",
   guidelineFileTokenExpiresAt: 0,
+  snippet: structuredClone(SNIPPET_DEFAULTS),
   tiptapReady: false,
   editorUpdateTimers: new WeakMap()
 };
@@ -124,6 +203,14 @@ const els = {
   writerGuidelineTitle: document.getElementById("writerGuidelineTitle"),
   writerGuidelinePreview: document.getElementById("writerGuidelinePreview"),
   openGuidelineBuilderBtn: document.getElementById("openGuidelineBuilderBtn"),
+  snippetSystemSelect: document.getElementById("snippetSystemSelect"),
+  snippetModalitySelect: document.getElementById("snippetModalitySelect"),
+  snippetFindingSelect: document.getElementById("snippetFindingSelect"),
+  snippetFields: document.getElementById("snippetFields"),
+  snippetPreviewText: document.getElementById("snippetPreviewText"),
+  copySnippetBtn: document.getElementById("copySnippetBtn"),
+  insertSnippetBtn: document.getElementById("insertSnippetBtn"),
+  resetSnippetBtn: document.getElementById("resetSnippetBtn"),
   guidelineModeBadge: document.getElementById("guidelineModeBadge"),
   newGuidelineBtn: document.getElementById("newGuidelineBtn"),
   insertGuidelineImageBtn: document.getElementById("insertGuidelineImageBtn"),
@@ -313,6 +400,155 @@ function focusEditor(editor) {
     return;
   }
   editor?.focus();
+}
+
+function currentSnippetSchema() {
+  const system = SNIPPET_SCHEMAS[state.snippet.system] || SNIPPET_SCHEMAS.tirads;
+  const modality = system.modalities[state.snippet.modality] || Object.values(system.modalities)[0];
+  const finding = modality.findings[state.snippet.finding] || Object.values(modality.findings)[0];
+  return { system, modality, finding };
+}
+
+function optionLabel(value) {
+  return String(value || "").replace(/([A-Z])/g, " $1").replace(/^./, char => char.toUpperCase());
+}
+
+function snippetValue(key) {
+  return String(state.snippet.values[key] || "").trim();
+}
+
+function setSnippetDefaults() {
+  const { finding } = currentSnippetSchema();
+  const nextValues = {};
+  for (const field of finding.fields) {
+    nextValues[field.key] = state.snippet.values[field.key] || (field.type === "select" ? field.options[0] : "");
+  }
+  state.snippet.values = nextValues;
+}
+
+function sentenceCase(value) {
+  const text = String(value || "").trim();
+  return text ? text[0].toUpperCase() + text.slice(1) : "";
+}
+
+function indefiniteArticle(phrase) {
+  const words = String(phrase || "").trim().split(/\s+/);
+  const word = words.find(item => /^[a-z]/i.test(item)) || "";
+  return /^[aeiou]/i.test(word) ? "an" : "a";
+}
+
+function joinPhrase(parts, separator = " ") {
+  return parts.filter(Boolean).join(separator).replace(/\s+/g, " ").trim();
+}
+
+function tiradsScore(values) {
+  const scoreMap = {
+    composition: { cystic: 0, spongiform: 0, "mixed cystic and solid": 1, "predominantly solid": 2, solid: 2 },
+    echogenicity: { anechoic: 0, hyperechoic: 1, isoechoic: 1, hypoechoic: 2, "very hypoechoic": 3 },
+    shape: { "wider-than-tall": 0, "taller-than-wide": 3 },
+    margin: { smooth: 0, "ill-defined": 0, lobulated: 2, irregular: 2, "extrathyroidal extension": 3 },
+    foci: { none: 0, "comet-tail artifacts": 0, macrocalcifications: 1, "peripheral rim calcifications": 2, "punctate echogenic foci": 3 }
+  };
+  const total = Object.entries(scoreMap).reduce((sum, [key, map]) => sum + (map[values[key]] ?? 0), 0);
+  const category = total >= 7 ? "TR5" : total >= 4 ? "TR4" : total >= 3 ? "TR3" : total >= 2 ? "TR2" : "TR1";
+  return { total, category };
+}
+
+function buildSnippetText() {
+  const { system, modality, finding } = currentSnippetSchema();
+  const values = state.snippet.values;
+  if (system === SNIPPET_SCHEMAS.tirads) {
+    const score = tiradsScore(values);
+    const size = snippetValue("size");
+    const location = joinPhrase([values.side === "isthmic" ? "isthmus" : `${values.side} thyroid lobe`, values.region ? `at the ${values.region}` : ""], " ");
+    const descriptors = joinPhrase([values.composition, values.echogenicity, values.shape, values.margin, values.foci !== "none" ? `with ${values.foci}` : ""], ", ");
+    return sentenceCase(joinPhrase([size ? `A ${size}` : "A", descriptors, "nodule", location ? `is seen in the ${location}` : "is seen"]) + `. ${score.category} (${score.total} points).`);
+  }
+  if (system === SNIPPET_SCHEMAS.birads && modality.label === "Mammography" && finding.label === "Mass") {
+    const descriptor = joinPhrase([values.shape, values.margin, values.density, "mass"]);
+    const size = snippetValue("size");
+    const lesion = joinPhrase([size ? `${size}` : "", descriptor]);
+    const location = joinPhrase([values.breast, snippetValue("location") ? `at the ${snippetValue("location")}` : ""], " ");
+    const associated = snippetValue("associated");
+    return sentenceCase(joinPhrase([`There is ${size ? "a" : indefiniteArticle(descriptor)}`, lesion, location ? `in the ${location}` : "", associated ? `, with ${associated}` : ""]) + ".");
+  }
+  if (system === SNIPPET_SCHEMAS.birads && modality.label === "Mammography" && finding.label === "Calcification") {
+    const location = joinPhrase([values.breast, snippetValue("location") ? `at the ${snippetValue("location")}` : ""], " ");
+    return sentenceCase(joinPhrase([values.distribution, values.morphology, "calcifications are seen", location ? `in the ${location}` : ""]) + ".");
+  }
+  if (system === SNIPPET_SCHEMAS.birads && modality.label === "Ultrasound" && finding.label === "Mass") {
+    const location = joinPhrase([
+      values.breast,
+      snippetValue("clock") ? `at ${snippetValue("clock")}` : "",
+      snippetValue("distance"),
+      values.depth
+    ], ", ");
+    const descriptor = joinPhrase([values.shape, values.orientation, values.margin, values.echo, "mass"]);
+    const size = snippetValue("size");
+    const lesion = joinPhrase([size ? `${size}` : "", descriptor]);
+    const posterior = values.posterior && values.posterior !== "no posterior features" ? ` with ${values.posterior}` : "";
+    const vascularity = values.vascularity ? ` and ${values.vascularity}` : "";
+    return sentenceCase(joinPhrase([`There is ${size ? "a" : indefiniteArticle(descriptor)}`, lesion, location ? `in the ${location}` : ""]) + `${posterior}${vascularity}.`);
+  }
+  return "";
+}
+
+function renderSnippetGenerator() {
+  if (!els.snippetSystemSelect) return;
+  els.snippetSystemSelect.innerHTML = Object.entries(SNIPPET_SCHEMAS)
+    .map(([value, schema]) => `<option value="${value}">${escapeHtml(schema.label)}</option>`)
+    .join("");
+  els.snippetSystemSelect.value = state.snippet.system;
+  const system = SNIPPET_SCHEMAS[state.snippet.system] || SNIPPET_SCHEMAS.tirads;
+  if (!system.modalities[state.snippet.modality]) state.snippet.modality = Object.keys(system.modalities)[0];
+  els.snippetModalitySelect.innerHTML = Object.entries(system.modalities)
+    .map(([value, schema]) => `<option value="${value}">${escapeHtml(schema.label)}</option>`)
+    .join("");
+  els.snippetModalitySelect.value = state.snippet.modality;
+  const modality = system.modalities[state.snippet.modality];
+  if (!modality.findings[state.snippet.finding]) state.snippet.finding = Object.keys(modality.findings)[0];
+  els.snippetFindingSelect.innerHTML = Object.entries(modality.findings)
+    .map(([value, schema]) => `<option value="${value}">${escapeHtml(schema.label)}</option>`)
+    .join("");
+  els.snippetFindingSelect.value = state.snippet.finding;
+  setSnippetDefaults();
+  const { finding } = currentSnippetSchema();
+  els.snippetFields.innerHTML = finding.fields.map(field => {
+    const value = state.snippet.values[field.key] || "";
+    if (field.type === "select") {
+      return `
+        <label class="snippet-field">
+          <span>${escapeHtml(field.label)}</span>
+          <select data-snippet-field="${escapeHtml(field.key)}">
+            ${field.options.map(option => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(optionLabel(option))}</option>`).join("")}
+          </select>
+        </label>
+      `;
+    }
+    return `
+      <label class="snippet-field">
+        <span>${escapeHtml(field.label)}</span>
+        <input data-snippet-field="${escapeHtml(field.key)}" value="${escapeHtml(value)}" placeholder="${escapeHtml(field.placeholder || "")}">
+      </label>
+    `;
+  }).join("");
+  const snippet = buildSnippetText();
+  els.snippetPreviewText.textContent = snippet || "Pick lexicons to generate a sentence.";
+}
+
+function insertReportText(text) {
+  const value = String(text || "").trim();
+  if (!value) return;
+  const editor = els.reportTextEditor;
+  const tiptap = editor.__pawplateEditor;
+  if (tiptap) {
+    tiptap.chain().focus().insertContent(`${escapeHtml(value)}<p></p>`).run();
+    updateProofing(editor, { fallback: false });
+    return;
+  }
+  editor.focus();
+  document.execCommand("insertText", false, `${value}\n`);
+  updateProofing(editor);
 }
 
 function updateReportModeBadge() {
@@ -2082,6 +2318,52 @@ els.writerModeBtn.addEventListener("click", () => showMode("writer"));
 els.guidelineModeBtn.addEventListener("click", () => showMode("guidelines"));
 els.worklogModeBtn.addEventListener("click", () => showMode("worklog"));
 els.themeToggleBtn.addEventListener("click", toggleTheme);
+els.snippetSystemSelect?.addEventListener("change", () => {
+  state.snippet.system = els.snippetSystemSelect.value;
+  const system = SNIPPET_SCHEMAS[state.snippet.system];
+  state.snippet.modality = Object.keys(system.modalities)[0];
+  state.snippet.finding = Object.keys(system.modalities[state.snippet.modality].findings)[0];
+  state.snippet.values = {};
+  renderSnippetGenerator();
+});
+els.snippetModalitySelect?.addEventListener("change", () => {
+  state.snippet.modality = els.snippetModalitySelect.value;
+  const { modality } = currentSnippetSchema();
+  state.snippet.finding = Object.keys(modality.findings)[0];
+  state.snippet.values = {};
+  renderSnippetGenerator();
+});
+els.snippetFindingSelect?.addEventListener("change", () => {
+  state.snippet.finding = els.snippetFindingSelect.value;
+  state.snippet.values = {};
+  renderSnippetGenerator();
+});
+els.snippetFields?.addEventListener("input", event => {
+  const field = event.target.closest("[data-snippet-field]");
+  if (!field) return;
+  state.snippet.values[field.dataset.snippetField] = field.value;
+  els.snippetPreviewText.textContent = buildSnippetText();
+});
+els.snippetFields?.addEventListener("change", event => {
+  const field = event.target.closest("[data-snippet-field]");
+  if (!field) return;
+  state.snippet.values[field.dataset.snippetField] = field.value;
+  els.snippetPreviewText.textContent = buildSnippetText();
+});
+els.insertSnippetBtn?.addEventListener("click", () => {
+  const snippet = buildSnippetText();
+  insertReportText(snippet);
+  showToast("Snippet inserted", snippet);
+});
+els.copySnippetBtn?.addEventListener("click", async () => {
+  const snippet = buildSnippetText();
+  await navigator.clipboard.writeText(snippet);
+  showToast("Snippet copied", snippet);
+});
+els.resetSnippetBtn?.addEventListener("click", () => {
+  state.snippet = structuredClone(SNIPPET_DEFAULTS);
+  renderSnippetGenerator();
+});
 els.oldSearchInput.addEventListener("input", debounce(() => {
   state.selectedOldReport = null;
   loadOldReports();
@@ -2402,6 +2684,7 @@ async function loadApp() {
   updateTemplateModeBadge();
   updateGuidelineModeBadge();
   updateReportModeBadge();
+  renderSnippetGenerator();
   blankTemplate();
   blankGuideline();
   await loadFacets();

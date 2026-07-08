@@ -197,6 +197,28 @@
             <div id="writerGuidelinePreview" class="markdown-preview"></div>
           </article>
         </div>
+        <div class="writer-reference snippet-reference">
+          <div class="pane-head">
+            <h2>Snippet Generator</h2>
+            <button id="resetSnippetBtn" type="button">Reset</button>
+          </div>
+          <div class="snippet-controls">
+            <select id="snippetSystemSelect" aria-label="Snippet system">
+              <option value="tirads">TI-RADS</option>
+              <option value="birads">BI-RADS</option>
+            </select>
+            <select id="snippetModalitySelect" aria-label="Snippet modality"></select>
+            <select id="snippetFindingSelect" aria-label="Snippet finding"></select>
+          </div>
+          <div id="snippetFields" class="snippet-fields"></div>
+          <article class="snippet-preview">
+            <div id="snippetPreviewText" class="snippet-preview-text"></div>
+            <div class="snippet-actions">
+              <button id="copySnippetBtn" type="button">Copy</button>
+              <button id="insertSnippetBtn" type="button">Insert</button>
+            </div>
+          </article>
+        </div>
       </aside>
     </section>
 
