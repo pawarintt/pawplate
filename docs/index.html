@@ -166,24 +166,31 @@
       </section>
 
       <aside class="lookup-pane templates-pane">
-        <div class="writer-reference">
+        <div class="reference-tabs" role="tablist" aria-label="Report reference panels">
+          <button class="active" type="button" data-reference-tab="templates">Templates</button>
+          <button type="button" data-reference-tab="guidelines">Guidelines</button>
+          <button type="button" data-reference-tab="snippets">Snippet</button>
+        </div>
+        <div class="writer-reference reference-panel active" data-reference-panel="templates">
           <div class="pane-head">
             <h2>Templates</h2>
             <input id="templateSearchInput" type="search" placeholder="search">
           </div>
           <div class="filter-grid">
-            <select id="templateModalityFilter"></select>
+            <select id="templateModalityFilter" class="hidden-select" aria-label="Template modality filter"></select>
+            <div id="templateModalityRadios" class="filter-chips" aria-label="Template modality"></div>
             <select id="templateTopicFilter"></select>
             <select id="templateBodyPartFilter"></select>
-            <select id="templateTypeFilter">
+            <select id="templateTypeFilter" class="hidden-select" aria-label="Template type filter">
               <option value="">All types</option>
               <option value="normal">Normal</option>
               <option value="disease">Disease</option>
             </select>
+            <div id="templateTypeRadios" class="filter-chips" aria-label="Template type"></div>
           </div>
           <div id="templateList" class="result-list"></div>
         </div>
-        <div class="writer-reference guideline-reference">
+        <div class="writer-reference guideline-reference reference-panel" data-reference-panel="guidelines">
           <div class="pane-head">
             <h2>Guidelines</h2>
             <input id="writerGuidelineSearchInput" type="search" placeholder="reference">
@@ -197,22 +204,30 @@
             <div id="writerGuidelinePreview" class="markdown-preview"></div>
           </article>
         </div>
-        <div class="writer-reference snippet-reference">
+        <div class="writer-reference snippet-reference reference-panel" data-reference-panel="snippets">
           <div class="pane-head">
             <h2>Snippet Generator</h2>
             <button id="resetSnippetBtn" type="button">Reset</button>
           </div>
           <div class="snippet-controls">
-            <select id="snippetSystemSelect" aria-label="Snippet system">
+            <select id="snippetSystemSelect" class="hidden-select" aria-label="Snippet system">
               <option value="tirads">TI-RADS</option>
               <option value="birads">BI-RADS</option>
             </select>
-            <select id="snippetModalitySelect" aria-label="Snippet modality"></select>
-            <select id="snippetFindingSelect" aria-label="Snippet finding"></select>
+            <div id="snippetSystemRadios" class="filter-chips" aria-label="Snippet system"></div>
+            <select id="snippetModalitySelect" class="hidden-select" aria-label="Snippet modality"></select>
+            <div id="snippetModalityRadios" class="filter-chips" aria-label="Snippet modality"></div>
+            <select id="snippetFindingSelect" class="hidden-select" aria-label="Snippet finding"></select>
+            <div id="snippetFindingRadios" class="filter-chips" aria-label="Snippet finding"></div>
           </div>
           <div id="snippetFields" class="snippet-fields"></div>
           <article class="snippet-preview">
             <div id="snippetPreviewText" class="snippet-preview-text"></div>
+            <div class="snippet-actions">
+              <button id="addSnippetFindingBtn" type="button">Add Finding</button>
+              <button id="clearSnippetFindingsBtn" type="button">Clear</button>
+            </div>
+            <div id="snippetFindingList" class="snippet-finding-list"></div>
             <div class="snippet-actions">
               <button id="copySnippetBtn" type="button">Copy</button>
               <button id="insertSnippetBtn" type="button">Insert</button>

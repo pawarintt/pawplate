@@ -118,6 +118,11 @@ const SNIPPET_SCHEMAS = {
   }
 };
 const SNIPPET_DEFAULTS = { system: "tirads", modality: "ultrasound", finding: "thyroidNodule", values: {} };
+const TEMPLATE_TYPE_FILTERS = [
+  { value: "", label: "All types" },
+  { value: "normal", label: "Normal" },
+  { value: "disease", label: "Disease" }
+];
 
 const state = {
   mode: "builder",
@@ -137,6 +142,7 @@ const state = {
   guidelineDraftId: null,
   reportDraftId: null,
   reportDraftSourceDate: "",
+  referenceTab: "templates",
   worklogMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   worklogSelectedDate: "",
   workLogReports: [],
@@ -147,6 +153,7 @@ const state = {
   guidelineFileToken: "",
   guidelineFileTokenExpiresAt: 0,
   snippet: structuredClone(SNIPPET_DEFAULTS),
+  snippetItems: [],
   tiptapReady: false,
   editorUpdateTimers: new WeakMap()
 };
@@ -194,9 +201,11 @@ const els = {
   templateProofing: document.getElementById("templateProofing"),
   templateSearchInput: document.getElementById("templateSearchInput"),
   templateModalityFilter: document.getElementById("templateModalityFilter"),
+  templateModalityRadios: document.getElementById("templateModalityRadios"),
   templateTopicFilter: document.getElementById("templateTopicFilter"),
   templateBodyPartFilter: document.getElementById("templateBodyPartFilter"),
   templateTypeFilter: document.getElementById("templateTypeFilter"),
+  templateTypeRadios: document.getElementById("templateTypeRadios"),
   templateList: document.getElementById("templateList"),
   writerGuidelineSearchInput: document.getElementById("writerGuidelineSearchInput"),
   writerGuidelineList: document.getElementById("writerGuidelineList"),
@@ -204,10 +213,16 @@ const els = {
   writerGuidelinePreview: document.getElementById("writerGuidelinePreview"),
   openGuidelineBuilderBtn: document.getElementById("openGuidelineBuilderBtn"),
   snippetSystemSelect: document.getElementById("snippetSystemSelect"),
+  snippetSystemRadios: document.getElementById("snippetSystemRadios"),
   snippetModalitySelect: document.getElementById("snippetModalitySelect"),
+  snippetModalityRadios: document.getElementById("snippetModalityRadios"),
   snippetFindingSelect: document.getElementById("snippetFindingSelect"),
+  snippetFindingRadios: document.getElementById("snippetFindingRadios"),
   snippetFields: document.getElementById("snippetFields"),
   snippetPreviewText: document.getElementById("snippetPreviewText"),
+  snippetFindingList: document.getElementById("snippetFindingList"),
+  addSnippetFindingBtn: document.getElementById("addSnippetFindingBtn"),
+  clearSnippetFindingsBtn: document.getElementById("clearSnippetFindingsBtn"),
   copySnippetBtn: document.getElementById("copySnippetBtn"),
   insertSnippetBtn: document.getElementById("insertSnippetBtn"),
   resetSnippetBtn: document.getElementById("resetSnippetBtn"),
@@ -402,6 +417,29 @@ function focusEditor(editor) {
   editor?.focus();
 }
 
+function renderChoiceChips(container, choices, activeValue, group, className = "choice-chip") {
+  if (!container) return;
+  container.innerHTML = choices.map(choice => `
+    <button class="${className} ${choice.value === activeValue ? "active" : ""}" type="button" data-choice-group="${escapeHtml(group)}" data-choice-value="${escapeHtml(choice.value)}">
+      ${escapeHtml(choice.label)}
+    </button>
+  `).join("");
+}
+
+function choicesFromSelect(select) {
+  return [...(select?.options || [])].map(option => ({ value: option.value, label: option.textContent || option.value }));
+}
+
+function showReferenceTab(tab) {
+  state.referenceTab = tab;
+  document.querySelectorAll("[data-reference-tab]").forEach(button => {
+    button.classList.toggle("active", button.dataset.referenceTab === tab);
+  });
+  document.querySelectorAll("[data-reference-panel]").forEach(panel => {
+    panel.classList.toggle("active", panel.dataset.referencePanel === tab);
+  });
+}
+
 function currentSnippetSchema() {
   const system = SNIPPET_SCHEMAS[state.snippet.system] || SNIPPET_SCHEMAS.tirads;
   const modality = system.modalities[state.snippet.modality] || Object.values(system.modalities)[0];
@@ -493,24 +531,46 @@ function buildSnippetText() {
   return "";
 }
 
+function combinedSnippetText() {
+  return state.snippetItems.length ? state.snippetItems.map(item => item.text).join("\n") : buildSnippetText();
+}
+
 function renderSnippetGenerator() {
   if (!els.snippetSystemSelect) return;
   els.snippetSystemSelect.innerHTML = Object.entries(SNIPPET_SCHEMAS)
     .map(([value, schema]) => `<option value="${value}">${escapeHtml(schema.label)}</option>`)
     .join("");
   els.snippetSystemSelect.value = state.snippet.system;
+  renderChoiceChips(
+    els.snippetSystemRadios,
+    Object.entries(SNIPPET_SCHEMAS).map(([value, schema]) => ({ value, label: schema.label })),
+    state.snippet.system,
+    "snippet-system"
+  );
   const system = SNIPPET_SCHEMAS[state.snippet.system] || SNIPPET_SCHEMAS.tirads;
   if (!system.modalities[state.snippet.modality]) state.snippet.modality = Object.keys(system.modalities)[0];
   els.snippetModalitySelect.innerHTML = Object.entries(system.modalities)
     .map(([value, schema]) => `<option value="${value}">${escapeHtml(schema.label)}</option>`)
     .join("");
   els.snippetModalitySelect.value = state.snippet.modality;
+  renderChoiceChips(
+    els.snippetModalityRadios,
+    Object.entries(system.modalities).map(([value, schema]) => ({ value, label: schema.label })),
+    state.snippet.modality,
+    "snippet-modality"
+  );
   const modality = system.modalities[state.snippet.modality];
   if (!modality.findings[state.snippet.finding]) state.snippet.finding = Object.keys(modality.findings)[0];
   els.snippetFindingSelect.innerHTML = Object.entries(modality.findings)
     .map(([value, schema]) => `<option value="${value}">${escapeHtml(schema.label)}</option>`)
     .join("");
   els.snippetFindingSelect.value = state.snippet.finding;
+  renderChoiceChips(
+    els.snippetFindingRadios,
+    Object.entries(modality.findings).map(([value, schema]) => ({ value, label: schema.label })),
+    state.snippet.finding,
+    "snippet-finding"
+  );
   setSnippetDefaults();
   const { finding } = currentSnippetSchema();
   els.snippetFields.innerHTML = finding.fields.map(field => {
@@ -519,9 +579,13 @@ function renderSnippetGenerator() {
       return `
         <label class="snippet-field">
           <span>${escapeHtml(field.label)}</span>
-          <select data-snippet-field="${escapeHtml(field.key)}">
-            ${field.options.map(option => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(optionLabel(option))}</option>`).join("")}
-          </select>
+          <div class="lexicon-chips">
+            ${field.options.map(option => `
+              <button class="choice-chip lexicon-chip ${option === value ? "active" : ""}" type="button" data-snippet-field="${escapeHtml(field.key)}" data-snippet-value="${escapeHtml(option)}">
+                ${escapeHtml(optionLabel(option))}
+              </button>
+            `).join("")}
+          </div>
         </label>
       `;
     }
@@ -534,6 +598,22 @@ function renderSnippetGenerator() {
   }).join("");
   const snippet = buildSnippetText();
   els.snippetPreviewText.textContent = snippet || "Pick lexicons to generate a sentence.";
+  renderSnippetFindingList();
+}
+
+function renderSnippetFindingList() {
+  if (!els.snippetFindingList) return;
+  if (!state.snippetItems.length) {
+    els.snippetFindingList.innerHTML = `<div class="empty mini-empty">Add findings here when there are multiple masses/nodules.</div>`;
+    return;
+  }
+  els.snippetFindingList.innerHTML = state.snippetItems.map((item, index) => `
+    <div class="snippet-finding-item">
+      <span>${index + 1}.</span>
+      <p>${escapeHtml(item.text)}</p>
+      <button type="button" data-remove-snippet-item="${index}" aria-label="Remove finding">Remove</button>
+    </div>
+  `).join("");
 }
 
 function insertReportText(text) {
@@ -895,6 +975,10 @@ function updateFilterOptions(scope, changed = "") {
   setSelectOptions(modalityFilter, valuesFrom(records, "modality"), "All modalities", modality);
   setSelectOptions(topicFilter, valuesFrom(topicRecords, "topic"), "All topics", topic);
   setSelectOptions(bodyFilter, valuesFrom(bodyRecords, "bodyPart"), "All body parts", bodyFilter.value);
+  if (scope === "template") {
+    renderChoiceChips(els.templateModalityRadios, choicesFromSelect(modalityFilter), modalityFilter.value, "template-modality");
+    renderChoiceChips(els.templateTypeRadios, TEMPLATE_TYPE_FILTERS, els.templateTypeFilter.value, "template-type");
+  }
 }
 
 function readAuth() {
@@ -2318,6 +2402,23 @@ els.writerModeBtn.addEventListener("click", () => showMode("writer"));
 els.guidelineModeBtn.addEventListener("click", () => showMode("guidelines"));
 els.worklogModeBtn.addEventListener("click", () => showMode("worklog"));
 els.themeToggleBtn.addEventListener("click", toggleTheme);
+document.querySelectorAll("[data-reference-tab]").forEach(button => {
+  button.addEventListener("click", () => showReferenceTab(button.dataset.referenceTab));
+});
+els.templateModalityRadios?.addEventListener("click", event => {
+  const button = event.target.closest("[data-choice-value]");
+  if (!button) return;
+  els.templateModalityFilter.value = button.dataset.choiceValue;
+  updateFilterOptions("template", "modality");
+  loadTemplates();
+});
+els.templateTypeRadios?.addEventListener("click", event => {
+  const button = event.target.closest("[data-choice-value]");
+  if (!button) return;
+  els.templateTypeFilter.value = button.dataset.choiceValue;
+  renderChoiceChips(els.templateTypeRadios, TEMPLATE_TYPE_FILTERS, els.templateTypeFilter.value, "template-type");
+  loadTemplates();
+});
 els.snippetSystemSelect?.addEventListener("change", () => {
   state.snippet.system = els.snippetSystemSelect.value;
   const system = SNIPPET_SCHEMAS[state.snippet.system];
@@ -2326,6 +2427,12 @@ els.snippetSystemSelect?.addEventListener("change", () => {
   state.snippet.values = {};
   renderSnippetGenerator();
 });
+els.snippetSystemRadios?.addEventListener("click", event => {
+  const button = event.target.closest("[data-choice-value]");
+  if (!button) return;
+  els.snippetSystemSelect.value = button.dataset.choiceValue;
+  els.snippetSystemSelect.dispatchEvent(new Event("change"));
+});
 els.snippetModalitySelect?.addEventListener("change", () => {
   state.snippet.modality = els.snippetModalitySelect.value;
   const { modality } = currentSnippetSchema();
@@ -2333,10 +2440,22 @@ els.snippetModalitySelect?.addEventListener("change", () => {
   state.snippet.values = {};
   renderSnippetGenerator();
 });
+els.snippetModalityRadios?.addEventListener("click", event => {
+  const button = event.target.closest("[data-choice-value]");
+  if (!button) return;
+  els.snippetModalitySelect.value = button.dataset.choiceValue;
+  els.snippetModalitySelect.dispatchEvent(new Event("change"));
+});
 els.snippetFindingSelect?.addEventListener("change", () => {
   state.snippet.finding = els.snippetFindingSelect.value;
   state.snippet.values = {};
   renderSnippetGenerator();
+});
+els.snippetFindingRadios?.addEventListener("click", event => {
+  const button = event.target.closest("[data-choice-value]");
+  if (!button) return;
+  els.snippetFindingSelect.value = button.dataset.choiceValue;
+  els.snippetFindingSelect.dispatchEvent(new Event("change"));
 });
 els.snippetFields?.addEventListener("input", event => {
   const field = event.target.closest("[data-snippet-field]");
@@ -2350,18 +2469,42 @@ els.snippetFields?.addEventListener("change", event => {
   state.snippet.values[field.dataset.snippetField] = field.value;
   els.snippetPreviewText.textContent = buildSnippetText();
 });
+els.snippetFields?.addEventListener("click", event => {
+  const button = event.target.closest("[data-snippet-value]");
+  if (!button) return;
+  state.snippet.values[button.dataset.snippetField] = button.dataset.snippetValue;
+  renderSnippetGenerator();
+});
+els.addSnippetFindingBtn?.addEventListener("click", () => {
+  const text = buildSnippetText();
+  if (!text) return;
+  state.snippetItems.push({ text });
+  renderSnippetFindingList();
+  showToast("Finding added", `${state.snippetItems.length} finding${state.snippetItems.length === 1 ? "" : "s"} ready.`);
+});
+els.clearSnippetFindingsBtn?.addEventListener("click", () => {
+  state.snippetItems = [];
+  renderSnippetFindingList();
+});
+els.snippetFindingList?.addEventListener("click", event => {
+  const button = event.target.closest("[data-remove-snippet-item]");
+  if (!button) return;
+  state.snippetItems.splice(Number(button.dataset.removeSnippetItem), 1);
+  renderSnippetFindingList();
+});
 els.insertSnippetBtn?.addEventListener("click", () => {
-  const snippet = buildSnippetText();
+  const snippet = combinedSnippetText();
   insertReportText(snippet);
   showToast("Snippet inserted", snippet);
 });
 els.copySnippetBtn?.addEventListener("click", async () => {
-  const snippet = buildSnippetText();
+  const snippet = combinedSnippetText();
   await navigator.clipboard.writeText(snippet);
   showToast("Snippet copied", snippet);
 });
 els.resetSnippetBtn?.addEventListener("click", () => {
   state.snippet = structuredClone(SNIPPET_DEFAULTS);
+  state.snippetItems = [];
   renderSnippetGenerator();
 });
 els.oldSearchInput.addEventListener("input", debounce(() => {
@@ -2684,6 +2827,7 @@ async function loadApp() {
   updateTemplateModeBadge();
   updateGuidelineModeBadge();
   updateReportModeBadge();
+  showReferenceTab(state.referenceTab);
   renderSnippetGenerator();
   blankTemplate();
   blankGuideline();
