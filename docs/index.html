@@ -277,7 +277,10 @@
       <section class="worklog-main">
         <div class="pane-head">
           <h2>Report Work Log</h2>
-          <input id="worklogSearchInput" type="search" placeholder="search saved reports">
+          <div class="inline-actions">
+            <button id="reviewVisibleReportsBtn" type="button">Review all</button>
+            <input id="worklogSearchInput" type="search" placeholder="search saved reports">
+          </div>
         </div>
         <div id="worklogSummary" class="worklog-summary"></div>
         <div id="worklogHeatmap" class="heatmap" aria-label="Saved reports heatmap"></div>

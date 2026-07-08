@@ -257,6 +257,7 @@ const els = {
   copyReportBtn: document.getElementById("copyReportBtn"),
   saveReportBtn: document.getElementById("saveReportBtn"),
   worklogSearchInput: document.getElementById("worklogSearchInput"),
+  reviewVisibleReportsBtn: document.getElementById("reviewVisibleReportsBtn"),
   worklogSummary: document.getElementById("worklogSummary"),
   worklogHeatmap: document.getElementById("worklogHeatmap"),
   worklogList: document.getElementById("worklogList"),
@@ -2148,6 +2149,28 @@ function reportMatchesQuery(report, query) {
   return query.toLowerCase().split(/\s+/).every(term => haystack.includes(term));
 }
 
+function filteredWorklogReports() {
+  const query = els.worklogSearchInput.value.trim();
+  return state.workLogReports
+    .filter(report => reportMatchesQuery(report, query))
+    .filter(report => !state.worklogSelectedDate || dateKey(savedDate(report) || new Date(0)) === state.worklogSelectedDate);
+}
+
+function worklogDateCounts() {
+  const counts = new Map();
+  for (const report of state.workLogReports) {
+    const date = savedDate(report);
+    if (!date) continue;
+    const key = dateKey(date);
+    const bucket = counts.get(key) || { total: 0, reviewed: 0, unreviewed: 0 };
+    bucket.total += 1;
+    if (report.isReviewed) bucket.reviewed += 1;
+    else bucket.unreviewed += 1;
+    counts.set(key, bucket);
+  }
+  return counts;
+}
+
 async function loadWorkLog() {
   const data = await pbList("old_reports", {
     page: 1,
@@ -2167,21 +2190,15 @@ async function loadWorkLog() {
 
 function renderWorkLog() {
   const query = els.worklogSearchInput.value.trim();
-  const reports = state.workLogReports
-    .filter(report => reportMatchesQuery(report, query))
-    .filter(report => !state.worklogSelectedDate || dateKey(savedDate(report) || new Date(0)) === state.worklogSelectedDate);
+  const reports = filteredWorklogReports();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const counts = new Map();
-  for (const report of state.workLogReports) {
-    const date = savedDate(report);
-    if (!date) continue;
-    counts.set(dateKey(date), (counts.get(dateKey(date)) || 0) + 1);
-  }
-  const todayCount = counts.get(dateKey(today)) || 0;
+  const counts = worklogDateCounts();
+  const todayCount = counts.get(dateKey(today))?.total || 0;
   const interestingCount = state.workLogReports.filter(report => report.isInteresting).length;
   const reviewCount = state.workLogReports.filter(report => report.isReviewed).length;
   const unreviewedCount = state.workLogReports.length - reviewCount;
+  const visibleUnreviewedCount = reports.filter(report => !report.isReviewed).length;
   const activeDays = counts.size;
   els.worklogSummary.innerHTML = [
     ["Total reports", state.workLogReports.length],
@@ -2190,6 +2207,10 @@ function renderWorkLog() {
     ["Interesting", interestingCount],
     ["Unreviewed", unreviewedCount]
   ].map(([label, value]) => `<div class="summary-card"><strong>${value}</strong><span>${label}</span></div>`).join("");
+  if (els.reviewVisibleReportsBtn) {
+    els.reviewVisibleReportsBtn.disabled = !visibleUnreviewedCount;
+    els.reviewVisibleReportsBtn.textContent = visibleUnreviewedCount ? `Review all (${visibleUnreviewedCount})` : "All reviewed";
+  }
 
   renderWorklogCalendar(counts, today);
 
@@ -2259,6 +2280,17 @@ async function toggleWorklogReview(id) {
   showToast(report.isReviewed ? "Marked unreviewed" : "Marked reviewed", report.title || "Saved report");
 }
 
+async function reviewVisibleReports() {
+  const reports = filteredWorklogReports().filter(report => !report.isReviewed);
+  if (!reports.length) {
+    showToast("All reviewed", "No visible reports need review.", "info");
+    return;
+  }
+  await Promise.all(reports.map(report => pbUpdate("old_reports", report.id, { isReviewed: true })));
+  await loadWorkLog();
+  showToast("Marked reviewed", `${reports.length} report${reports.length === 1 ? "" : "s"} updated.`);
+}
+
 async function editWorklogDate(id) {
   const report = state.workLogReports.find(item => item.id === id);
   if (!report) return;
@@ -2298,7 +2330,8 @@ function renderWorklogCalendar(counts, today) {
   for (let day = 1; day <= lastDay.getDate(); day += 1) {
     const date = new Date(month.getFullYear(), month.getMonth(), day);
     const key = dateKey(date);
-    const count = counts.get(key) || 0;
+    const dayCounts = counts.get(key) || { total: 0, reviewed: 0, unreviewed: 0 };
+    const count = dayCounts.total;
     const level = count >= 4 ? 4 : count;
     const classes = [
       "calendar-day",
@@ -2307,9 +2340,15 @@ function renderWorklogCalendar(counts, today) {
       key === state.worklogSelectedDate ? "selected" : ""
     ].filter(Boolean).join(" ");
     cells.push(`
-      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}">
+      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} total, ${dayCounts.unreviewed} unreviewed, ${dayCounts.reviewed} reviewed">
         <span class="calendar-number">${day}</span>
-        ${count ? `<span class="calendar-count">${count}</span>` : ""}
+        ${count ? `
+          <span class="calendar-counts">
+            <span class="calendar-count total" title="Total">${count}</span>
+            <span class="calendar-count unreviewed" title="Unreviewed">${dayCounts.unreviewed}</span>
+            <span class="calendar-count reviewed" title="Reviewed">${dayCounts.reviewed}</span>
+          </span>
+        ` : ""}
       </button>
     `);
   }
@@ -2721,6 +2760,14 @@ els.saveReportBtn.addEventListener("click", () => {
   withButtonFeedback(els.saveReportBtn, "Saving...", saveFullReport, "Saved");
 });
 els.worklogSearchInput.addEventListener("input", debounce(renderWorkLog));
+els.reviewVisibleReportsBtn?.addEventListener("click", () => {
+  els.reviewVisibleReportsBtn.disabled = true;
+  els.reviewVisibleReportsBtn.textContent = "Reviewing...";
+  reviewVisibleReports().catch(error => {
+    showToast("Action failed", error.message || "Please try again.", "error");
+    renderWorkLog();
+  });
+});
 els.interestingSearchInput.addEventListener("input", debounce(renderInterestingCases));
 els.worklogHeatmap.addEventListener("click", event => {
   const actionButton = event.target.closest("[data-calendar-action]");

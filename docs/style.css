@@ -1429,7 +1429,7 @@ mark {
 }
 
 .calendar-day {
-  aspect-ratio: 2.35;
+  aspect-ratio: 2.1;
   border: 1px solid var(--line);
   border-radius: 5px;
   background: #fffaf3;
@@ -1465,16 +1465,38 @@ mark {
   font-weight: 850;
 }
 
+.calendar-counts {
+  justify-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  align-items: center;
+}
+
 .calendar-count {
-  justify-self: end;
-  min-width: 20px;
+  min-width: 0;
   border-radius: 999px;
-  padding: 0 5px;
+  padding: 0 4px;
   background: rgba(255, 253, 248, .8);
   color: var(--coffee);
-  font-size: .62rem;
+  font-size: .58rem;
   font-weight: 850;
   text-align: center;
+  line-height: 1.45;
+}
+
+.calendar-count.total {
+  color: var(--coffee);
+}
+
+.calendar-count.unreviewed {
+  background: var(--yellow);
+  color: #7a5a1c;
+}
+
+.calendar-count.reviewed {
+  background: var(--mint);
+  color: #295441;
 }
 
 .calendar-filter {
@@ -1525,6 +1547,16 @@ body[data-theme="dark"] .calendar-day.level-4 { background: rgba(153, 255, 228, 
 body[data-theme="dark"] .calendar-count {
   background: rgba(255, 248, 242, .11);
   color: var(--ink);
+}
+
+body[data-theme="dark"] .calendar-count.unreviewed {
+  background: rgba(255, 199, 153, .22);
+  color: #ffc799;
+}
+
+body[data-theme="dark"] .calendar-count.reviewed {
+  background: rgba(153, 255, 228, .18);
+  color: #99ffe4;
 }
 
 body[data-theme="dark"] button {
