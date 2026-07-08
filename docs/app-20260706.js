@@ -1679,6 +1679,9 @@ function editTemplate(id) {
 }
 
 function reportData() {
+  const existingReport = state.reportDraftId
+    ? state.workLogReports.find(item => item.id === state.reportDraftId)
+    : null;
   return {
     title: els.reportTitleInput.value.trim() || "Untitled report",
     modality: els.reportModalityInput.value.trim(),
@@ -1691,6 +1694,7 @@ function reportData() {
     sourceDate: state.reportDraftSourceDate || new Date().toISOString(),
     note: els.reportNoteInput.value.trim(),
     isInteresting: els.reportInterestingInput.checked,
+    isReviewed: Boolean(existingReport?.isReviewed),
     owner: state.auth?.user?.id || ""
   };
 }
@@ -1830,7 +1834,7 @@ async function loadWorkLog() {
     perPage: 500,
     sort: "-created",
     filter: 'sourceType="final-report"',
-    fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,note,isInteresting,owner"
+    fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,note,isInteresting,isReviewed,owner"
   });
   state.workLogReports = data.items;
   if (state.selectedWorklogReport) {
@@ -1856,12 +1860,15 @@ function renderWorkLog() {
   }
   const todayCount = counts.get(dateKey(today)) || 0;
   const interestingCount = state.workLogReports.filter(report => report.isInteresting).length;
+  const reviewCount = state.workLogReports.filter(report => report.isReviewed).length;
+  const unreviewedCount = state.workLogReports.length - reviewCount;
   const activeDays = counts.size;
   els.worklogSummary.innerHTML = [
     ["Total reports", state.workLogReports.length],
     ["Saved today", todayCount],
     ["Active days", activeDays],
-    ["Interesting", interestingCount]
+    ["Interesting", interestingCount],
+    ["Unreviewed", unreviewedCount]
   ].map(([label, value]) => `<div class="summary-card"><strong>${value}</strong><span>${label}</span></div>`).join("");
 
   renderWorklogCalendar(counts, today);
@@ -1876,7 +1883,7 @@ function renderWorkLog() {
       <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-worklog-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
         <span>
-          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
+          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${report.isReviewed ? '<span class="review-badge reviewed">Reviewed</span>' : '<span class="review-badge">Unreviewed</span>'}</span>
           <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
           ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
         </span>
@@ -1914,6 +1921,7 @@ function renderWorklogPreview() {
   els.worklogPreviewTitle.textContent = report.title || "Untitled";
   els.worklogPreviewMeta.innerHTML = [
     date ? dateKey(date) : "",
+    report.isReviewed ? "Reviewed" : "Unreviewed",
     report.modality,
     report.topic,
     report.bodyPart,
@@ -1921,6 +1929,41 @@ function renderWorklogPreview() {
   ].filter(Boolean).map(escapeHtml).join(" / ");
   els.worklogPreviewText.innerHTML = reportHtml(report.report);
   els.editWorklogReportBtn.disabled = false;
+}
+
+async function toggleWorklogReview(id) {
+  const report = state.workLogReports.find(item => item.id === id);
+  if (!report) return;
+  await pbUpdate("old_reports", id, { isReviewed: !report.isReviewed });
+  await loadWorkLog();
+  showToast(report.isReviewed ? "Marked unreviewed" : "Marked reviewed", report.title || "Saved report");
+}
+
+async function editWorklogDate(id) {
+  const report = state.workLogReports.find(item => item.id === id);
+  if (!report) return;
+  const currentDate = savedDate(report);
+  const current = currentDate ? dateKey(currentDate) : dateKey(new Date());
+  const next = prompt("Set report date (YYYY-MM-DD)", current);
+  if (next === null) return;
+  const trimmed = next.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    showToast("Date not changed", "Use YYYY-MM-DD format.", "error");
+    return;
+  }
+  const parsed = new Date(`${trimmed}T12:00:00`);
+  if (Number.isNaN(parsed.getTime()) || dateKey(parsed) !== trimmed) {
+    showToast("Date not changed", "That date is not valid.", "error");
+    return;
+  }
+  const sourceDate = parsed.toISOString();
+  await pbUpdate("old_reports", id, { sourceDate });
+  if (state.reportDraftId === id) state.reportDraftSourceDate = sourceDate;
+  state.worklogMonth = new Date(parsed.getFullYear(), parsed.getMonth(), 1);
+  state.worklogSelectedDate = trimmed;
+  await loadWorkLog();
+  await loadOldReports();
+  showToast("Report date updated", trimmed);
 }
 
 function renderWorklogCalendar(counts, today) {
@@ -2300,6 +2343,8 @@ els.worklogList.addEventListener("contextmenu", event => {
   const report = state.workLogReports.find(item => item.id === id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
+    { label: report?.isReviewed ? "Mark unreviewed" : "Mark reviewed", run: () => toggleWorklogReview(id) },
+    { label: "Change report date", run: () => editWorklogDate(id) },
     { label: report?.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: !report?.isInteresting });
       await loadWorkLog();
@@ -2324,8 +2369,11 @@ els.interestingList.addEventListener("contextmenu", event => {
   if (!button) return;
   event.preventDefault();
   const id = button.dataset.interestingId;
+  const report = state.workLogReports.find(item => item.id === id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
+    { label: report?.isReviewed ? "Mark unreviewed" : "Mark reviewed", run: () => toggleWorklogReview(id) },
+    { label: "Change report date", run: () => editWorklogDate(id) },
     { label: "Remove interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: false });
       await loadWorkLog();

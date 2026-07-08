@@ -1478,6 +1478,25 @@ body[data-theme="dark"] .calendar-day.today {
   font-weight: 800;
 }
 
+.review-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--yellow-line);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  background: var(--yellow);
+  color: #7a5a1c;
+  font-size: .68rem;
+  font-weight: 800;
+}
+
+.review-badge.reviewed {
+  border-color: var(--mint-line);
+  background: var(--mint);
+  color: #295441;
+}
+
 .empty {
   padding: 20px;
   color: var(--muted);
