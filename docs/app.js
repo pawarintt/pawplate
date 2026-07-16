@@ -304,7 +304,11 @@ function plainText(value) {
 
 function reportHtml(value) {
   const raw = String(value || "");
-  return isHtml(raw) ? raw : escapeHtml(raw).replace(/\n/g, "<br>");
+  if (isHtml(raw)) return raw;
+  return escapeHtml(raw)
+    .replace(/\t/g, "&#9;")
+    .replace(/ {2,}/g, spaces => "&nbsp;".repeat(spaces.length))
+    .replace(/\n/g, "<br>");
 }
 
 function protectedFileUrl(url) {
@@ -392,18 +396,18 @@ function getEditorHtml(editor) {
 function getEditorText(editor) {
   if (editor?.__pawplateEditor) {
     try {
-      return editor.__pawplateEditor.getText({ blockSeparator: "\n" }).replace(/\u00a0/g, " ").trim();
+      return editor.__pawplateEditor.getText({ blockSeparator: "\n" }).replace(/\u00a0/g, " ");
     } catch {
-      return editor.__pawplateEditor.getText().replace(/\u00a0/g, " ").trim();
+      return editor.__pawplateEditor.getText().replace(/\u00a0/g, " ");
     }
   }
-  return editor.innerText.replace(/\u00a0/g, " ").trim();
+  return editor.innerText.replace(/\u00a0/g, " ");
 }
 
 function setEditorHtml(editor, value) {
   const html = reportHtml(value);
   if (editor?.__pawplateEditor) {
-    editor.__pawplateEditor.commands.setContent(html, false);
+    editor.__pawplateEditor.commands.setContent(html, false, { preserveWhitespace: "full" });
   } else {
     editor.innerHTML = html;
   }
@@ -1175,7 +1179,15 @@ async function initTiptapEditors() {
         element,
         content: initialContent,
         extensions: [
-          StarterKit.configure({ history: true }),
+          StarterKit.configure({
+            history: true,
+            bulletList: false,
+            orderedList: false,
+            listItem: false,
+            heading: false,
+            blockquote: false,
+            codeBlock: false
+          }),
           Underline,
           TextStyle,
           Color,
@@ -1191,6 +1203,7 @@ async function initTiptapEditors() {
             autocapitalize: "sentences"
           }
         },
+        parseOptions: { preserveWhitespace: "full" },
         onUpdate: () => scheduleEditorProofing(element),
         onFocus: () => clearProofingFallback(element),
         onBlur: () => updateProofing(element)
