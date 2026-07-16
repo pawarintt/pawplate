@@ -2316,6 +2316,7 @@ function renderWorkLog() {
         <span>
           <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${report.isReviewed ? '<span class="review-badge reviewed">Reviewed</span>' : '<span class="review-badge">Unreviewed</span>'}</span>
           <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
+          ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
           ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
         </span>
       </button>
