@@ -55,7 +55,7 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
           role: "developer",
           content: [{
             type: "input_text",
-            text: "You are a radiology reporting assistant. Draft only from the supplied report. Do not invent, infer, or omit clinically material facts. Preserve uncertainty and negation. Do not include patient identifiers, accession numbers, or HN. The impression should be concise, clinically useful, and use literal dash lines if multiple points are needed. Metadata suggestions may be empty when unsupported by the report. This is a draft for radiologist review, not a final report."
+            text: "You are a radiology reporting assistant. Draft only from the supplied report. Do not invent, infer, or omit clinically material facts. Preserve uncertainty and negation. Do not include patient identifiers, accession numbers, or HN. The impression should be concise, clinically useful, and use literal dash lines if multiple points are needed. This is a draft for radiologist review, not a final report. Metadata must use PawPlate labels exactly: modality is one of CT, MRI, US, Film, RF, MG, NM/PT; topic and bodyPart are one of Neuro, Abdomen, Chest/CVS, MSK, Ped, Breast, General. Return an empty string when a label is not supported by the report."
           }]
         },
         {
