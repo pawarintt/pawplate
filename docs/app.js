@@ -154,6 +154,7 @@ const state = {
   guidelineFileTokenExpiresAt: 0,
   snippet: structuredClone(SNIPPET_DEFAULTS),
   snippetItems: [],
+  aiDraft: null,
   tiptapReady: false,
   editorUpdateTimers: new WeakMap()
 };
@@ -226,6 +227,8 @@ const els = {
   copySnippetBtn: document.getElementById("copySnippetBtn"),
   insertSnippetBtn: document.getElementById("insertSnippetBtn"),
   resetSnippetBtn: document.getElementById("resetSnippetBtn"),
+  generateAiDraftBtn: document.getElementById("generateAiDraftBtn"),
+  aiDraftResult: document.getElementById("aiDraftResult"),
   guidelineModeBadge: document.getElementById("guidelineModeBadge"),
   newGuidelineBtn: document.getElementById("newGuidelineBtn"),
   insertGuidelineImageBtn: document.getElementById("insertGuidelineImageBtn"),
@@ -443,6 +446,80 @@ function showReferenceTab(tab) {
   document.querySelectorAll("[data-reference-panel]").forEach(panel => {
     panel.classList.toggle("active", panel.dataset.referencePanel === tab);
   });
+}
+
+function aiDraftFields() {
+  if (!state.aiDraft) return [];
+  return [
+    { key: "title", label: "Report title", value: state.aiDraft.title, target: els.reportTitleInput },
+    { key: "modality", label: "Modality", value: state.aiDraft.modality, target: els.reportModalityInput },
+    { key: "topic", label: "Topic", value: state.aiDraft.topic, target: els.reportTopicInput },
+    { key: "bodyPart", label: "Body part", value: state.aiDraft.bodyPart, target: els.reportBodyPartInput },
+    { key: "keywords", label: "Keywords", value: state.aiDraft.keywords, target: els.reportKeywordInput }
+  ].filter(item => item.value && !state.aiDraft.rejected?.includes(item.key));
+}
+
+function renderAiDraft() {
+  if (!els.aiDraftResult) return;
+  const draft = state.aiDraft;
+  if (!draft) {
+    els.aiDraftResult.innerHTML = '<p class="mini-empty">Write findings, then generate a draft.</p>';
+    return;
+  }
+  const metadata = aiDraftFields().map(item => `
+    <article class="ai-suggestion" data-ai-key="${item.key}">
+      <span class="ai-suggestion-label">${escapeHtml(item.label)}</span>
+      <p>${escapeHtml(item.value)}</p>
+      <div><button type="button" data-ai-accept="${item.key}">Accept</button><button type="button" data-ai-reject="${item.key}">Reject</button></div>
+    </article>
+  `).join("");
+  const impression = draft.rejected?.includes("impression") ? "" : `
+    <article class="ai-suggestion ai-impression" data-ai-key="impression">
+      <span class="ai-suggestion-label">Impression draft</span>
+      <p>${escapeHtml(draft.impression || "")}</p>
+      ${draft.uncertainties ? `<small>${escapeHtml(draft.uncertainties)}</small>` : ""}
+      <div><button type="button" data-ai-accept="impression">Insert</button><button type="button" data-ai-reject="impression">Reject</button></div>
+    </article>
+  `;
+  els.aiDraftResult.innerHTML = `${impression}${metadata || '<p class="mini-empty">No additional metadata proposed.</p>'}`;
+}
+
+async function generateAiDraft() {
+  const report = getEditorText(els.reportTextEditor);
+  if (!report.trim()) {
+    showToast("Nothing to draft", "Write the findings first.", "info");
+    return false;
+  }
+  const response = await fetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/ai-draft`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      report,
+      title: els.reportTitleInput.value.trim(),
+      modality: els.reportModalityInput.value.trim(),
+      topic: els.reportTopicInput.value.trim(),
+      bodyPart: els.reportBodyPartInput.value.trim(),
+      keywords: els.reportKeywordInput.value.trim()
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || "AI draft could not be created.");
+  state.aiDraft = { ...payload, rejected: [] };
+  renderAiDraft();
+  showToast("Draft ready", "Review each proposal before applying it.");
+  return true;
+}
+
+function applyAiDraftSuggestion(key) {
+  const field = aiDraftFields().find(item => item.key === key);
+  if (key === "impression") {
+    insertReportText(`${state.aiDraft.impression || ""}\n`);
+  } else if (field) {
+    field.target.value = field.value;
+    field.target.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  state.aiDraft.rejected = [...new Set([...(state.aiDraft.rejected || []), key])];
+  renderAiDraft();
 }
 
 function currentSnippetSchema() {
@@ -2456,6 +2533,20 @@ els.worklogModeBtn.addEventListener("click", () => showMode("worklog"));
 els.themeToggleBtn.addEventListener("click", toggleTheme);
 document.querySelectorAll("[data-reference-tab]").forEach(button => {
   button.addEventListener("click", () => showReferenceTab(button.dataset.referenceTab));
+});
+els.generateAiDraftBtn?.addEventListener("click", () => {
+  withButtonFeedback(els.generateAiDraftBtn, "Drafting...", generateAiDraft, "Draft ready");
+});
+els.aiDraftResult?.addEventListener("click", event => {
+  const accept = event.target.closest("[data-ai-accept]");
+  const reject = event.target.closest("[data-ai-reject]");
+  const key = accept?.dataset.aiAccept || reject?.dataset.aiReject;
+  if (!key || !state.aiDraft) return;
+  if (accept) applyAiDraftSuggestion(key);
+  if (reject) {
+    state.aiDraft.rejected = [...new Set([...(state.aiDraft.rejected || []), key])];
+    renderAiDraft();
+  }
 });
 els.templateModalityRadios?.addEventListener("click", event => {
   const button = event.target.closest("[data-choice-value]");

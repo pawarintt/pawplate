@@ -170,6 +170,7 @@
           <button class="active" type="button" data-reference-tab="templates">Templates</button>
           <button type="button" data-reference-tab="guidelines">Guidelines</button>
           <button type="button" data-reference-tab="snippets">Snippet</button>
+          <button type="button" data-reference-tab="ai-draft">AI Draft</button>
         </div>
         <div class="writer-reference reference-panel active" data-reference-panel="templates">
           <div class="pane-head">
@@ -233,6 +234,16 @@
               <button id="insertSnippetBtn" type="button">Insert</button>
             </div>
           </article>
+        </div>
+        <div class="writer-reference ai-draft-reference reference-panel" data-reference-panel="ai-draft">
+          <div class="pane-head">
+            <h2>AI Draft</h2>
+            <button id="generateAiDraftBtn" type="button">Generate</button>
+          </div>
+          <p class="ai-draft-note">Drafts an impression and metadata from the current report. Review each suggestion before applying it.</p>
+          <div id="aiDraftResult" class="ai-draft-result">
+            <p class="mini-empty">Write findings, then generate a draft.</p>
+          </div>
         </div>
       </aside>
     </section>

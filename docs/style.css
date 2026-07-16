@@ -782,6 +782,82 @@ body[data-theme="dark"] #worklogModeBtn {
   margin-top: 8px;
 }
 
+.ai-draft-reference {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.ai-draft-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.4;
+}
+
+.ai-draft-result {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+  padding: 10px;
+  background: rgba(255, 253, 248, .42);
+}
+
+.ai-suggestion {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--mint-line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+}
+
+.ai-suggestion.ai-impression {
+  border-left-color: var(--peach-line);
+  background: linear-gradient(135deg, rgba(255, 230, 204, .5), var(--paper-strong));
+}
+
+.ai-suggestion-label {
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.ai-suggestion p {
+  margin: 6px 0 9px;
+  white-space: pre-wrap;
+  font-size: .84rem;
+  line-height: 1.45;
+}
+
+.ai-suggestion small {
+  display: block;
+  margin: -3px 0 9px;
+  color: var(--muted);
+  font-size: .74rem;
+}
+
+.ai-suggestion div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ai-suggestion button {
+  min-height: 27px;
+  padding: 4px 9px;
+  font-size: .72rem;
+}
+
+.ai-suggestion [data-ai-reject] {
+  background: transparent;
+  color: var(--muted);
+}
+
 #insertSnippetBtn {
   background: var(--mint);
   color: #295441;
