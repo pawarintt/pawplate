@@ -92,26 +92,33 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
   ].join("\n");
 
   function aiSettings() {
-    const fallback = { prompt: defaultImpressionPrompt, reasoning: "medium" };
+    const fallback = { prompt: defaultImpressionPrompt, reasoning: "medium", custom: false };
     try {
       const owner = String((e.auth && (e.auth.id || e.auth.get("id"))) || "");
       if (!owner) return fallback;
       const records = e.app.findRecordsByFilter(
         "user_settings",
-        'owner = {:owner} && key = "aiDraft"',
+        "owner = {:owner}",
         "-updated",
-        1,
+        50,
         0,
         { owner: owner }
       );
-      if (!records.length) return fallback;
+      let settingsRecord = null;
+      for (let index = 0; index < records.length; index += 1) {
+        if (records[index].getString("key") === "aiDraft") {
+          settingsRecord = records[index];
+          break;
+        }
+      }
+      if (!settingsRecord) return fallback;
       const value = new DynamicModel({ prompt: "", reasoning: "" });
-      records[0].unmarshalJSONField("value", value);
+      settingsRecord.unmarshalJSONField("value", value);
       const prompt = String(value.prompt || "").trim().slice(0, 12000) || fallback.prompt;
       const reasoning = ["low", "medium", "high"].indexOf(String(value.reasoning || "")) >= 0
         ? String(value.reasoning)
         : fallback.reasoning;
-      return { prompt: prompt, reasoning: reasoning };
+      return { prompt: prompt, reasoning: reasoning, custom: Boolean(String(value.prompt || "").trim()) };
     } catch (_) {
       return fallback;
     }
@@ -224,7 +231,11 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
   if (!outputText) return e.json(502, { message: "The AI service returned an empty draft." });
 
   try {
-    return e.json(200, JSON.parse(outputText));
+    const result = JSON.parse(outputText);
+    result.hookVersion = "20260719.3";
+    result.aiSettingsApplied = settings.custom;
+    result.aiReasoning = settings.reasoning;
+    return e.json(200, result);
   } catch (_) {
     return e.json(502, { message: "The AI service returned an invalid draft." });
   }
