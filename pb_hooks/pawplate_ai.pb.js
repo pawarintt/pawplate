@@ -1,71 +1,71 @@
-function pawplatePlainText(value) {
-  return String(value || "")
-    .replace(/<br\s*\/?\s*>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "- ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#39;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/\r/g, "")
-    .trim();
-}
-
-function pawplateImpression(value) {
-  const text = pawplatePlainText(value);
-  const match = text.match(/(?:^|\n)\s*IMPRESSION\s*:?\s*([\s\S]*)$/i);
-  if (!match) return "";
-  return String(match[1] || "")
-    .replace(/\n\s*PAWARIN\s+TONGPIPUTN\s*,?\s*M\.?D\.?[\s\S]*$/i, "")
-    .replace(/\n\s*RADIOLOGIST\s*$/i, "")
-    .trim();
-}
-
-function pawplateMedian(values) {
-  if (!values.length) return 0;
-  values.sort((left, right) => left - right);
-  const middle = Math.floor(values.length / 2);
-  return values.length % 2 ? values[middle] : Math.round((values[middle - 1] + values[middle]) / 2);
-}
-
-function pawplatePersonalStyle(e) {
-  const fallback = { reports: 0, items: 3, characters: 400 };
-  try {
-    const owner = String((e.auth && (e.auth.id || e.auth.get("id"))) || "");
-    if (!owner) return fallback;
-    const records = e.app.findRecordsByFilter(
-      "old_reports",
-      'sourceType = "final-report" && owner = {:owner}',
-      "-created",
-      100,
-      0,
-      { owner: owner }
-    );
-    const lengths = [];
-    const itemCounts = [];
-    for (let index = 0; index < records.length; index += 1) {
-      const impression = pawplateImpression(records[index].get("report"));
-      if (impression.length < 12) continue;
-      const lines = impression.split("\n").map(line => line.trim()).filter(Boolean);
-      const marked = lines.filter(line => /^(?:[-\u2022]|\d+[.)])\s+/.test(line));
-      lengths.push(impression.length);
-      itemCounts.push(marked.length || Math.max(1, lines.length));
-    }
-    if (lengths.length < 5) return fallback;
-    return {
-      reports: lengths.length,
-      items: Math.max(1, Math.min(5, pawplateMedian(itemCounts))),
-      characters: Math.max(200, Math.min(800, pawplateMedian(lengths)))
-    };
-  } catch (_) {
-    return fallback;
-  }
-}
-
 routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
+  function plainText(value) {
+    return String(value || "")
+      .replace(/<br\s*\/?\s*>/gi, "\n")
+      .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+      .replace(/<li[^>]*>/gi, "- ")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#39;/gi, "'")
+      .replace(/&quot;/gi, '"')
+      .replace(/\r/g, "")
+      .trim();
+  }
+
+  function impressionText(value) {
+    const text = plainText(value);
+    const match = text.match(/(?:^|\n)\s*IMPRESSION\s*:?\s*([\s\S]*)$/i);
+    if (!match) return "";
+    return String(match[1] || "")
+      .replace(/\n\s*PAWARIN\s+TONGPIPUTN\s*,?\s*M\.?D\.?[\s\S]*$/i, "")
+      .replace(/\n\s*RADIOLOGIST\s*$/i, "")
+      .trim();
+  }
+
+  function median(values) {
+    if (!values.length) return 0;
+    values.sort((left, right) => left - right);
+    const middle = Math.floor(values.length / 2);
+    return values.length % 2 ? values[middle] : Math.round((values[middle - 1] + values[middle]) / 2);
+  }
+
+  function personalStyle() {
+    const fallback = { reports: 0, items: 3, characters: 400 };
+    try {
+      const owner = String((e.auth && (e.auth.id || e.auth.get("id"))) || "");
+      if (!owner) return fallback;
+      const records = e.app.findRecordsByFilter(
+        "old_reports",
+        'sourceType = "final-report" && owner = {:owner}',
+        "-created",
+        100,
+        0,
+        { owner: owner }
+      );
+      const lengths = [];
+      const itemCounts = [];
+      for (let index = 0; index < records.length; index += 1) {
+        const impression = impressionText(records[index].get("report"));
+        if (impression.length < 12) continue;
+        const lines = impression.split("\n").map(line => line.trim()).filter(Boolean);
+        const marked = lines.filter(line => /^(?:[-\u2022]|\d+[.)])\s+/.test(line));
+        lengths.push(impression.length);
+        itemCounts.push(marked.length || Math.max(1, lines.length));
+      }
+      if (lengths.length < 5) return fallback;
+      return {
+        reports: lengths.length,
+        items: Math.max(1, Math.min(5, median(itemCounts))),
+        characters: Math.max(200, Math.min(800, median(lengths)))
+      };
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   const apiKey = $os.getenv("OPENAI_API_KEY");
   if (!apiKey) {
     return e.json(503, { message: "AI Draft is not configured on this server." });
@@ -88,7 +88,7 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
   if (report.length > 30000) {
     return e.json(400, { message: "The report is too long for an AI draft." });
   }
-  const personalStyle = pawplatePersonalStyle(e);
+  const style = personalStyle();
 
   const schema = {
     type: "object",
@@ -131,8 +131,8 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
               "Create a concise, prioritized impression that synthesizes the report into clinically meaningful diagnoses rather than repeating findings.",
               "",
               "Match this personal style profile derived from the radiologist's finalized reports:",
-              "- Use a plain numbered list. Simple or normal studies usually need 1-2 items; this user's median is " + personalStyle.items + "; complex oncology or trauma may use up to 5.",
-              "- Aim for roughly " + personalStyle.characters + " characters when the case permits, but never omit a clinically material finding merely to meet a length target.",
+              "- Use a plain numbered list. Simple or normal studies usually need 1-2 items; this user's median is " + style.items + "; complex oncology or trauma may use up to 5.",
+              "- Aim for roughly " + style.characters + " characters when the case permits, but never omit a clinically material finding merely to meet a length target.",
               "- Prefer disease-level interpretation, meaningful interval change, and complications over restating descriptive findings.",
               "",
               "Before writing, silently identify the principal disease, interval change, clinically material complications or staging features, the answer to the clinical question, and important secondary diagnoses. Then apply these rules:",
