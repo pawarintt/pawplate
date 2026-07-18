@@ -532,7 +532,9 @@ async function generateAiDraft() {
       modality: els.reportModalityInput.value.trim(),
       topic: els.reportTopicInput.value.trim(),
       bodyPart: els.reportBodyPartInput.value.trim(),
-      keywords: els.reportKeywordInput.value.trim()
+      keywords: els.reportKeywordInput.value.trim(),
+      aiPrompt: els.aiPromptInput.value.trim() || DEFAULT_AI_PROMPT,
+      aiReasoning: selectedAiReasoning()
     })
   });
   const payload = await response.json().catch(() => ({}));

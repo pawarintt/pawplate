@@ -135,7 +135,9 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
     modality: "",
     topic: "",
     bodyPart: "",
-    keywords: ""
+    keywords: "",
+    aiPrompt: "",
+    aiReasoning: ""
   });
   e.bindBody(data);
 
@@ -147,7 +149,19 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
     return e.json(400, { message: "The report is too long for an AI draft." });
   }
   const style = personalStyle();
-  const settings = aiSettings();
+  let settings = aiSettings();
+  const requestPrompt = String(data.aiPrompt || "").trim().slice(0, 12000);
+  const requestReasoning = String(data.aiReasoning || "");
+  if (requestPrompt) {
+    settings = {
+      prompt: requestPrompt,
+      reasoning: ["low", "medium", "high"].indexOf(requestReasoning) >= 0 ? requestReasoning : "medium",
+      custom: true,
+      source: "request"
+    };
+  } else {
+    settings.source = settings.custom ? "database" : "default";
+  }
 
   const schema = {
     type: "object",
@@ -232,9 +246,10 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
 
   try {
     const result = JSON.parse(outputText);
-    result.hookVersion = "20260719.3";
+    result.hookVersion = "20260719.4";
     result.aiSettingsApplied = settings.custom;
     result.aiReasoning = settings.reasoning;
+    result.aiSettingsSource = settings.source;
     return e.json(200, result);
   } catch (_) {
     return e.json(502, { message: "The AI service returned an invalid draft." });
