@@ -8,6 +8,28 @@ const PERSONAL_DICTIONARY_KEY_PREFIX = "pawplate.dictionary.";
 const SPELLCHECK_DICTIONARY_URL = "https://cdn.jsdelivr.net/npm/typo-js@1.3.2/dictionaries/en_US";
 const TIPTAP_VERSION = "2.11.7";
 const TIPTAP_CDN = "https://esm.sh";
+const DEFAULT_AI_PROMPT = `Create a concise, prioritized impression that synthesizes the report into clinically meaningful diagnoses rather than repeating findings.
+
+Before writing, silently identify the principal disease, interval change, clinically material complications or staging features, the answer to the clinical question, and important secondary diagnoses.
+
+- Use a plain numbered list without an IMPRESSION heading.
+- Lead with the principal abnormality, meaningful interval change, and key complications.
+- Fold a complication into the principal disease item when it can be stated concisely. Do not create a separate item merely for nonvisualization, patency, or suspected involvement of a vessel or adjacent structure.
+- State the clinical implication instead of repeating its supporting finding.
+- Merge related findings into a conventional disease-level interpretation only when directly supported.
+- Group secondary findings only when they represent the same disease process. Do not combine unrelated findings merely to shorten the list.
+- Recognize supported conventional constellations, such as cirrhosis with splenomegaly and ascites indicating portal hypertension.
+- For malignancy, combine the primary tumor, treatment response or progression, local invasion, and tumor thrombus or vascular invasion in the first item.
+- Keep the direct answer to the clinical question in its own item when clinically important.
+- Keep suspicious or indeterminate nodal or distant metastatic disease separate from unrelated background disease.
+- Include pertinent negatives only when they directly answer the clinical question.
+- Do not expand a negative statement into additional specific negatives unless each is documented.
+- Omit patent or normal structures, supporting anatomy, and minor incidental findings unless they change diagnosis, staging, management, or prognosis.
+- Never omit a clinically important complication solely because it is uncertain; retain it concisely with an uncertainty qualifier.
+- Preserve measurements only when they communicate meaningful size or interval change.
+- Preserve uncertainty and negation. Do not upgrade possible or indeterminate findings into definite disease.
+- Do not add follow-up recommendations unless the report explicitly recommends them.
+- Keep each numbered item focused on one clinical problem. Do not append an unrelated second sentence merely to reduce the item count.`;
 const DEFAULT_PALETTE = {
   text: ["#2b2526", "#8f4d57", "#7f5f3b", "#52654d"],
   highlight: ["#fff0a8", "#ffd4dc", "#dcefc8", "#efe2c3", "#d9edf0"]
@@ -150,6 +172,8 @@ const state = {
   dictionaryReady: false,
   personalDictionary: new Set(),
   userSettingsId: "",
+  aiSettingsId: "",
+  aiSettingsLoaded: false,
   guidelineFileToken: "",
   guidelineFileTokenExpiresAt: 0,
   snippet: structuredClone(SNIPPET_DEFAULTS),
@@ -227,6 +251,12 @@ const els = {
   copySnippetBtn: document.getElementById("copySnippetBtn"),
   insertSnippetBtn: document.getElementById("insertSnippetBtn"),
   resetSnippetBtn: document.getElementById("resetSnippetBtn"),
+  aiSettingsToggleBtn: document.getElementById("aiSettingsToggleBtn"),
+  aiSettingsPanel: document.getElementById("aiSettingsPanel"),
+  aiPromptInput: document.getElementById("aiPromptInput"),
+  aiReasoningInputs: [...document.querySelectorAll('input[name="aiReasoning"]')],
+  resetAiSettingsBtn: document.getElementById("resetAiSettingsBtn"),
+  saveAiSettingsBtn: document.getElementById("saveAiSettingsBtn"),
   generateAiDraftBtn: document.getElementById("generateAiDraftBtn"),
   aiDraftResult: document.getElementById("aiDraftResult"),
   guidelineModeBadge: document.getElementById("guidelineModeBadge"),
@@ -446,6 +476,9 @@ function showReferenceTab(tab) {
   document.querySelectorAll("[data-reference-panel]").forEach(panel => {
     panel.classList.toggle("active", panel.dataset.referencePanel === tab);
   });
+  if (tab === "ai-draft" && !state.aiSettingsLoaded) {
+    loadAiSettings().catch(error => console.warn("AI settings could not be loaded.", error));
+  }
 }
 
 function aiDraftFields() {
@@ -1323,10 +1356,17 @@ function logout() {
   state.selectedTemplate = null;
   state.selectedGuideline = null;
   state.selectedWriterGuideline = null;
+  state.aiDraft = null;
+  state.aiSettingsId = "";
+  state.aiSettingsLoaded = false;
   state.guidelineFileToken = "";
   state.guidelineFileTokenExpiresAt = 0;
   resetGuidelineDraft();
   resetReportDraft();
+  setAiSettingsForm();
+  els.aiSettingsPanel.classList.add("hidden");
+  els.aiSettingsToggleBtn.classList.remove("active");
+  els.aiSettingsToggleBtn.setAttribute("aria-expanded", "false");
   els.loginPasswordInput.value = "";
   els.loginError.textContent = "";
   els.loginEmailInput.focus();
@@ -1470,6 +1510,73 @@ async function savePersonalDictionary() {
   } catch (error) {
     console.warn("Personal dictionary saved locally only.", error);
   }
+}
+
+function selectedAiReasoning() {
+  return els.aiReasoningInputs.find(input => input.checked)?.value || "medium";
+}
+
+function setAiSettingsForm(value = {}) {
+  const prompt = typeof value.prompt === "string" && value.prompt.trim()
+    ? value.prompt
+    : DEFAULT_AI_PROMPT;
+  const reasoning = ["low", "medium", "high"].includes(value.reasoning) ? value.reasoning : "medium";
+  els.aiPromptInput.value = prompt;
+  els.aiReasoningInputs.forEach(input => {
+    input.checked = input.value === reasoning;
+  });
+}
+
+async function loadAiSettings() {
+  state.aiSettingsId = "";
+  state.aiSettingsLoaded = false;
+  setAiSettingsForm();
+  try {
+    const filter = `owner="${state.auth?.user?.id || ""}" && key="aiDraft"`;
+    const data = await pbList("user_settings", {
+      perPage: 1,
+      filter,
+      fields: "id,value"
+    });
+    const record = data.items?.[0];
+    if (record) {
+      state.aiSettingsId = record.id;
+      setAiSettingsForm(record.value || {});
+    }
+  } catch (error) {
+    console.warn("AI settings sync unavailable; using defaults.", error);
+  }
+  state.aiSettingsLoaded = true;
+}
+
+async function saveAiSettings() {
+  const prompt = els.aiPromptInput.value.trim();
+  if (!prompt) {
+    showToast("Prompt required", "Add impression instructions or reset to the default.", "info");
+    return false;
+  }
+  const value = { prompt, reasoning: selectedAiReasoning() };
+  if (state.aiSettingsId) {
+    await pbUpdate("user_settings", state.aiSettingsId, { value });
+  } else {
+    const created = await pbCreate("user_settings", {
+      owner: state.auth?.user?.id || "",
+      key: "aiDraft",
+      value
+    });
+    state.aiSettingsId = created.id;
+  }
+  state.aiSettingsLoaded = true;
+  showToast("AI settings saved", "The next draft will use these instructions.");
+  return true;
+}
+
+function toggleAiSettings() {
+  const willOpen = els.aiSettingsPanel.classList.contains("hidden");
+  els.aiSettingsPanel.classList.toggle("hidden", !willOpen);
+  els.aiSettingsToggleBtn.setAttribute("aria-expanded", String(willOpen));
+  els.aiSettingsToggleBtn.classList.toggle("active", willOpen);
+  if (willOpen) els.aiPromptInput.focus();
 }
 
 async function addPersonalDictionaryWord(word, editor = document.activeElement) {
@@ -2538,6 +2645,14 @@ document.querySelectorAll("[data-reference-tab]").forEach(button => {
 els.generateAiDraftBtn?.addEventListener("click", () => {
   withButtonFeedback(els.generateAiDraftBtn, "Drafting...", generateAiDraft, "Draft ready");
 });
+els.aiSettingsToggleBtn?.addEventListener("click", toggleAiSettings);
+els.resetAiSettingsBtn?.addEventListener("click", () => {
+  setAiSettingsForm();
+  showToast("Default restored", "Save settings to use it for future drafts.", "info");
+});
+els.saveAiSettingsBtn?.addEventListener("click", () => {
+  withButtonFeedback(els.saveAiSettingsBtn, "Saving...", saveAiSettings, "Saved");
+});
 els.aiDraftResult?.addEventListener("click", event => {
   const accept = event.target.closest("[data-ai-accept]");
   const reject = event.target.closest("[data-ai-reject]");
@@ -2975,6 +3090,7 @@ async function loadApp() {
   applyPalette();
   await initTiptapEditors();
   await loadPersonalDictionary();
+  await loadAiSettings();
   loadSpellchecker();
   updateTemplateModeBadge();
   updateGuidelineModeBadge();

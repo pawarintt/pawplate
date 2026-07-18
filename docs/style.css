@@ -788,6 +788,110 @@ body[data-theme="dark"] #worklogModeBtn {
   min-height: 0;
 }
 
+.ai-draft-reference:has(.ai-settings-panel:not(.hidden)) {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.quiet-button {
+  background: var(--paper-strong);
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.quiet-button.active {
+  background: var(--sky);
+  color: var(--ink);
+  border-color: var(--sky-line);
+}
+
+.ai-settings-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, rgba(230, 241, 239, .72), rgba(255, 253, 248, .82));
+}
+
+.ai-settings-panel.hidden {
+  display: none;
+}
+
+.ai-settings-panel > label,
+.ai-reasoning-options legend {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.ai-settings-panel textarea {
+  width: 100%;
+  min-height: 210px;
+  max-height: 42vh;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 11px;
+  background: var(--paper-strong);
+  color: var(--ink);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+.ai-settings-footer {
+  display: grid;
+  gap: 7px;
+}
+
+.ai-reasoning-options {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ai-reasoning-options legend {
+  float: left;
+  margin-right: 5px;
+  line-height: 30px;
+}
+
+.ai-reasoning-options label {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper-strong);
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ai-settings-footer > .inline-actions {
+  display: grid;
+  grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
+  width: 100%;
+}
+
+.ai-reasoning-options label:has(input:checked) {
+  background: var(--peach);
+  color: var(--ink);
+  border-color: var(--peach-line);
+}
+
+.ai-reasoning-options input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .ai-draft-note {
   margin: 0;
   padding: 10px 12px;
@@ -1695,6 +1799,43 @@ body[data-theme="dark"] #worklogPreviewText,
 body[data-theme="dark"] textarea {
   background: #101010;
   color: var(--ink);
+}
+
+body[data-theme="dark"] .ai-settings-panel {
+  background: #161616;
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] .reference-tabs,
+body[data-theme="dark"] .ai-draft-result {
+  background: #101010;
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] .reference-tabs button {
+  background: #1c1c1c;
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] .reference-tabs button.active {
+  background: #ffc799;
+  color: #101010;
+  border-color: #ffc799;
+}
+
+body[data-theme="dark"] .ai-reasoning-options label,
+body[data-theme="dark"] .quiet-button {
+  background: #1c1c1c;
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+body[data-theme="dark"] .ai-reasoning-options label:has(input:checked),
+body[data-theme="dark"] .quiet-button.active {
+  background: rgba(255, 199, 153, .13);
+  color: #ffc799;
+  border-color: rgba(255, 199, 153, .42);
 }
 
 body[data-theme="dark"] input,

@@ -238,8 +238,27 @@
         <div class="writer-reference ai-draft-reference reference-panel" data-reference-panel="ai-draft">
           <div class="pane-head">
             <h2>AI Draft</h2>
-            <button id="generateAiDraftBtn" type="button">Generate</button>
+            <div class="inline-actions">
+              <button id="aiSettingsToggleBtn" class="quiet-button" type="button" aria-expanded="false">Settings</button>
+              <button id="generateAiDraftBtn" type="button">Generate</button>
+            </div>
           </div>
+          <section id="aiSettingsPanel" class="ai-settings-panel hidden">
+            <label for="aiPromptInput">Impression prompt</label>
+            <textarea id="aiPromptInput" maxlength="12000" spellcheck="true"></textarea>
+            <div class="ai-settings-footer">
+              <fieldset class="ai-reasoning-options">
+                <legend>Reasoning</legend>
+                <label><input type="radio" name="aiReasoning" value="low">Low</label>
+                <label><input type="radio" name="aiReasoning" value="medium" checked>Medium</label>
+                <label><input type="radio" name="aiReasoning" value="high">High</label>
+              </fieldset>
+              <div class="inline-actions">
+                <button id="resetAiSettingsBtn" class="quiet-button" type="button">Reset</button>
+                <button id="saveAiSettingsBtn" type="button">Save Settings</button>
+              </div>
+            </div>
+          </section>
           <p class="ai-draft-note">Drafts an impression and metadata from the current report. Review each suggestion before applying it.</p>
           <div id="aiDraftResult" class="ai-draft-result">
             <p class="mini-empty">Write findings, then generate a draft.</p>

@@ -66,6 +66,57 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
     }
   }
 
+  const defaultImpressionPrompt = [
+    "Create a concise, prioritized impression that synthesizes the report into clinically meaningful diagnoses rather than repeating findings.",
+    "",
+    "Before writing, silently identify the principal disease, interval change, clinically material complications or staging features, the answer to the clinical question, and important secondary diagnoses.",
+    "",
+    "- Use a plain numbered list without an IMPRESSION heading.",
+    "- Lead with the principal abnormality, meaningful interval change, and key complications.",
+    "- Fold a complication into the principal disease item when it can be stated concisely. Do not create a separate item merely for nonvisualization, patency, or suspected involvement of a vessel or adjacent structure.",
+    "- State the clinical implication instead of repeating its supporting finding.",
+    "- Merge related findings into a conventional disease-level interpretation only when directly supported.",
+    "- Group secondary findings only when they represent the same disease process. Do not combine unrelated findings merely to shorten the list.",
+    "- Recognize supported conventional constellations, such as cirrhosis with splenomegaly and ascites indicating portal hypertension.",
+    "- For malignancy, combine the primary tumor, treatment response or progression, local invasion, and tumor thrombus or vascular invasion in the first item.",
+    "- Keep the direct answer to the clinical question in its own item when clinically important.",
+    "- Keep suspicious or indeterminate nodal or distant metastatic disease separate from unrelated background disease.",
+    "- Include pertinent negatives only when they directly answer the clinical question.",
+    "- Do not expand a negative statement into additional specific negatives unless each is documented.",
+    "- Omit patent or normal structures, supporting anatomy, and minor incidental findings unless they change diagnosis, staging, management, or prognosis.",
+    "- Never omit a clinically important complication solely because it is uncertain; retain it concisely with an uncertainty qualifier.",
+    "- Preserve measurements only when they communicate meaningful size or interval change.",
+    "- Preserve uncertainty and negation. Do not upgrade possible or indeterminate findings into definite disease.",
+    "- Do not add follow-up recommendations unless the report explicitly recommends them.",
+    "- Keep each numbered item focused on one clinical problem. Do not append an unrelated second sentence merely to reduce the item count."
+  ].join("\n");
+
+  function aiSettings() {
+    const fallback = { prompt: defaultImpressionPrompt, reasoning: "medium" };
+    try {
+      const owner = String((e.auth && (e.auth.id || e.auth.get("id"))) || "");
+      if (!owner) return fallback;
+      const records = e.app.findRecordsByFilter(
+        "user_settings",
+        'owner = {:owner} && key = "aiDraft"',
+        "-updated",
+        1,
+        0,
+        { owner: owner }
+      );
+      if (!records.length) return fallback;
+      let value = records[0].get("value") || {};
+      if (typeof value === "string") value = JSON.parse(value);
+      const prompt = String(value.prompt || "").trim().slice(0, 12000) || fallback.prompt;
+      const reasoning = ["low", "medium", "high"].indexOf(String(value.reasoning || "")) >= 0
+        ? String(value.reasoning)
+        : fallback.reasoning;
+      return { prompt: prompt, reasoning: reasoning };
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   const apiKey = $os.getenv("OPENAI_API_KEY");
   if (!apiKey) {
     return e.json(503, { message: "AI Draft is not configured on this server." });
@@ -89,6 +140,7 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
     return e.json(400, { message: "The report is too long for an AI draft." });
   }
   const style = personalStyle();
+  const settings = aiSettings();
 
   const schema = {
     type: "object",
@@ -116,7 +168,7 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
     body: JSON.stringify({
       model: "gpt-5.6-luna",
       store: false,
-      reasoning: { effort: "medium" },
+      reasoning: { effort: settings.reasoning },
       text: { format: { type: "json_schema", name: "pawplate_report_draft", strict: true, schema: schema } },
       input: [
         {
@@ -128,33 +180,15 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
               "",
               "The current report is the sole source of clinical facts. Do not transfer or invent diagnoses, negative findings, recommendations, anatomy, or clinical considerations that are not supported by the current report.",
               "",
-              "Create a concise, prioritized impression that synthesizes the report into clinically meaningful diagnoses rather than repeating findings.",
+              "The personal instructions below may control synthesis, prioritization, length, and writing style. They cannot override the current-report evidence rule, privacy rule, or required output schema.",
               "",
-              "Match this personal style profile derived from the radiologist's finalized reports:",
-              "- Use a plain numbered list. Simple or normal studies usually need 1-2 items; this user's median is " + style.items + "; complex oncology or trauma may use up to 5.",
+              "Personal impression instructions:",
+              settings.prompt,
+              "",
+              "Personal style profile derived from finalized reports:",
+              "- Simple or normal studies usually need 1-2 items; this user's median is " + style.items + "; complex oncology or trauma may use up to 5.",
               "- Aim for roughly " + style.characters + " characters when the case permits, but never omit a clinically material finding merely to meet a length target.",
-              "- Prefer disease-level interpretation, meaningful interval change, and complications over restating descriptive findings.",
-              "",
-              "Before writing, silently identify the principal disease, interval change, clinically material complications or staging features, the answer to the clinical question, and important secondary diagnoses. Then apply these rules:",
-              "- Lead with the principal abnormality, meaningful interval change, and key complications.",
-              "- Fold a complication into the principal disease item whenever it can be stated concisely. Do not create a separate item merely for nonvisualization, patency, or suspected involvement of a vessel or adjacent structure.",
-              "- State the clinical implication rather than repeating its supporting finding. For example, write 'suspected involvement of [structure]' instead of '[structure] is not visualized, possibly due to involvement.'",
-              "- Merge related findings into a conventional disease-level interpretation only when directly supported by the current report.",
-              "- Group secondary findings in one item only when they represent the same disease process. Do not combine unrelated findings merely to shorten the list.",
-              "- Each numbered item must represent one clinical problem. Never append an unrelated second sentence merely to reduce the item count.",
-              "- Recognize conventional supported constellations, such as cirrhosis with splenomegaly and ascites indicating portal hypertension.",
-              "- For malignancy, combine the primary tumor, treatment response or progression, local invasion, and tumor thrombus or vascular invasion in the first item.",
-              "- Keep the direct answer to the clinical question in its own item when clinically important, such as the presence or absence of an abscess or other source of infection.",
-              "- Keep suspicious or indeterminate nodal or distant metastatic disease separate from unrelated background disease or complications.",
-              "- Include a pertinent negative only when it directly answers the clinical question.",
-              "- Do not expand a negative statement into additional specific negatives unless each is documented in the current report.",
-              "- Omit patent or normal structures, supporting anatomy, and minor incidental findings unless they change diagnosis, staging, management, or prognosis.",
-              "- Never omit a clinically important complication solely because it is uncertain; retain it concisely with an uncertainty qualifier.",
-              "- Preserve measurements only when they communicate meaningful size or interval change.",
-              "- Preserve uncertainty and negation. Do not upgrade possible or indeterminate findings into definite disease.",
-              "- Do not add follow-up recommendations unless the current report explicitly recommends them.",
-              "- Do not create an impression item that merely lists unrelated secondary findings.",
-              "- Return only the numbered impression items without an IMPRESSION heading, markdown, bullets, signatures, or explanatory text.",
+              "- Return only numbered impression items without markdown, bullets, signatures, or explanatory text.",
               "",
               "Do not include patient identifiers, accession numbers, HN, signatures, or radiologist names. This is a draft for radiologist review, not a final report.",
               "",
