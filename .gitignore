@@ -10,5 +10,7 @@ index.html
 *.zip
 *.db
 *.log
+.env
+.env.*
 radiology-helper-data.json
 Start_Radiology_Helper.bat
