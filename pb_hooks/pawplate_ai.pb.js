@@ -105,8 +105,8 @@ routerAdd("POST", "/api/pawplate/ai-draft", (e) => {
         { owner: owner }
       );
       if (!records.length) return fallback;
-      let value = records[0].get("value") || {};
-      if (typeof value === "string") value = JSON.parse(value);
+      const value = new DynamicModel({ prompt: "", reasoning: "" });
+      records[0].unmarshalJSONField("value", value);
       const prompt = String(value.prompt || "").trim().slice(0, 12000) || fallback.prompt;
       const reasoning = ["low", "medium", "high"].indexOf(String(value.reasoning || "")) >= 0
         ? String(value.reasoning)
