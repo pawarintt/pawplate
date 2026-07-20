@@ -6,6 +6,20 @@ const PALETTE_KEY_PREFIX = "pawplate.palette.";
 const THEME_KEY_PREFIX = "pawplate.theme.";
 const PERSONAL_DICTIONARY_KEY_PREFIX = "pawplate.dictionary.";
 const REPORT_DRAFT_KEY_PREFIX = "pawplate.report-draft.";
+const MODE_ROUTES = {
+  builder: "template-builder",
+  writer: "report-writer",
+  guidelines: "guidelines",
+  worklog: "work-log"
+};
+const ROUTE_MODES = Object.fromEntries(Object.entries(MODE_ROUTES).map(([mode, route]) => [route, mode]));
+const REFERENCE_ROUTES = {
+  templates: "templates",
+  guidelines: "guidelines",
+  snippets: "snippets",
+  "ai-draft": "ai-draft"
+};
+const ROUTE_REFERENCES = Object.fromEntries(Object.entries(REFERENCE_ROUTES).map(([tab, route]) => [route, tab]));
 const SPELLCHECK_DICTIONARY_URL = "https://cdn.jsdelivr.net/npm/typo-js@1.3.2/dictionaries/en_US";
 const TIPTAP_VERSION = "2.11.7";
 const TIPTAP_CDN = "https://esm.sh";
@@ -171,6 +185,7 @@ const state = {
   reportAutosaveSaving: false,
   reportAutosaveEpoch: 0,
   suppressReportAutosave: false,
+  pendingWorkingDraft: null,
   referenceTab: "templates",
   worklogMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   worklogSelectedDate: "",
@@ -309,6 +324,12 @@ const els = {
   worklogPreviewText: document.getElementById("worklogPreviewText"),
   editWorklogReportBtn: document.getElementById("editWorklogReportBtn"),
   closeWorklogPreviewBtn: document.getElementById("closeWorklogPreviewBtn"),
+  draftRecoveryDialog: document.getElementById("draftRecoveryDialog"),
+  draftRecoveryReportTitle: document.getElementById("draftRecoveryReportTitle"),
+  draftRecoveryMeta: document.getElementById("draftRecoveryMeta"),
+  draftRecoveryExcerpt: document.getElementById("draftRecoveryExcerpt"),
+  discardRecoveredDraftBtn: document.getElementById("discardRecoveredDraftBtn"),
+  continueRecoveredDraftBtn: document.getElementById("continueRecoveredDraftBtn"),
   contextMenu: document.getElementById("contextMenu"),
   toastStack: document.getElementById("toastStack")
 };
@@ -476,7 +497,8 @@ function choicesFromSelect(select) {
   return [...(select?.options || [])].map(option => ({ value: option.value, label: option.textContent || option.value }));
 }
 
-function showReferenceTab(tab) {
+function showReferenceTab(tab, options = {}) {
+  if (!REFERENCE_ROUTES[tab]) tab = "templates";
   state.referenceTab = tab;
   document.querySelectorAll("[data-reference-tab]").forEach(button => {
     button.classList.toggle("active", button.dataset.referenceTab === tab);
@@ -487,6 +509,7 @@ function showReferenceTab(tab) {
   if (tab === "ai-draft" && !state.aiSettingsLoaded) {
     loadAiSettings().catch(error => console.warn("AI settings could not be loaded.", error));
   }
+  if (options.updateRoute !== false && state.mode === "writer") updateRoute("writer", tab);
 }
 
 function aiDraftFields() {
@@ -971,6 +994,42 @@ function applyWorkingDraft(payload) {
   showMode("writer");
 }
 
+function showDraftRecoveryDialog(selected, useLocal) {
+  const payload = selected.payload || {};
+  const savedAt = new Date(selected.savedAt || Date.now());
+  const savedLabel = Number.isNaN(savedAt.getTime()) ? "Saved draft" : `Saved ${savedAt.toLocaleString()}`;
+  const sourceLabel = useLocal ? "local backup" : "cloud draft";
+  const excerpt = plainText(payload.report).replace(/\s+/g, " ").trim();
+  els.draftRecoveryReportTitle.textContent = payload.title?.trim() || "Untitled report";
+  els.draftRecoveryMeta.textContent = `${savedLabel} · ${sourceLabel}`;
+  els.draftRecoveryExcerpt.textContent = excerpt || "Report metadata only";
+  state.pendingWorkingDraft = { selected, useLocal };
+  if (!els.draftRecoveryDialog.open) els.draftRecoveryDialog.showModal();
+}
+
+async function continueRecoveredDraft() {
+  const pending = state.pendingWorkingDraft;
+  if (!pending) return;
+  state.pendingWorkingDraft = null;
+  els.draftRecoveryDialog.close();
+  applyWorkingDraft(pending.selected.payload);
+  if (pending.useLocal) {
+    setReportAutosaveStatus("offline", "Recovered local draft");
+    scheduleReportAutosave(100);
+  } else {
+    writeLocalWorkingDraft(pending.selected.payload, { savedAt: pending.selected.savedAt });
+    setReportAutosaveStatus("saved", draftSavedLabel(pending.selected.savedAt));
+  }
+  showToast("Draft restored", pending.selected.payload.title || "Your unfinished report is ready.");
+}
+
+async function discardRecoveredDraft() {
+  state.pendingWorkingDraft = null;
+  els.draftRecoveryDialog.close();
+  await clearWorkingDraft();
+  showToast("Draft discarded", "Start with a clean report when you are ready.", "info");
+}
+
 async function loadWorkingDraft() {
   state.workingDraftId = "";
   const local = readLocalWorkingDraft();
@@ -1006,15 +1065,7 @@ async function loadWorkingDraft() {
     return false;
   }
 
-  applyWorkingDraft(selected.payload);
-  if (useLocal) {
-    setReportAutosaveStatus("offline", "Recovered local draft");
-    scheduleReportAutosave(100);
-  } else {
-    writeLocalWorkingDraft(selected.payload, { savedAt: selected.savedAt });
-    setReportAutosaveStatus("saved", draftSavedLabel(selected.savedAt));
-  }
-  showToast("Draft restored", selected.payload.title || "Your unfinished report is ready.");
+  showDraftRecoveryDialog(selected, useLocal);
   return true;
 }
 
@@ -1615,6 +1666,8 @@ function logout() {
   state.reportAutosaveSaving = false;
   state.reportAutosaveEpoch += 1;
   state.workingDraftId = "";
+  state.pendingWorkingDraft = null;
+  if (els.draftRecoveryDialog.open) els.draftRecoveryDialog.close();
   state.guidelineFileToken = "";
   state.guidelineFileTokenExpiresAt = 0;
   resetGuidelineDraft();
@@ -1881,12 +1934,50 @@ async function loadTemplateFacets() {
   updateEditorDatalists("template");
 }
 
-function showMode(mode) {
+function routeState() {
+  const parts = window.location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  const mode = ROUTE_MODES[parts[0]] || "builder";
+  const referenceTab = mode === "writer" ? (ROUTE_REFERENCES[parts[1]] || "templates") : state.referenceTab;
+  const validMode = Boolean(ROUTE_MODES[parts[0]]);
+  const validChild = mode !== "writer" || !parts[1] || Boolean(ROUTE_REFERENCES[parts[1]]);
+  return { mode, referenceTab, valid: validMode && validChild && parts.length <= (mode === "writer" ? 2 : 1) };
+}
+
+function routeUrl(mode = state.mode, referenceTab = state.referenceTab) {
+  const root = MODE_ROUTES[mode] || MODE_ROUTES.builder;
+  const child = mode === "writer" ? REFERENCE_ROUTES[referenceTab] || REFERENCE_ROUTES.templates : "";
+  return `#/${root}${child ? `/${child}` : ""}`;
+}
+
+function updateRoute(mode = state.mode, referenceTab = state.referenceTab, replace = false) {
+  const target = routeUrl(mode, referenceTab);
+  if (window.location.hash === target) return;
+  window.history[replace ? "replaceState" : "pushState"](null, "", target);
+}
+
+function syncRouteFromLocation(options = {}) {
+  const route = routeState();
+  if (options.force || state.mode !== route.mode) showMode(route.mode, { updateRoute: false });
+  if (route.mode === "writer" && (options.force || state.referenceTab !== route.referenceTab)) {
+    showReferenceTab(route.referenceTab, { updateRoute: false });
+  }
+  if (!route.valid || !window.location.hash) updateRoute(route.mode, route.referenceTab, options.replace !== false);
+}
+
+function showMode(mode, options = {}) {
+  if (!MODE_ROUTES[mode]) mode = "builder";
   state.mode = mode;
-  els.builderModeBtn.classList.toggle("active", mode === "builder");
-  els.writerModeBtn.classList.toggle("active", mode === "writer");
-  els.guidelineModeBtn.classList.toggle("active", mode === "guidelines");
-  els.worklogModeBtn.classList.toggle("active", mode === "worklog");
+  [
+    [els.builderModeBtn, "builder"],
+    [els.writerModeBtn, "writer"],
+    [els.guidelineModeBtn, "guidelines"],
+    [els.worklogModeBtn, "worklog"]
+  ].forEach(([link, linkMode]) => {
+    const active = mode === linkMode;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
   els.builderView.classList.toggle("hidden", mode !== "builder");
   els.writerView.classList.toggle("hidden", mode !== "writer");
   els.guidelineView.classList.toggle("hidden", mode !== "guidelines");
@@ -1897,6 +1988,13 @@ function showMode(mode) {
   }
   if (mode === "guidelines") loadGuidelines();
   if (mode === "worklog") loadWorkLog();
+  document.title = `PawPlate · ${{
+    builder: "Template Builder",
+    writer: "Report Writer",
+    guidelines: "Guidelines",
+    worklog: "Work Log"
+  }[mode]}`;
+  if (options.updateRoute !== false) updateRoute(mode);
 }
 
 function oldReportFilter() {
@@ -2893,6 +2991,12 @@ function debounce(fn, ms = 250) {
   };
 }
 
+function handleModeLink(event, mode) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  showMode(mode);
+}
+
 function runFormatCommand(button) {
   const toolbar = button.closest(".format-toolbar");
   const editor = document.getElementById(toolbar.dataset.editorTarget);
@@ -2913,10 +3017,10 @@ function runFormatCommand(button) {
   document.execCommand(button.dataset.command, false, button.dataset.value || null);
 }
 
-els.builderModeBtn.addEventListener("click", () => showMode("builder"));
-els.writerModeBtn.addEventListener("click", () => showMode("writer"));
-els.guidelineModeBtn.addEventListener("click", () => showMode("guidelines"));
-els.worklogModeBtn.addEventListener("click", () => showMode("worklog"));
+els.builderModeBtn.addEventListener("click", event => handleModeLink(event, "builder"));
+els.writerModeBtn.addEventListener("click", event => handleModeLink(event, "writer"));
+els.guidelineModeBtn.addEventListener("click", event => handleModeLink(event, "guidelines"));
+els.worklogModeBtn.addEventListener("click", event => handleModeLink(event, "worklog"));
 els.themeToggleBtn.addEventListener("click", toggleTheme);
 document.querySelectorAll("[data-reference-tab]").forEach(button => {
   button.addEventListener("click", () => showReferenceTab(button.dataset.referenceTab));
@@ -3375,6 +3479,13 @@ els.loginForm.addEventListener("submit", async event => {
   }
 });
 els.logoutBtn.addEventListener("click", logout);
+els.continueRecoveredDraftBtn.addEventListener("click", continueRecoveredDraft);
+els.discardRecoveredDraftBtn.addEventListener("click", () => {
+  withButtonFeedback(els.discardRecoveredDraftBtn, "Discarding...", discardRecoveredDraft, "Discarded");
+});
+els.draftRecoveryDialog.addEventListener("cancel", event => event.preventDefault());
+window.addEventListener("popstate", () => syncRouteFromLocation({ replace: false }));
+window.addEventListener("hashchange", () => syncRouteFromLocation({ replace: false }));
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && state.reportAutosaveDirty) saveWorkingDraft();
 });
@@ -3382,6 +3493,8 @@ document.addEventListener("visibilitychange", () => {
 async function loadApp() {
   applyTheme();
   applyPalette();
+  syncRouteFromLocation({ force: true });
+  await loadWorkingDraft();
   await initTiptapEditors();
   await loadPersonalDictionary();
   await loadAiSettings();
@@ -3389,7 +3502,7 @@ async function loadApp() {
   updateTemplateModeBadge();
   updateGuidelineModeBadge();
   updateReportModeBadge();
-  showReferenceTab(state.referenceTab);
+  showReferenceTab(state.referenceTab, { updateRoute: false });
   renderSnippetGenerator();
   blankTemplate();
   blankGuideline();
@@ -3399,7 +3512,6 @@ async function loadApp() {
   await loadGuidelines();
   await loadWriterGuidelines();
   await loadWorkLog();
-  await loadWorkingDraft();
 }
 
 async function init() {

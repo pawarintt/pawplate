@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260720-report-drafts">
+  <link rel="stylesheet" href="style.css?v=20260720-navigation">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -29,10 +29,10 @@
       </div>
       <div class="topbar-actions">
         <nav class="mode-tabs" aria-label="Mode">
-          <button id="builderModeBtn" class="active" type="button">Template Builder</button>
-          <button id="writerModeBtn" type="button">Report Writer</button>
-          <button id="guidelineModeBtn" type="button">Guidelines</button>
-          <button id="worklogModeBtn" type="button">Work Log</button>
+          <a id="builderModeBtn" class="active" href="#/template-builder" aria-current="page">Template Builder</a>
+          <a id="writerModeBtn" href="#/report-writer/templates">Report Writer</a>
+          <a id="guidelineModeBtn" href="#/guidelines">Guidelines</a>
+          <a id="worklogModeBtn" href="#/work-log">Work Log</a>
         </nav>
         <button id="themeToggleBtn" class="theme-toggle" type="button">Dark</button>
         <button id="logoutBtn" class="logout-button" type="button">Sign Out</button>
@@ -338,11 +338,32 @@
     </section>
   </main>
 
+  <dialog id="draftRecoveryDialog" class="draft-recovery-dialog" aria-labelledby="draftRecoveryTitle">
+    <div class="draft-recovery-content">
+      <div class="draft-recovery-heading">
+        <span class="draft-recovery-mark" aria-hidden="true"></span>
+        <div>
+          <h2 id="draftRecoveryTitle">Continue your draft?</h2>
+          <p>PawPlate found an unfinished report from your last session.</p>
+        </div>
+      </div>
+      <div class="draft-recovery-preview">
+        <strong id="draftRecoveryReportTitle">Untitled report</strong>
+        <span id="draftRecoveryMeta"></span>
+        <p id="draftRecoveryExcerpt"></p>
+      </div>
+      <div class="draft-recovery-actions">
+        <button id="discardRecoveredDraftBtn" class="danger-button" type="button">Discard Draft</button>
+        <button id="continueRecoveredDraftBtn" class="primary-button" type="button">Continue Draft</button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="contextMenu" class="context-menu hidden"></div>
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typo-js@1.3.2/typo.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js"></script>
-  <script src="app-20260706.js?v=20260720-report-drafts"></script>
+  <script src="app-20260706.js?v=20260720-navigation"></script>
 </body>
 </html>
