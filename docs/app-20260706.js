@@ -5,6 +5,7 @@ const AUTH_KEY = "pawplate.auth";
 const PALETTE_KEY_PREFIX = "pawplate.palette.";
 const THEME_KEY_PREFIX = "pawplate.theme.";
 const PERSONAL_DICTIONARY_KEY_PREFIX = "pawplate.dictionary.";
+const REPORT_DRAFT_KEY_PREFIX = "pawplate.report-draft.";
 const SPELLCHECK_DICTIONARY_URL = "https://cdn.jsdelivr.net/npm/typo-js@1.3.2/dictionaries/en_US";
 const TIPTAP_VERSION = "2.11.7";
 const TIPTAP_CDN = "https://esm.sh";
@@ -164,6 +165,12 @@ const state = {
   guidelineDraftId: null,
   reportDraftId: null,
   reportDraftSourceDate: "",
+  workingDraftId: "",
+  reportAutosaveTimer: 0,
+  reportAutosaveDirty: false,
+  reportAutosaveSaving: false,
+  reportAutosaveEpoch: 0,
+  suppressReportAutosave: false,
   referenceTab: "templates",
   worklogMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   worklogSelectedDate: "",
@@ -284,6 +291,7 @@ const els = {
   reportNoteInput: document.getElementById("reportNoteInput"),
   reportInterestingInput: document.getElementById("reportInterestingInput"),
   reportModeBadge: document.getElementById("reportModeBadge"),
+  reportAutosaveStatus: document.getElementById("reportAutosaveStatus"),
   reportTextEditor: document.getElementById("reportTextEditor"),
   reportProofing: document.getElementById("reportProofing"),
   newReportBtn: document.getElementById("newReportBtn"),
@@ -783,6 +791,243 @@ function resetReportDraft() {
   state.reportDraftId = null;
   state.reportDraftSourceDate = "";
   updateReportModeBadge();
+}
+
+function reportDraftStorageKey() {
+  return `${REPORT_DRAFT_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
+}
+
+function reportWorkingDraftPayload() {
+  return {
+    version: 1,
+    sourceReportId: state.reportDraftId || "",
+    sourceDate: state.reportDraftSourceDate || "",
+    title: els.reportTitleInput.value,
+    modality: els.reportModalityInput.value,
+    topic: els.reportTopicInput.value,
+    bodyPart: els.reportBodyPartInput.value,
+    keywords: els.reportKeywordInput.value,
+    note: els.reportNoteInput.value,
+    isInteresting: els.reportInterestingInput.checked,
+    report: getEditorHtml(els.reportTextEditor)
+  };
+}
+
+function hasReportWorkspaceContent(payload = reportWorkingDraftPayload()) {
+  return Boolean(
+    plainText(payload.report).trim()
+    || payload.title?.trim()
+    || payload.modality?.trim()
+    || payload.topic?.trim()
+    || payload.bodyPart?.trim()
+    || payload.keywords?.trim()
+    || payload.note?.trim()
+    || payload.isInteresting
+  );
+}
+
+function readLocalWorkingDraft() {
+  try {
+    return JSON.parse(localStorage.getItem(reportDraftStorageKey()) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalWorkingDraft(payload, options = {}) {
+  const value = {
+    payload,
+    cleared: Boolean(options.cleared),
+    savedAt: options.savedAt || new Date().toISOString()
+  };
+  try {
+    localStorage.setItem(reportDraftStorageKey(), JSON.stringify(value));
+  } catch (error) {
+    console.warn("Local draft backup unavailable.", error);
+  }
+  return value;
+}
+
+function clearLocalWorkingDraft() {
+  localStorage.removeItem(reportDraftStorageKey());
+}
+
+function setReportAutosaveStatus(status = "", label = "") {
+  if (!els.reportAutosaveStatus) return;
+  els.reportAutosaveStatus.className = `autosave-status ${status || "hidden"}`;
+  els.reportAutosaveStatus.textContent = label;
+  els.reportAutosaveStatus.title = label;
+}
+
+function draftSavedLabel(value = new Date()) {
+  const time = value instanceof Date ? value : new Date(value);
+  const label = Number.isNaN(time.getTime())
+    ? ""
+    : time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return label ? `Draft saved ${label}` : "Draft saved";
+}
+
+function scheduleReportAutosave(delay = 900) {
+  if (state.suppressReportAutosave || !state.auth?.token) return;
+  window.clearTimeout(state.reportAutosaveTimer);
+  state.reportAutosaveDirty = true;
+  const payload = reportWorkingDraftPayload();
+  writeLocalWorkingDraft(payload, { cleared: !hasReportWorkspaceContent(payload) });
+  setReportAutosaveStatus("unsaved", "Unsaved changes");
+  state.reportAutosaveTimer = window.setTimeout(saveWorkingDraft, delay);
+}
+
+async function saveWorkingDraft() {
+  window.clearTimeout(state.reportAutosaveTimer);
+  state.reportAutosaveTimer = 0;
+  if (state.suppressReportAutosave || !state.auth?.token) return false;
+  if (state.reportAutosaveSaving) {
+    state.reportAutosaveDirty = true;
+    return false;
+  }
+
+  const payload = reportWorkingDraftPayload();
+  const hasContent = hasReportWorkspaceContent(payload);
+  const saveEpoch = state.reportAutosaveEpoch;
+  state.reportAutosaveDirty = false;
+  state.reportAutosaveSaving = true;
+  writeLocalWorkingDraft(payload, { cleared: !hasContent });
+  setReportAutosaveStatus("saving", "Saving draft...");
+
+  try {
+    if (!hasContent) {
+      if (state.workingDraftId) await pbDelete("report_drafts", state.workingDraftId);
+      state.workingDraftId = "";
+      clearLocalWorkingDraft();
+      setReportAutosaveStatus();
+      return true;
+    }
+
+    const data = { owner: state.auth?.user?.id || "", payload };
+    const saved = state.workingDraftId
+      ? await pbUpdate("report_drafts", state.workingDraftId, data)
+      : await pbCreate("report_drafts", data);
+    if (saveEpoch !== state.reportAutosaveEpoch) {
+      try {
+        await pbDelete("report_drafts", saved.id);
+      } catch {
+        // The newer action may already have removed this draft.
+      }
+      return false;
+    }
+    state.workingDraftId = saved.id;
+    const savedAt = saved.updated || new Date().toISOString();
+    writeLocalWorkingDraft(payload, { savedAt });
+    setReportAutosaveStatus("saved", draftSavedLabel(savedAt));
+    return true;
+  } catch (error) {
+    console.warn("PocketBase draft autosave unavailable; keeping local backup.", error);
+    writeLocalWorkingDraft(payload, { cleared: !hasContent });
+    setReportAutosaveStatus("offline", "Draft saved locally");
+    return false;
+  } finally {
+    state.reportAutosaveSaving = false;
+    if (state.reportAutosaveDirty) scheduleReportAutosave(250);
+  }
+}
+
+async function clearWorkingDraft() {
+  state.reportAutosaveEpoch += 1;
+  window.clearTimeout(state.reportAutosaveTimer);
+  state.reportAutosaveTimer = 0;
+  state.reportAutosaveDirty = false;
+  const draftId = state.workingDraftId;
+  state.workingDraftId = "";
+  writeLocalWorkingDraft({}, { cleared: true });
+  setReportAutosaveStatus();
+  if (!draftId) {
+    clearLocalWorkingDraft();
+    return;
+  }
+  try {
+    await pbDelete("report_drafts", draftId);
+    clearLocalWorkingDraft();
+  } catch (error) {
+    console.warn("Remote draft cleanup will be retried later.", error);
+  }
+}
+
+function applyWorkingDraft(payload) {
+  state.suppressReportAutosave = true;
+  state.reportDraftId = payload.sourceReportId || null;
+  state.reportDraftSourceDate = payload.sourceDate || "";
+  state.selectedTemplate = null;
+  els.reportTitleInput.value = payload.title || "";
+  els.reportModalityInput.value = payload.modality || "";
+  els.reportTopicInput.value = payload.topic || "";
+  els.reportBodyPartInput.value = payload.bodyPart || "";
+  els.reportKeywordInput.value = payload.keywords || "";
+  els.reportNoteInput.value = payload.note || "";
+  els.reportInterestingInput.checked = Boolean(payload.isInteresting);
+  setEditorHtml(els.reportTextEditor, payload.report || "");
+  updateReportModeBadge();
+  updateEditorDatalists("report");
+  state.suppressReportAutosave = false;
+  showMode("writer");
+}
+
+async function loadWorkingDraft() {
+  state.workingDraftId = "";
+  const local = readLocalWorkingDraft();
+  let remote = null;
+  try {
+    const owner = state.auth?.user?.id || "";
+    const data = await pbList("report_drafts", {
+      perPage: 1,
+      filter: `owner="${owner}"`,
+      fields: "id,payload,updated"
+    });
+    remote = data.items?.[0] || null;
+    state.workingDraftId = remote?.id || "";
+  } catch (error) {
+    console.warn("Remote draft recovery unavailable; checking local backup.", error);
+  }
+
+  const remoteTime = remote?.updated ? new Date(remote.updated).getTime() : 0;
+  const localTime = local?.savedAt ? new Date(local.savedAt).getTime() : 0;
+  const useLocal = Boolean(local && (!remote || localTime > remoteTime));
+  const selected = useLocal
+    ? local
+    : remote
+      ? { payload: remote.payload, savedAt: remote.updated, cleared: false }
+      : local;
+
+  if (!selected || selected.cleared || !hasReportWorkspaceContent(selected.payload || {})) {
+    if (selected?.cleared && remote && useLocal) {
+      clearWorkingDraft().catch(error => console.warn("Stale draft cleanup failed.", error));
+    } else {
+      setReportAutosaveStatus();
+    }
+    return false;
+  }
+
+  applyWorkingDraft(selected.payload);
+  if (useLocal) {
+    setReportAutosaveStatus("offline", "Recovered local draft");
+    scheduleReportAutosave(100);
+  } else {
+    writeLocalWorkingDraft(selected.payload, { savedAt: selected.savedAt });
+    setReportAutosaveStatus("saved", draftSavedLabel(selected.savedAt));
+  }
+  showToast("Draft restored", selected.payload.title || "Your unfinished report is ready.");
+  return true;
+}
+
+async function discardWorkingDraft(message) {
+  const local = readLocalWorkingDraft();
+  const hasDraft = Boolean(
+    state.workingDraftId
+    || state.reportAutosaveDirty
+    || (local && !local.cleared && hasReportWorkspaceContent(local.payload || {}))
+  );
+  if (hasDraft && hasReportWorkspaceContent() && !confirm(message)) return false;
+  await clearWorkingDraft();
+  return true;
 }
 
 function editorTextNodeRanges(editor, matcher) {
@@ -1316,7 +1561,10 @@ async function initTiptapEditors() {
           }
         },
         parseOptions: { preserveWhitespace: "full" },
-        onUpdate: () => scheduleEditorProofing(element),
+        onUpdate: () => {
+          scheduleEditorProofing(element);
+          if (element === els.reportTextEditor) scheduleReportAutosave();
+        },
         onFocus: () => clearProofingFallback(element),
         onBlur: () => updateProofing(element)
       });
@@ -1361,6 +1609,12 @@ function logout() {
   state.aiDraft = null;
   state.aiSettingsId = "";
   state.aiSettingsLoaded = false;
+  window.clearTimeout(state.reportAutosaveTimer);
+  state.reportAutosaveTimer = 0;
+  state.reportAutosaveDirty = false;
+  state.reportAutosaveSaving = false;
+  state.reportAutosaveEpoch += 1;
+  state.workingDraftId = "";
   state.guidelineFileToken = "";
   state.guidelineFileTokenExpiresAt = 0;
   resetGuidelineDraft();
@@ -1369,6 +1623,7 @@ function logout() {
   els.aiSettingsPanel.classList.add("hidden");
   els.aiSettingsToggleBtn.classList.remove("active");
   els.aiSettingsToggleBtn.setAttribute("aria-expanded", "false");
+  setReportAutosaveStatus();
   els.loginPasswordInput.value = "";
   els.loginError.textContent = "";
   els.loginEmailInput.focus();
@@ -2136,7 +2391,9 @@ async function handleGuidelinePaste(event) {
   }
 }
 
-function useTemplateForReport(template = null) {
+async function useTemplateForReport(template = null) {
+  const canReplace = await discardWorkingDraft("Replace the current draft with this template?");
+  if (!canReplace) return false;
   const source = template || {
     title: els.templateTitleInput.value,
     modality: els.templateModalityInput.value,
@@ -2145,6 +2402,7 @@ function useTemplateForReport(template = null) {
     kind: getTemplateKind(),
     report: getEditorHtml(els.templateTextEditor)
   };
+  state.suppressReportAutosave = true;
   state.selectedTemplate = source;
   resetReportDraft();
   els.reportTitleInput.value = source.title || "Untitled report";
@@ -2156,11 +2414,15 @@ function useTemplateForReport(template = null) {
   els.reportInterestingInput.checked = false;
   setEditorHtml(els.reportTextEditor, source.report || "");
   updateEditorDatalists("report");
+  state.suppressReportAutosave = false;
+  scheduleReportAutosave(100);
   showMode("writer");
   renderTemplates();
+  return true;
 }
 
 function blankReport() {
+  state.suppressReportAutosave = true;
   resetReportDraft();
   state.selectedTemplate = null;
   els.reportTitleInput.value = "";
@@ -2172,14 +2434,22 @@ function blankReport() {
   els.reportInterestingInput.checked = false;
   setEditorHtml(els.reportTextEditor, "");
   updateEditorDatalists("report");
+  state.suppressReportAutosave = false;
   showMode("writer");
   els.reportTitleInput.focus();
 }
 
-function selectTemplate(id) {
+async function startNewReport() {
+  const canReplace = await discardWorkingDraft("Start a new report and discard the current draft?");
+  if (!canReplace) return false;
+  blankReport();
+  return true;
+}
+
+async function selectTemplate(id) {
   const template = state.templates.find(item => item.id === id);
   if (!template) return;
-  useTemplateForReport(template);
+  await useTemplateForReport(template);
 }
 
 function editTemplate(id) {
@@ -2304,6 +2574,7 @@ async function saveFullReport() {
     state.reportDraftSourceDate = created.sourceDate || data.sourceDate;
     updateReportModeBadge();
   }
+  await clearWorkingDraft();
   els.oldSearchInput.value = data.title;
   state.selectedOldReport = null;
   await loadOldReports();
@@ -2591,9 +2862,12 @@ function renderInterestingCases() {
   `).join("");
 }
 
-function openSavedReport(id) {
+async function openSavedReport(id) {
   const report = state.workLogReports.find(item => item.id === id) || state.selectedWorklogReport;
   if (!report) return;
+  const canReplace = await discardWorkingDraft("Open this saved report and discard the current draft?");
+  if (!canReplace) return false;
+  state.suppressReportAutosave = true;
   state.reportDraftId = report.id;
   state.reportDraftSourceDate = report.sourceDate || report.created || "";
   updateReportModeBadge();
@@ -2605,7 +2879,10 @@ function openSavedReport(id) {
   els.reportNoteInput.value = report.note || "";
   els.reportInterestingInput.checked = Boolean(report.isInteresting);
   setEditorHtml(els.reportTextEditor, report.report || "");
+  state.suppressReportAutosave = false;
+  scheduleReportAutosave(100);
   showMode("writer");
+  return true;
 }
 
 function debounce(fn, ms = 250) {
@@ -2876,6 +3153,15 @@ els.openGuidelineBuilderBtn.addEventListener("click", () => {
   els.reportModalityInput,
   els.reportTopicInput
 ].forEach(element => element.addEventListener("input", () => updateEditorDatalists("report")));
+[
+  els.reportTitleInput,
+  els.reportModalityInput,
+  els.reportTopicInput,
+  els.reportBodyPartInput,
+  els.reportKeywordInput,
+  els.reportNoteInput
+].forEach(element => element.addEventListener("input", scheduleReportAutosave));
+els.reportInterestingInput.addEventListener("change", scheduleReportAutosave);
 document.querySelectorAll(".format-toolbar").forEach(toolbar => {
   toolbar.addEventListener("click", event => {
     const button = event.target.closest("[data-command]");
@@ -2890,7 +3176,10 @@ document.querySelectorAll(".format-toolbar").forEach(toolbar => {
 });
 [els.templateTextEditor, els.reportTextEditor].forEach(editor => {
   editor.addEventListener("focus", () => clearProofingFallback(editor));
-  editor.addEventListener("input", debounce(() => updateProofing(editor, { fallback: false }), 120));
+  editor.addEventListener("input", debounce(() => {
+    updateProofing(editor, { fallback: false });
+    if (editor === els.reportTextEditor) scheduleReportAutosave();
+  }, 120));
   editor.addEventListener("blur", () => updateProofing(editor));
   editor.addEventListener("contextmenu", event => {
     const hit = wordAtPoint(editor, event.clientX, event.clientY);
@@ -2971,7 +3260,7 @@ els.writerGuidelineList.addEventListener("contextmenu", event => {
 });
 els.contextMenu?.addEventListener("click", event => event.stopPropagation());
 document.addEventListener("click", hideContextMenu);
-els.newReportBtn.addEventListener("click", blankReport);
+els.newReportBtn.addEventListener("click", () => startNewReport());
 els.copyReportBtn.addEventListener("click", () => {
   withButtonFeedback(els.copyReportBtn, "Copying...", async () => {
     await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
@@ -3086,6 +3375,9 @@ els.loginForm.addEventListener("submit", async event => {
   }
 });
 els.logoutBtn.addEventListener("click", logout);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && state.reportAutosaveDirty) saveWorkingDraft();
+});
 
 async function loadApp() {
   applyTheme();
@@ -3107,6 +3399,7 @@ async function loadApp() {
   await loadGuidelines();
   await loadWriterGuidelines();
   await loadWorkLog();
+  await loadWorkingDraft();
 }
 
 async function init() {
