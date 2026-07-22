@@ -6,6 +6,8 @@ const PALETTE_KEY_PREFIX = "pawplate.palette.";
 const THEME_KEY_PREFIX = "pawplate.theme.";
 const PERSONAL_DICTIONARY_KEY_PREFIX = "pawplate.dictionary.";
 const REPORT_DRAFT_KEY_PREFIX = "pawplate.report-draft.";
+const AUTH_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+const AUTH_REFRESH_LEEWAY_MS = 60 * 60 * 1000;
 const MODE_ROUTES = {
   builder: "template-builder",
   writer: "report-writer",
@@ -20,6 +22,13 @@ const REFERENCE_ROUTES = {
   "ai-draft": "ai-draft"
 };
 const ROUTE_REFERENCES = Object.fromEntries(Object.entries(REFERENCE_ROUTES).map(([tab, route]) => [route, tab]));
+
+class AuthSessionError extends Error {
+  constructor(message = "Your session expired. Sign in again; your draft is safe.") {
+    super(message);
+    this.name = "AuthSessionError";
+  }
+}
 const SPELLCHECK_DICTIONARY_URL = "https://cdn.jsdelivr.net/npm/typo-js@1.3.2/dictionaries/en_US";
 const TIPTAP_VERSION = "2.11.7";
 const TIPTAP_CDN = "https://esm.sh";
@@ -164,6 +173,8 @@ const TEMPLATE_TYPE_FILTERS = [
 const state = {
   mode: "builder",
   auth: null,
+  authRefreshPromise: null,
+  lastAuthRefreshAt: 0,
   oldReports: [],
   oldFacetRecords: [],
   templateFacetRecords: [],
@@ -554,9 +565,9 @@ async function generateAiDraft() {
     showToast("Nothing to draft", "Write the findings first.", "info");
     return false;
   }
-  const response = await fetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/ai-draft`, {
+  const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/ai-draft`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       report,
       title: els.reportTitleInput.value.trim(),
@@ -1634,6 +1645,81 @@ function authHeaders(extra = {}) {
   };
 }
 
+function authTokenExpiresAt(token = state.auth?.token) {
+  try {
+    const encoded = String(token || "").split(".")[1];
+    if (!encoded) return 0;
+    const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded));
+    return Number(payload.exp || 0) * 1000;
+  } catch {
+    return 0;
+  }
+}
+
+function sessionNeedsRefresh(force = false) {
+  if (force) return true;
+  const expiresAt = authTokenExpiresAt();
+  if (!expiresAt || expiresAt <= Date.now() + AUTH_REFRESH_LEEWAY_MS) return true;
+  return Date.now() - state.lastAuthRefreshAt >= AUTH_REFRESH_INTERVAL_MS;
+}
+
+async function refreshAuthSession(options = {}) {
+  if (!state.auth?.token) throw new AuthSessionError("Sign in to continue.");
+  if (!sessionNeedsRefresh(Boolean(options.force))) return state.auth;
+  if (state.authRefreshPromise) return state.authRefreshPromise;
+
+  state.authRefreshPromise = (async () => {
+    let response;
+    try {
+      response = await fetch(`${API}/users/auth-refresh`, {
+        method: "POST",
+        headers: authHeaders()
+      });
+    } catch (error) {
+      throw new Error("PawPlate could not reach the server. Your local draft is safe.", { cause: error });
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      const error = new AuthSessionError();
+      logout(error.message);
+      throw error;
+    }
+    if (!response.ok) throw new Error("PawPlate could not verify your session. Please try again.");
+
+    const auth = await response.json();
+    if (!auth?.token || !auth?.record) {
+      const error = new AuthSessionError();
+      logout(error.message);
+      throw error;
+    }
+    setAuth({ token: auth.token, user: auth.record });
+    state.lastAuthRefreshAt = Date.now();
+    return state.auth;
+  })();
+
+  try {
+    return await state.authRefreshPromise;
+  } finally {
+    state.authRefreshPromise = null;
+  }
+}
+
+async function authenticatedFetch(url, options = {}) {
+  await refreshAuthSession();
+  const request = () => fetch(url, {
+    ...options,
+    headers: authHeaders(options.headers || {})
+  });
+  let response = await request();
+  if (response.status === 401 || response.status === 403) {
+    await refreshAuthSession({ force: true });
+    response = await request();
+  }
+  return response;
+}
+
 async function login(identity, password) {
   const response = await fetch(`${API}/users/auth-with-password`, {
     method: "POST",
@@ -1643,11 +1729,14 @@ async function login(identity, password) {
   if (!response.ok) throw new Error("Sign in failed. Check the email and password.");
   const auth = await response.json();
   setAuth({ token: auth.token, user: auth.record });
+  state.lastAuthRefreshAt = Date.now();
   await loadApp();
 }
 
-function logout() {
+function logout(message = "") {
   setAuth(null);
+  state.authRefreshPromise = null;
+  state.lastAuthRefreshAt = 0;
   state.oldReports = [];
   state.templates = [];
   state.guidelines = [];
@@ -1678,7 +1767,7 @@ function logout() {
   els.aiSettingsToggleBtn.setAttribute("aria-expanded", "false");
   setReportAutosaveStatus();
   els.loginPasswordInput.value = "";
-  els.loginError.textContent = "";
+  els.loginError.textContent = message;
   els.loginEmailInput.focus();
 }
 
@@ -1701,17 +1790,15 @@ function snippet(text, query) {
 }
 
 async function pbList(collection, params = {}) {
-  const response = await fetch(`${API}/${collection}/records?${new URLSearchParams(params)}`, {
-    headers: authHeaders()
-  });
+  const response = await authenticatedFetch(`${API}/${collection}/records?${new URLSearchParams(params)}`);
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
 
 async function pbCreate(collection, data) {
-  const response = await fetch(`${API}/${collection}/records`, {
+  const response = await authenticatedFetch(`${API}/${collection}/records`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data)
   });
   if (!response.ok) throw new Error(await response.text());
@@ -1719,9 +1806,9 @@ async function pbCreate(collection, data) {
 }
 
 async function pbUpdate(collection, id, data) {
-  const response = await fetch(`${API}/${collection}/records/${id}`, {
+  const response = await authenticatedFetch(`${API}/${collection}/records/${id}`, {
     method: "PATCH",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data)
   });
   if (!response.ok) throw new Error(await response.text());
@@ -1729,20 +1816,14 @@ async function pbUpdate(collection, id, data) {
 }
 
 async function pbDelete(collection, id) {
-  const response = await fetch(`${API}/${collection}/records/${id}`, {
-    method: "DELETE",
-    headers: authHeaders()
-  });
+  const response = await authenticatedFetch(`${API}/${collection}/records/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(await response.text());
 }
 
 async function ensureGuidelineFileToken() {
   if (!state.auth?.token) return "";
   if (state.guidelineFileToken && Date.now() < state.guidelineFileTokenExpiresAt) return state.guidelineFileToken;
-  const response = await fetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/files/token`, {
-    method: "POST",
-    headers: authHeaders()
-  });
+  const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/files/token`, { method: "POST" });
   if (!response.ok) {
     console.warn("Protected file token unavailable.", await response.text());
     return "";
@@ -1756,9 +1837,8 @@ async function ensureGuidelineFileToken() {
 async function pbUploadFiles(collection, id, field, files) {
   const formData = new FormData();
   [...files].forEach(file => formData.append(`${field}+`, file));
-  const response = await fetch(`${API}/${collection}/records/${id}`, {
+  const response = await authenticatedFetch(`${API}/${collection}/records/${id}`, {
     method: "PATCH",
-    headers: authHeaders(),
     body: formData
   });
   if (!response.ok) throw new Error(await response.text());
@@ -1964,6 +2044,14 @@ function syncRouteFromLocation(options = {}) {
   if (!route.valid || !window.location.hash) updateRoute(route.mode, route.referenceTab, options.replace !== false);
 }
 
+function loadViewData(promise, label) {
+  Promise.resolve(promise).catch(error => {
+    if (error instanceof AuthSessionError) return;
+    console.error(`${label} could not be loaded.`, error);
+    showToast(`${label} unavailable`, "Check the connection and try again.", "error");
+  });
+}
+
 function showMode(mode, options = {}) {
   if (!MODE_ROUTES[mode]) mode = "builder";
   state.mode = mode;
@@ -1983,11 +2071,11 @@ function showMode(mode, options = {}) {
   els.guidelineView.classList.toggle("hidden", mode !== "guidelines");
   els.worklogView.classList.toggle("hidden", mode !== "worklog");
   if (mode === "writer") {
-    loadTemplates();
-    loadWriterGuidelines();
+    loadViewData(loadTemplates(), "Templates");
+    loadViewData(loadWriterGuidelines(), "Guidelines");
   }
-  if (mode === "guidelines") loadGuidelines();
-  if (mode === "worklog") loadWorkLog();
+  if (mode === "guidelines") loadViewData(loadGuidelines(), "Guidelines");
+  if (mode === "worklog") loadViewData(loadWorkLog(), "Work Log");
   document.title = `PawPlate · ${{
     builder: "Template Builder",
     writer: "Report Writer",
@@ -3478,7 +3566,7 @@ els.loginForm.addEventListener("submit", async event => {
     els.loginError.textContent = error.message;
   }
 });
-els.logoutBtn.addEventListener("click", logout);
+els.logoutBtn.addEventListener("click", () => logout());
 els.continueRecoveredDraftBtn.addEventListener("click", continueRecoveredDraft);
 els.discardRecoveredDraftBtn.addEventListener("click", () => {
   withButtonFeedback(els.discardRecoveredDraftBtn, "Discarding...", discardRecoveredDraft, "Discarded");
@@ -3487,7 +3575,20 @@ els.draftRecoveryDialog.addEventListener("cancel", event => event.preventDefault
 window.addEventListener("popstate", () => syncRouteFromLocation({ replace: false }));
 window.addEventListener("hashchange", () => syncRouteFromLocation({ replace: false }));
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden" && state.reportAutosaveDirty) saveWorkingDraft();
+  if (document.visibilityState === "hidden") {
+    if (state.reportAutosaveDirty) saveWorkingDraft();
+    return;
+  }
+  if (!state.auth?.token) return;
+  refreshAuthSession()
+    .then(() => {
+      if (state.mode === "worklog") return loadWorkLog();
+      return null;
+    })
+    .catch(error => {
+      if (error instanceof AuthSessionError) return;
+      showToast("Connection problem", error.message || "PawPlate could not refresh your session.", "error");
+    });
 });
 
 async function loadApp() {
@@ -3522,10 +3623,11 @@ async function init() {
     return;
   }
   try {
+    await refreshAuthSession({ force: true });
     await loadApp();
   } catch (error) {
-    logout();
-    els.loginError.textContent = "Please sign in again.";
+    if (error instanceof AuthSessionError) return;
+    showToast("Workspace unavailable", "PawPlate could not reach the server. Try refreshing in a moment.", "error");
     console.error(error);
   }
 }
