@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260731-scroll-panes">
+  <link rel="stylesheet" href="style.css?v=20260731-report-first">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -26,6 +26,7 @@
       <div>
         <h1>PawPlate</h1>
       </div>
+      <div id="worklogSummary" class="worklog-summary hidden" aria-label="Work Log summary"></div>
       <div class="topbar-actions">
         <nav class="mode-tabs" aria-label="Mode">
           <a id="builderModeBtn" class="active" href="#/template-builder" aria-current="page">Template Builder</a>
@@ -228,7 +229,6 @@
             <input id="worklogSearchInput" type="search" placeholder="search saved reports">
           </div>
         </div>
-        <div id="worklogSummary" class="worklog-summary"></div>
         <div id="worklogHeatmap" class="heatmap" aria-label="Saved reports calendar"></div>
         <div id="worklogList" class="result-list worklog-list"></div>
       </section>
@@ -322,6 +322,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typo-js@1.3.2/typo.js"></script>
-  <script src="app-20260706.js?v=20260731-scroll-panes"></script>
+  <script src="app-20260706.js?v=20260731-report-first"></script>
 </body>
 </html>

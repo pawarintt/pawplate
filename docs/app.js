@@ -2094,6 +2094,7 @@ function showMode(mode, options = {}) {
   els.writerView.classList.toggle("hidden", mode !== "writer");
   els.worklogView.classList.toggle("hidden", mode !== "worklog");
   els.insightsView.classList.toggle("hidden", mode !== "insights");
+  els.worklogSummary.classList.toggle("hidden", mode !== "worklog");
   if (mode === "writer") {
     loadViewData(loadTemplates(), "Templates");
   }
