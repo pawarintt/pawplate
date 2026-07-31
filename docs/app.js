@@ -238,8 +238,10 @@ const INSIGHT_MAX_EXAMPLES = 5;
 const state = {
   mode: "builder",
   auth: null,
+  authGeneration: 0,
   authRefreshPromise: null,
   lastAuthRefreshAt: 0,
+  dataLoadEpochs: {},
   oldReports: [],
   oldFacetRecords: [],
   templateFacetRecords: [],
@@ -378,11 +380,6 @@ const els = {
   templateTypeFilter: document.getElementById("templateTypeFilter"),
   templateTypeRadios: document.getElementById("templateTypeRadios"),
   templateList: document.getElementById("templateList"),
-  writerGuidelineSearchInput: document.getElementById("writerGuidelineSearchInput"),
-  writerGuidelineList: document.getElementById("writerGuidelineList"),
-  writerGuidelineTitle: document.getElementById("writerGuidelineTitle"),
-  writerGuidelinePreview: document.getElementById("writerGuidelinePreview"),
-  openGuidelineBuilderBtn: document.getElementById("openGuidelineBuilderBtn"),
   snippetSystemSelect: document.getElementById("snippetSystemSelect"),
   snippetSystemRadios: document.getElementById("snippetSystemRadios"),
   snippetModalitySelect: document.getElementById("snippetModalitySelect"),
@@ -405,21 +402,6 @@ const els = {
   saveAiSettingsBtn: document.getElementById("saveAiSettingsBtn"),
   generateAiDraftBtn: document.getElementById("generateAiDraftBtn"),
   aiDraftResult: document.getElementById("aiDraftResult"),
-  guidelineModeBadge: document.getElementById("guidelineModeBadge"),
-  newGuidelineBtn: document.getElementById("newGuidelineBtn"),
-  insertGuidelineImageBtn: document.getElementById("insertGuidelineImageBtn"),
-  saveGuidelineBtn: document.getElementById("saveGuidelineBtn"),
-  guidelineTitleInput: document.getElementById("guidelineTitleInput"),
-  guidelineModalityInput: document.getElementById("guidelineModalityInput"),
-  guidelineTopicInput: document.getElementById("guidelineTopicInput"),
-  guidelineBodyPartInput: document.getElementById("guidelineBodyPartInput"),
-  guidelineTagsInput: document.getElementById("guidelineTagsInput"),
-  guidelineMarkdownInput: document.getElementById("guidelineMarkdownInput"),
-  guidelineImageInput: document.getElementById("guidelineImageInput"),
-  guidelineSearchInput: document.getElementById("guidelineSearchInput"),
-  guidelineList: document.getElementById("guidelineList"),
-  guidelinePreviewTitle: document.getElementById("guidelinePreviewTitle"),
-  guidelinePreview: document.getElementById("guidelinePreview"),
   reportTitleInput: document.getElementById("reportTitleInput"),
   reportModalityInput: document.getElementById("reportModalityInput"),
   reportTopicInput: document.getElementById("reportTopicInput"),
@@ -1553,6 +1535,12 @@ function readAuth() {
 }
 
 function setAuth(auth) {
+  const previousOwner = state.auth?.user?.id || "";
+  const nextOwner = auth?.user?.id || "";
+  if (previousOwner !== nextOwner) {
+    state.authGeneration += 1;
+    invalidateDataLoads();
+  }
   state.auth = auth;
   if (auth?.token) {
     localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
@@ -1840,10 +1828,16 @@ async function refreshAuthSession(options = {}) {
 
 async function authenticatedFetch(url, options = {}) {
   await refreshAuthSession();
-  const request = () => fetch(url, {
-    ...options,
-    headers: authHeaders(options.headers || {})
-  });
+  const request = async () => {
+    try {
+      return await fetch(url, {
+        ...options,
+        headers: authHeaders(options.headers || {})
+      });
+    } catch (error) {
+      throw new Error("PawPlate could not reach the server. Check your connection and try again.", { cause: error });
+    }
+  };
   let response = await request();
   if (response.status === 401 || response.status === 403) {
     await refreshAuthSession({ force: true });
@@ -2025,23 +2019,28 @@ async function loadFeatureUsage() {
   if (state.featureUsageLoadPromise) return state.featureUsageLoadPromise;
   const owner = state.auth?.user?.id || "";
   if (!owner) return state.featureUsage;
-  state.featureUsageLoadPromise = (async () => {
+  const generation = state.authGeneration;
+  const loadPromise = (async () => {
     try {
       const filter = `owner="${owner}" && key="${FEATURE_USAGE_SETTINGS_KEY}"`;
       const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+      if (generation !== state.authGeneration) return state.featureUsage;
       const record = data.items?.[0];
       state.featureUsageSettingsId = record?.id || "";
       state.featureUsage = normalizeFeatureUsage(record?.value);
     } catch (error) {
-      state.featureUsage = emptyFeatureUsage();
+      if (generation === state.authGeneration) state.featureUsage = emptyFeatureUsage();
       console.warn("Feature usage sync unavailable.", error);
     } finally {
-      state.featureUsageLoaded = true;
-      state.featureUsageLoadPromise = null;
+      if (state.featureUsageLoadPromise === loadPromise) {
+        state.featureUsageLoaded = true;
+        state.featureUsageLoadPromise = null;
+      }
     }
     return state.featureUsage;
   })();
-  return state.featureUsageLoadPromise;
+  state.featureUsageLoadPromise = loadPromise;
+  return loadPromise;
 }
 
 function scheduleFeatureUsageSave(delay = 1200) {
@@ -2057,7 +2056,7 @@ async function saveFeatureUsage() {
   if (!state.auth?.user?.id || !state.featureUsageDirty) return;
   if (state.featureUsageSavePromise) return state.featureUsageSavePromise;
   const owner = state.auth.user.id;
-  state.featureUsageSavePromise = (async () => {
+  const savePromise = (async () => {
     while (state.featureUsageDirty && state.auth?.user?.id === owner) {
       state.featureUsageDirty = false;
       const value = structuredClone(state.featureUsage);
@@ -2073,15 +2072,16 @@ async function saveFeatureUsage() {
           state.featureUsageSettingsId = created.id;
         }
       } catch (error) {
-        state.featureUsageDirty = true;
+        if (state.auth?.user?.id === owner) state.featureUsageDirty = true;
         throw error;
       }
     }
   })();
+  state.featureUsageSavePromise = savePromise;
   try {
-    await state.featureUsageSavePromise;
+    await savePromise;
   } finally {
-    state.featureUsageSavePromise = null;
+    if (state.featureUsageSavePromise === savePromise) state.featureUsageSavePromise = null;
   }
 }
 
@@ -2134,23 +2134,28 @@ async function loadReportNotes() {
   if (state.reportNotesLoadPromise) return state.reportNotesLoadPromise;
   const owner = state.auth?.user?.id || "";
   if (!owner) return state.reportNotes;
-  state.reportNotesLoadPromise = (async () => {
+  const generation = state.authGeneration;
+  const loadPromise = (async () => {
     try {
       const filter = `owner="${owner}" && key="${REPORT_NOTES_SETTINGS_KEY}"`;
       const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+      if (generation !== state.authGeneration) return state.reportNotes;
       const record = data.items?.[0];
       state.reportNotesSettingsId = record?.id || "";
       state.reportNotes = normalizeReportNotes(record?.value);
     } catch (error) {
-      state.reportNotes = emptyReportNotes();
+      if (generation === state.authGeneration) state.reportNotes = emptyReportNotes();
       console.warn("Report notes sync unavailable.", error);
     } finally {
-      state.reportNotesLoaded = true;
-      state.reportNotesLoadPromise = null;
+      if (state.reportNotesLoadPromise === loadPromise) {
+        state.reportNotesLoaded = true;
+        state.reportNotesLoadPromise = null;
+      }
     }
     return state.reportNotes;
   })();
-  return state.reportNotesLoadPromise;
+  state.reportNotesLoadPromise = loadPromise;
+  return loadPromise;
 }
 
 function scheduleReportNotesSave(delay = 650) {
@@ -2170,7 +2175,7 @@ async function saveReportNotes() {
   if (!state.auth?.user?.id || !state.reportNotesDirty) return;
   if (state.reportNotesSavePromise) return state.reportNotesSavePromise;
   const owner = state.auth.user.id;
-  state.reportNotesSavePromise = (async () => {
+  const savePromise = (async () => {
     while (state.reportNotesDirty && state.auth?.user?.id === owner) {
       state.reportNotesDirty = false;
       const value = normalizeReportNotes(structuredClone(state.reportNotes));
@@ -2186,17 +2191,18 @@ async function saveReportNotes() {
           state.reportNotesSettingsId = created.id;
         }
       } catch (error) {
-        state.reportNotesDirty = true;
+        if (state.auth?.user?.id === owner) state.reportNotesDirty = true;
         throw error;
       }
     }
     setReportNotesStatus("Saved");
     trackFeature("report_note.save");
   })();
+  state.reportNotesSavePromise = savePromise;
   try {
-    await state.reportNotesSavePromise;
+    await savePromise;
   } finally {
-    state.reportNotesSavePromise = null;
+    if (state.reportNotesSavePromise === savePromise) state.reportNotesSavePromise = null;
   }
 }
 
@@ -2278,24 +2284,29 @@ async function loadPersonalNotes() {
   if (state.personalNotesLoadPromise) return state.personalNotesLoadPromise;
   const owner = state.auth?.user?.id || "";
   if (!owner) return state.personalNotes;
-  state.personalNotesLoadPromise = (async () => {
+  const generation = state.authGeneration;
+  const loadPromise = (async () => {
     try {
       const filter = `owner="${owner}" && key="${PERSONAL_NOTES_SETTINGS_KEY}"`;
       const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+      if (generation !== state.authGeneration) return state.personalNotes;
       const record = data.items?.[0];
       state.personalNotesSettingsId = record?.id || "";
       state.personalNotes = normalizePersonalNotes(record?.value);
     } catch (error) {
-      state.personalNotes = emptyPersonalNotes();
+      if (generation === state.authGeneration) state.personalNotes = emptyPersonalNotes();
       console.warn("Personal notes sync unavailable.", error);
     } finally {
-      state.personalNotesLoaded = true;
-      state.personalNotesLoadPromise = null;
+      if (state.personalNotesLoadPromise === loadPromise) {
+        state.personalNotesLoaded = true;
+        state.personalNotesLoadPromise = null;
+      }
     }
-    renderPersonalNotes();
+    if (generation === state.authGeneration) renderPersonalNotes();
     return state.personalNotes;
   })();
-  return state.personalNotesLoadPromise;
+  state.personalNotesLoadPromise = loadPromise;
+  return loadPromise;
 }
 
 function schedulePersonalNotesSave(delay = 650) {
@@ -2315,7 +2326,7 @@ async function savePersonalNotes() {
   if (!state.auth?.user?.id || !state.personalNotesDirty) return;
   if (state.personalNotesSavePromise) return state.personalNotesSavePromise;
   const owner = state.auth.user.id;
-  state.personalNotesSavePromise = (async () => {
+  const savePromise = (async () => {
     while (state.personalNotesDirty && state.auth?.user?.id === owner) {
       state.personalNotesDirty = false;
       const value = normalizePersonalNotes(structuredClone(state.personalNotes));
@@ -2331,7 +2342,7 @@ async function savePersonalNotes() {
           state.personalNotesSettingsId = created.id;
         }
       } catch (error) {
-        state.personalNotesDirty = true;
+        if (state.auth?.user?.id === owner) state.personalNotesDirty = true;
         throw error;
       }
     }
@@ -2341,10 +2352,11 @@ async function savePersonalNotes() {
       trackFeature("always_notes.edit");
     }
   })();
+  state.personalNotesSavePromise = savePromise;
   try {
-    await state.personalNotesSavePromise;
+    await savePromise;
   } finally {
-    state.personalNotesSavePromise = null;
+    if (state.personalNotesSavePromise === savePromise) state.personalNotesSavePromise = null;
   }
 }
 
@@ -2777,32 +2789,56 @@ function optionList(values, allLabel) {
     .join("");
 }
 
+function beginDataLoad(key) {
+  const epoch = (state.dataLoadEpochs[key] || 0) + 1;
+  state.dataLoadEpochs[key] = epoch;
+  return { epoch, owner: state.auth?.user?.id || "" };
+}
+
+function isCurrentDataLoad(key, request) {
+  return state.dataLoadEpochs[key] === request.epoch
+    && (state.auth?.user?.id || "") === request.owner;
+}
+
+function invalidateDataLoads() {
+  Object.keys(state.dataLoadEpochs).forEach(key => {
+    state.dataLoadEpochs[key] += 1;
+  });
+}
+
 async function loadFacets() {
-  state.oldFacetRecords = [];
+  const request = beginDataLoad("facets");
+  const records = [];
   for (let page = 1; page < 80; page += 1) {
     const data = await pbList("old_reports", {
       page,
       perPage: 500,
       fields: "modality,topic,bodyPart"
     });
-    state.oldFacetRecords.push(...data.items);
+    records.push(...data.items);
     if (page >= data.totalPages) break;
   }
+  if (!isCurrentDataLoad("facets", request)) return false;
+  state.oldFacetRecords = records;
   updateFilterOptions("old");
   updateEditorDatalists("report");
   await loadTemplateFacets();
+  return true;
 }
 
 async function loadTemplateFacets() {
+  const request = beginDataLoad("templateFacets");
   const data = await pbList("templates", {
     page: 1,
     perPage: 500,
     sort: "modality,topic,bodyPart",
     fields: "modality,topic,bodyPart"
   });
+  if (!isCurrentDataLoad("templateFacets", request)) return false;
   state.templateFacetRecords = data.items;
   updateFilterOptions("template");
   updateEditorDatalists("template");
+  return true;
 }
 
 function routeState() {
@@ -2828,7 +2864,9 @@ function updateRoute(mode = state.mode, referenceTab = state.referenceTab, repla
 
 function syncRouteFromLocation(options = {}) {
   const route = routeState();
-  if (options.force || state.mode !== route.mode) showMode(route.mode, { updateRoute: false });
+  if (options.force || state.mode !== route.mode) {
+    showMode(route.mode, { updateRoute: false, loadData: options.loadData });
+  }
   if (route.mode === "writer" && (options.force || state.referenceTab !== route.referenceTab)) {
     showReferenceTab(route.referenceTab, { updateRoute: false });
   }
@@ -2841,6 +2879,46 @@ function loadViewData(promise, label) {
     console.error(`${label} could not be loaded.`, error);
     showToast(`${label} unavailable`, "Check the connection and try again.", "error");
   });
+}
+
+async function loadInitialWorkspaceData() {
+  const loads = [
+    ["filters", loadFacets()],
+    ["old reports", loadOldReports()],
+    ["templates", loadTemplates()],
+    ["work log", loadWorkLog()]
+  ];
+  const results = await Promise.allSettled(loads.map(([, promise]) => promise));
+  const authFailure = results.find(result => result.status === "rejected" && result.reason instanceof AuthSessionError);
+  if (authFailure) throw authFailure.reason;
+  const failures = results
+    .map((result, index) => ({ result, label: loads[index][0] }))
+    .filter(item => item.result.status === "rejected");
+  failures.forEach(item => console.error(`${item.label} could not be loaded.`, item.result.reason));
+  if (failures.length) {
+    showToast(
+      "Some data is unavailable",
+      `${failures.map(item => item.label).join(", ")} will retry when the connection returns.`,
+      "error"
+    );
+  }
+  return failures.length === 0;
+}
+
+async function reloadActiveView() {
+  if (state.mode === "builder") {
+    await Promise.all([loadFacets(), loadOldReports(), loadTemplates()]);
+    return;
+  }
+  if (state.mode === "writer") {
+    await loadTemplates();
+    return;
+  }
+  if (state.mode === "worklog" || state.mode === "interesting") {
+    await loadWorkLog();
+    return;
+  }
+  if (state.mode === "insights") await loadInsights();
 }
 
 function showMode(mode, options = {}) {
@@ -2870,13 +2948,13 @@ function showMode(mode, options = {}) {
   els.worklogSummary.classList.toggle("hidden", mode !== "worklog");
   els.worklogMain.classList.toggle("hidden", mode !== "worklog");
   els.interestingCasesMain.classList.toggle("hidden", mode !== "interesting");
-  if (mode === "writer") {
+  if (mode === "writer" && options.loadData !== false) {
     loadViewData(loadTemplates(), "Templates");
   }
-  if (mode === "worklog" || mode === "interesting") {
+  if ((mode === "worklog" || mode === "interesting") && options.loadData !== false) {
     loadViewData(loadWorkLog(), mode === "interesting" ? "Interesting Cases" : "Work Log");
   }
-  if (mode === "insights") loadViewData(loadInsights(), "Insights");
+  if (mode === "insights" && options.loadData !== false) loadViewData(loadInsights(), "Insights");
   document.title = `PawPlate · ${{
     builder: "Template Builder",
     writer: "Report Writer",
@@ -2904,6 +2982,7 @@ function oldReportFilter() {
 }
 
 async function loadOldReports() {
+  const request = beginDataLoad("oldReports");
   const query = els.oldSearchInput.value.trim();
   const data = await pbList("old_reports", {
     page: 1,
@@ -2912,9 +2991,11 @@ async function loadOldReports() {
     filter: oldReportFilter(),
     fields: "id,title,modality,topic,bodyPart,kind,keywords,report,sourceType,sourceDate,note,isInteresting,owner"
   });
+  if (!isCurrentDataLoad("oldReports", request)) return false;
   state.oldReports = data.items;
   renderOldReports(query);
   if (!state.selectedOldReport && data.items.length) selectOldReport(data.items[0].id);
+  return true;
 }
 
 function renderOldReports(query = els.oldSearchInput.value.trim()) {
@@ -3027,6 +3108,7 @@ function templateFilter() {
 }
 
 async function loadTemplates() {
+  const request = beginDataLoad("templates");
   const query = els.templateSearchInput.value.trim();
   const data = await pbList("templates", {
     page: 1,
@@ -3035,8 +3117,10 @@ async function loadTemplates() {
     filter: templateFilter(),
     fields: "id,title,modality,topic,bodyPart,kind,keywords,report,owner"
   });
+  if (!isCurrentDataLoad("templates", request)) return false;
   state.templates = data.items;
   renderTemplates(query);
+  return true;
 }
 
 function renderTemplates(query = els.templateSearchInput.value.trim()) {
@@ -3493,7 +3577,7 @@ function showContextMenu(x, y, actions) {
     try {
       await actions[Number(button.dataset.actionIndex)].run();
     } catch (error) {
-      showToast("Action failed", error.message || "Please try again.", "error");
+      showToast("Action failed", friendlyErrorMessage(error) || "Please try again.", "error");
     }
   };
 }
@@ -3513,6 +3597,27 @@ function showToast(title, message = "", type = "success") {
     toast.classList.add("leaving");
     toast.addEventListener("animationend", () => toast.remove(), { once: true });
   }, 2600);
+}
+
+async function copyText(value) {
+  const text = String(value || "");
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall through for browsers that deny the async clipboard API.
+    }
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.cssText = "position:fixed;left:-9999px;top:0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Copy is unavailable in this browser.");
 }
 
 async function withButtonFeedback(button, busyLabel, action, doneLabel = null) {
@@ -3543,7 +3648,7 @@ async function withButtonFeedback(button, busyLabel, action, doneLabel = null) {
       button.disabled = false;
       button.textContent = original;
     }
-    showToast("Action failed", error.message || "Please try again.", "error");
+    showToast("Action failed", friendlyErrorMessage(error) || "Please try again.", "error");
     return false;
   }
 }
@@ -3629,6 +3734,7 @@ function worklogDateCounts() {
 }
 
 async function loadWorkLog() {
+  const request = beginDataLoad("workLog");
   await loadReportNotes();
   const data = await pbList("old_reports", {
     page: 1,
@@ -3637,6 +3743,7 @@ async function loadWorkLog() {
     filter: 'sourceType="final-report"',
     fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,updated,note,isInteresting,owner"
   });
+  if (!isCurrentDataLoad("workLog", request)) return false;
   state.workLogReports = data.items;
   if (state.selectedWorklogReport) {
     state.selectedWorklogReport = state.workLogReports.find(item => item.id === state.selectedWorklogReport.id) || null;
@@ -3644,6 +3751,7 @@ async function loadWorkLog() {
   renderWorkLog();
   renderInterestingCases();
   renderWorklogPreview();
+  return true;
 }
 
 function renderWorkLog() {
@@ -4430,14 +4538,14 @@ els.templateModalityRadios?.addEventListener("click", event => {
   if (!button) return;
   els.templateModalityFilter.value = button.dataset.choiceValue;
   updateFilterOptions("template", "modality");
-  loadTemplates();
+  loadViewData(loadTemplates(), "Templates");
 });
 els.templateTypeRadios?.addEventListener("click", event => {
   const button = event.target.closest("[data-choice-value]");
   if (!button) return;
   els.templateTypeFilter.value = button.dataset.choiceValue;
   renderChoiceChips(els.templateTypeRadios, TEMPLATE_TYPE_FILTERS, els.templateTypeFilter.value, "template-type");
-  loadTemplates();
+  loadViewData(loadTemplates(), "Templates");
 });
 els.snippetSystemSelect?.addEventListener("change", () => {
   state.snippet.system = els.snippetSystemSelect.value;
@@ -4520,12 +4628,15 @@ els.insertSnippetBtn?.addEventListener("click", () => {
   trackFeature(`snippet.insert.${state.snippet.system}`);
   showToast("Snippet inserted", snippet);
 });
-els.copySnippetBtn?.addEventListener("click", async () => {
-  const snippet = combinedSnippetText();
-  if (!snippet) return;
-  await navigator.clipboard.writeText(snippet);
-  trackFeature(`snippet.copy.${state.snippet.system}`);
-  showToast("Snippet copied", snippet);
+els.copySnippetBtn?.addEventListener("click", () => {
+  withButtonFeedback(els.copySnippetBtn, "Copying...", async () => {
+    const snippet = combinedSnippetText();
+    if (!snippet) return false;
+    await copyText(snippet);
+    trackFeature(`snippet.copy.${state.snippet.system}`);
+    showToast("Snippet copied", snippet);
+    return true;
+  }, "Copied");
 });
 els.resetSnippetBtn?.addEventListener("click", () => {
   state.snippet = structuredClone(SNIPPET_DEFAULTS);
@@ -4534,7 +4645,7 @@ els.resetSnippetBtn?.addEventListener("click", () => {
 });
 els.oldSearchInput.addEventListener("input", debounce(() => {
   state.selectedOldReport = null;
-  loadOldReports();
+  loadViewData(loadOldReports(), "Old Reports");
 }));
 els.oldReportList.addEventListener("click", event => {
   const button = event.target.closest("[data-old-id]");
@@ -4556,7 +4667,7 @@ els.oldReportList.addEventListener("contextmenu", event => {
     if (report.sourceType === "final-report" || report.kind === "final-report") {
       actions.unshift({ label: "Open report", run: async () => {
         await loadWorkLog();
-        openSavedReport(id);
+        await openSavedReport(id);
       }});
     }
     actions.push({ label: report.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
@@ -4590,7 +4701,7 @@ els.saveTemplateBtn.addEventListener("click", () => {
   withButtonFeedback(els.saveTemplateBtn, "Saving...", saveTemplate, "Saved");
 });
 els.useTemplateBtn.addEventListener("click", () => useTemplateForReport());
-els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
+els.templateSearchInput.addEventListener("input", debounce(() => loadViewData(loadTemplates(), "Templates")));
 [
   els.oldModalityFilter,
   els.oldTopicFilter,
@@ -4602,7 +4713,7 @@ els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
   if (element === els.oldModalityFilter) updateFilterOptions("old", "modality");
   if (element === els.oldTopicFilter) updateFilterOptions("old", "topic");
   state.selectedOldReport = null;
-  loadOldReports();
+  loadViewData(loadOldReports(), "Old Reports");
 })));
 [
   els.templateModalityFilter,
@@ -4612,7 +4723,7 @@ els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
 ].forEach(element => element.addEventListener("input", debounce(() => {
   if (element === els.templateModalityFilter) updateFilterOptions("template", "modality");
   if (element === els.templateTopicFilter) updateFilterOptions("template", "topic");
-  loadTemplates();
+  loadViewData(loadTemplates(), "Templates");
 })));
 [
   els.templateModalityInput,
@@ -4755,7 +4866,7 @@ document.addEventListener("keydown", event => {
 els.newReportBtn.addEventListener("click", () => startNewReport());
 els.copyReportBtn.addEventListener("click", () => {
   withButtonFeedback(els.copyReportBtn, "Copying...", async () => {
-    await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
+    await copyText(getEditorText(els.reportTextEditor));
     trackFeature("report.copy");
     showToast("Copied", "Plain text is ready to paste.");
   }, "Copied");
@@ -4834,7 +4945,7 @@ els.refreshInsightsBtn.addEventListener("click", () => {
 });
 els.copyInsightPromptBtn.addEventListener("click", () => {
   withButtonFeedback(els.copyInsightPromptBtn, "Copying...", async () => {
-    await navigator.clipboard.writeText(els.insightPromptText.value);
+    await copyText(els.insightPromptText.value);
     trackFeature("insight.copy_prompt");
     showToast("Prompt copied", "Ready to paste into the model you choose.");
   }, "Copied");
@@ -4930,21 +5041,21 @@ document.addEventListener("visibilitychange", () => {
   }
   if (!state.auth?.token) return;
   refreshAuthSession()
-    .then(() => {
-      if (state.mode === "worklog") return loadWorkLog();
-      if (state.mode === "insights") return loadInsights();
-      return null;
-    })
+    .then(reloadActiveView)
     .catch(error => {
       if (error instanceof AuthSessionError) return;
       showToast("Connection problem", error.message || "PawPlate could not refresh your session.", "error");
     });
 });
+window.addEventListener("online", () => {
+  if (!state.auth?.token) return;
+  loadViewData(refreshAuthSession().then(reloadActiveView), "Workspace");
+});
 
 async function loadApp() {
   document.body.removeAttribute("data-theme");
   applyPalette();
-  syncRouteFromLocation({ force: true });
+  syncRouteFromLocation({ force: true, loadData: false });
   await loadWorkingDraft();
   await initTiptapEditors();
   await loadPersonalDictionary();
@@ -4956,10 +5067,8 @@ async function loadApp() {
   updateReportModeBadge();
   showReferenceTab(state.referenceTab, { updateRoute: false });
   blankTemplate();
-  await loadFacets();
-  await loadOldReports();
-  await loadTemplates();
-  await loadWorkLog();
+  await loadInitialWorkspaceData();
+  if (state.mode === "insights") await loadInsights();
 }
 
 async function init() {
