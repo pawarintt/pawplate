@@ -170,7 +170,15 @@ const TEMPLATE_TYPE_FILTERS = [
 ];
 const INSIGHT_SETTINGS_KEY = "templateInsights";
 const FEATURE_USAGE_SETTINGS_KEY = "featureUsageV1";
+const REPORT_NOTES_SETTINGS_KEY = "reportNotesV1";
+const PERSONAL_NOTES_SETTINGS_KEY = "personalNotesV1";
 const FEATURE_USAGE_DAYS = 90;
+const REPORT_NOTES_LIMIT = 2000;
+const PERSONAL_NOTES_LIMIT = 100;
+const PERSONAL_NOTE_BOARD_WIDTH = 1800;
+const PERSONAL_NOTE_BOARD_HEIGHT = 1200;
+const PERSONAL_NOTE_CARD_WIDTH = 240;
+const PERSONAL_NOTE_CARD_HEIGHT = 190;
 const TRACKED_FEATURES = new Set([
   "navigation.template_builder",
   "navigation.report_writer",
@@ -194,6 +202,13 @@ const TRACKED_FEATURES = new Set([
   "work_log.preview",
   "work_log.edit_report",
   "work_log.calendar_filter",
+  "report_note.open",
+  "report_note.save",
+  "always_notes.open",
+  "always_notes.add",
+  "always_notes.edit",
+  "always_notes.move",
+  "always_notes.delete",
   "interesting.preview",
   "interesting.edit_report",
   "interesting.toggle",
@@ -267,6 +282,23 @@ const state = {
   featureUsageSaveTimer: 0,
   featureUsageSavePromise: null,
   featureUsageDirty: false,
+  reportNotesSettingsId: "",
+  reportNotes: { version: 1, notes: {} },
+  reportNotesLoaded: false,
+  reportNotesLoadPromise: null,
+  reportNotesSaveTimer: 0,
+  reportNotesSavePromise: null,
+  reportNotesDirty: false,
+  reportNotePopoverOpen: false,
+  personalNotesSettingsId: "",
+  personalNotes: { version: 1, notes: [] },
+  personalNotesLoaded: false,
+  personalNotesLoadPromise: null,
+  personalNotesSaveTimer: 0,
+  personalNotesSavePromise: null,
+  personalNotesDirty: false,
+  personalNotesEditPending: false,
+  alwaysNotesOpen: false,
   guidelineFileToken: "",
   guidelineFileTokenExpiresAt: 0,
   snippet: structuredClone(SNIPPET_DEFAULTS),
@@ -284,6 +316,15 @@ const els = {
   loginError: document.getElementById("loginError"),
   appShell: document.getElementById("appShell"),
   logoutBtn: document.getElementById("logoutBtn"),
+  alwaysNotesShell: document.getElementById("alwaysNotesShell"),
+  alwaysNotesBtn: document.getElementById("alwaysNotesBtn"),
+  alwaysNotesCount: document.getElementById("alwaysNotesCount"),
+  alwaysNotesPopover: document.getElementById("alwaysNotesPopover"),
+  alwaysNotesStatus: document.getElementById("alwaysNotesStatus"),
+  closeAlwaysNotesBtn: document.getElementById("closeAlwaysNotesBtn"),
+  newPersonalNoteBtn: document.getElementById("newPersonalNoteBtn"),
+  personalNotesCanvas: document.getElementById("personalNotesCanvas"),
+  personalNotesBoard: document.getElementById("personalNotesBoard"),
   builderModeBtn: document.getElementById("builderModeBtn"),
   writerModeBtn: document.getElementById("writerModeBtn"),
   worklogModeBtn: document.getElementById("worklogModeBtn"),
@@ -401,6 +442,12 @@ const els = {
   worklogPreviewText: document.getElementById("worklogPreviewText"),
   editWorklogReportBtn: document.getElementById("editWorklogReportBtn"),
   closeWorklogPreviewBtn: document.getElementById("closeWorklogPreviewBtn"),
+  quickReportNoteBtn: document.getElementById("quickReportNoteBtn"),
+  quickReportNoteDot: document.getElementById("quickReportNoteDot"),
+  reportNotePopover: document.getElementById("reportNotePopover"),
+  reportNoteStatus: document.getElementById("reportNoteStatus"),
+  closeReportNoteBtn: document.getElementById("closeReportNoteBtn"),
+  reportPersonalNoteInput: document.getElementById("reportPersonalNoteInput"),
   refreshInsightsBtn: document.getElementById("refreshInsightsBtn"),
   insightsSummary: document.getElementById("insightsSummary"),
   insightsList: document.getElementById("insightsList"),
@@ -1843,6 +1890,32 @@ function logout(message = "") {
   state.featureUsageSaveTimer = 0;
   state.featureUsageSavePromise = null;
   state.featureUsageDirty = false;
+  window.clearTimeout(state.reportNotesSaveTimer);
+  state.reportNotesSettingsId = "";
+  state.reportNotes = emptyReportNotes();
+  state.reportNotesLoaded = false;
+  state.reportNotesLoadPromise = null;
+  state.reportNotesSaveTimer = 0;
+  state.reportNotesSavePromise = null;
+  state.reportNotesDirty = false;
+  state.reportNotePopoverOpen = false;
+  window.clearTimeout(state.personalNotesSaveTimer);
+  state.personalNotesSettingsId = "";
+  state.personalNotes = emptyPersonalNotes();
+  state.personalNotesLoaded = false;
+  state.personalNotesLoadPromise = null;
+  state.personalNotesSaveTimer = 0;
+  state.personalNotesSavePromise = null;
+  state.personalNotesDirty = false;
+  state.personalNotesEditPending = false;
+  state.alwaysNotesOpen = false;
+  els.alwaysNotesPopover.classList.add("hidden");
+  els.reportNotePopover.classList.add("hidden");
+  els.alwaysNotesBtn.setAttribute("aria-expanded", "false");
+  els.quickReportNoteBtn.setAttribute("aria-expanded", "false");
+  setPersonalNotesStatus("");
+  setReportNotesStatus("");
+  renderPersonalNotes();
   window.clearTimeout(state.reportAutosaveTimer);
   state.reportAutosaveTimer = 0;
   state.reportAutosaveDirty = false;
@@ -2015,6 +2088,387 @@ async function trackFeature(feature) {
   state.featureUsage.features[feature] = current;
   state.featureUsageDirty = true;
   scheduleFeatureUsageSave();
+}
+
+function emptyReportNotes() {
+  return { version: 1, notes: {} };
+}
+
+function normalizeReportNotes(value) {
+  const entries = Object.entries(value?.notes || {})
+    .map(([reportId, note]) => {
+      const text = String(note?.text || "").replace(/\r/g, "").slice(0, 10000);
+      if (!reportId || !text.trim()) return null;
+      return [reportId, {
+        text,
+        updatedAt: typeof note?.updatedAt === "string" ? note.updatedAt : ""
+      }];
+    })
+    .filter(Boolean)
+    .sort((left, right) => right[1].updatedAt.localeCompare(left[1].updatedAt))
+    .slice(0, REPORT_NOTES_LIMIT);
+  return { version: 1, notes: Object.fromEntries(entries) };
+}
+
+function reportNoteText(reportId) {
+  return state.reportNotes.notes?.[reportId]?.text || "";
+}
+
+function setReportNotesStatus(message) {
+  els.reportNoteStatus.textContent = message;
+}
+
+async function loadReportNotes() {
+  if (state.reportNotesLoaded) return state.reportNotes;
+  if (state.reportNotesLoadPromise) return state.reportNotesLoadPromise;
+  const owner = state.auth?.user?.id || "";
+  if (!owner) return state.reportNotes;
+  state.reportNotesLoadPromise = (async () => {
+    try {
+      const filter = `owner="${owner}" && key="${REPORT_NOTES_SETTINGS_KEY}"`;
+      const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+      const record = data.items?.[0];
+      state.reportNotesSettingsId = record?.id || "";
+      state.reportNotes = normalizeReportNotes(record?.value);
+    } catch (error) {
+      state.reportNotes = emptyReportNotes();
+      console.warn("Report notes sync unavailable.", error);
+    } finally {
+      state.reportNotesLoaded = true;
+      state.reportNotesLoadPromise = null;
+    }
+    return state.reportNotes;
+  })();
+  return state.reportNotesLoadPromise;
+}
+
+function scheduleReportNotesSave(delay = 650) {
+  window.clearTimeout(state.reportNotesSaveTimer);
+  setReportNotesStatus("Saving...");
+  state.reportNotesSaveTimer = window.setTimeout(() => {
+    saveReportNotes().catch(error => {
+      setReportNotesStatus("Not saved");
+      console.warn("Report notes could not be saved.", error);
+    });
+  }, delay);
+}
+
+async function saveReportNotes() {
+  window.clearTimeout(state.reportNotesSaveTimer);
+  state.reportNotesSaveTimer = 0;
+  if (!state.auth?.user?.id || !state.reportNotesDirty) return;
+  if (state.reportNotesSavePromise) return state.reportNotesSavePromise;
+  const owner = state.auth.user.id;
+  state.reportNotesSavePromise = (async () => {
+    while (state.reportNotesDirty && state.auth?.user?.id === owner) {
+      state.reportNotesDirty = false;
+      const value = normalizeReportNotes(structuredClone(state.reportNotes));
+      try {
+        if (state.reportNotesSettingsId) {
+          await pbUpdate("user_settings", state.reportNotesSettingsId, { value });
+        } else {
+          const created = await pbCreate("user_settings", {
+            owner,
+            key: REPORT_NOTES_SETTINGS_KEY,
+            value
+          });
+          state.reportNotesSettingsId = created.id;
+        }
+      } catch (error) {
+        state.reportNotesDirty = true;
+        throw error;
+      }
+    }
+    setReportNotesStatus("Saved");
+    trackFeature("report_note.save");
+  })();
+  try {
+    await state.reportNotesSavePromise;
+  } finally {
+    state.reportNotesSavePromise = null;
+  }
+}
+
+function setReportNote(reportId, value) {
+  if (!reportId) return;
+  const text = String(value || "").replace(/\r/g, "").slice(0, 10000);
+  if (text.trim()) {
+    state.reportNotes.notes[reportId] = { text, updatedAt: new Date().toISOString() };
+  } else {
+    delete state.reportNotes.notes[reportId];
+  }
+  state.reportNotesDirty = true;
+  scheduleReportNotesSave();
+  updateReportNoteButton();
+}
+
+function removeReportNote(reportId) {
+  if (!state.reportNotes.notes?.[reportId]) return;
+  delete state.reportNotes.notes[reportId];
+  state.reportNotesDirty = true;
+  scheduleReportNotesSave(0);
+}
+
+function emptyPersonalNotes() {
+  return { version: 2, notes: [] };
+}
+
+function titleFromPersonalNoteText(text) {
+  const firstLine = String(text || "").split("\n").map(line => line.trim()).find(Boolean) || "Untitled note";
+  return firstLine.slice(0, 80);
+}
+
+function clampPersonalNotePosition(value, max) {
+  const number = Number(value);
+  return Math.round(Math.min(max, Math.max(12, Number.isFinite(number) ? number : 12)));
+}
+
+function normalizePersonalNotes(value) {
+  const notes = (Array.isArray(value?.notes) ? value.notes : [])
+    .map((note, index) => {
+      const text = String(note?.text || "").replace(/\r/g, "").slice(0, 10000);
+      const fallbackX = 26 + (index % 6) * 265;
+      const fallbackY = 26 + Math.floor(index / 6) * 215;
+      const color = Number(note?.color);
+      return {
+        id: String(note?.id || ""),
+        title: String(note?.title || titleFromPersonalNoteText(text)).replace(/\s+/g, " ").trim().slice(0, 120) || "Untitled note",
+        text,
+        x: clampPersonalNotePosition(note?.x ?? fallbackX, PERSONAL_NOTE_BOARD_WIDTH - PERSONAL_NOTE_CARD_WIDTH - 12),
+        y: clampPersonalNotePosition(note?.y ?? fallbackY, PERSONAL_NOTE_BOARD_HEIGHT - PERSONAL_NOTE_CARD_HEIGHT - 12),
+        z: Math.max(1, Math.round(Number(note?.z) || index + 1)),
+        color: Math.max(0, Math.min(5, Math.round(Number.isFinite(color) ? color : index % 6))),
+        createdAt: typeof note?.createdAt === "string" ? note.createdAt : "",
+        updatedAt: typeof note?.updatedAt === "string" ? note.updatedAt : ""
+      };
+    })
+    .filter(note => note.id)
+    .sort((left, right) => left.z - right.z)
+    .slice(-PERSONAL_NOTES_LIMIT);
+  return { version: 2, notes };
+}
+
+function setPersonalNotesStatus(message) {
+  els.alwaysNotesStatus.textContent = message;
+}
+
+async function loadPersonalNotes() {
+  if (state.personalNotesLoaded) return state.personalNotes;
+  if (state.personalNotesLoadPromise) return state.personalNotesLoadPromise;
+  const owner = state.auth?.user?.id || "";
+  if (!owner) return state.personalNotes;
+  state.personalNotesLoadPromise = (async () => {
+    try {
+      const filter = `owner="${owner}" && key="${PERSONAL_NOTES_SETTINGS_KEY}"`;
+      const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+      const record = data.items?.[0];
+      state.personalNotesSettingsId = record?.id || "";
+      state.personalNotes = normalizePersonalNotes(record?.value);
+    } catch (error) {
+      state.personalNotes = emptyPersonalNotes();
+      console.warn("Personal notes sync unavailable.", error);
+    } finally {
+      state.personalNotesLoaded = true;
+      state.personalNotesLoadPromise = null;
+    }
+    renderPersonalNotes();
+    return state.personalNotes;
+  })();
+  return state.personalNotesLoadPromise;
+}
+
+function schedulePersonalNotesSave(delay = 650) {
+  window.clearTimeout(state.personalNotesSaveTimer);
+  setPersonalNotesStatus("Saving...");
+  state.personalNotesSaveTimer = window.setTimeout(() => {
+    savePersonalNotes().catch(error => {
+      setPersonalNotesStatus("Not saved");
+      console.warn("Personal notes could not be saved.", error);
+    });
+  }, delay);
+}
+
+async function savePersonalNotes() {
+  window.clearTimeout(state.personalNotesSaveTimer);
+  state.personalNotesSaveTimer = 0;
+  if (!state.auth?.user?.id || !state.personalNotesDirty) return;
+  if (state.personalNotesSavePromise) return state.personalNotesSavePromise;
+  const owner = state.auth.user.id;
+  state.personalNotesSavePromise = (async () => {
+    while (state.personalNotesDirty && state.auth?.user?.id === owner) {
+      state.personalNotesDirty = false;
+      const value = normalizePersonalNotes(structuredClone(state.personalNotes));
+      try {
+        if (state.personalNotesSettingsId) {
+          await pbUpdate("user_settings", state.personalNotesSettingsId, { value });
+        } else {
+          const created = await pbCreate("user_settings", {
+            owner,
+            key: PERSONAL_NOTES_SETTINGS_KEY,
+            value
+          });
+          state.personalNotesSettingsId = created.id;
+        }
+      } catch (error) {
+        state.personalNotesDirty = true;
+        throw error;
+      }
+    }
+    setPersonalNotesStatus("Saved");
+    if (state.personalNotesEditPending) {
+      state.personalNotesEditPending = false;
+      trackFeature("always_notes.edit");
+    }
+  })();
+  try {
+    await state.personalNotesSavePromise;
+  } finally {
+    state.personalNotesSavePromise = null;
+  }
+}
+
+function renderPersonalNotes() {
+  const notes = state.personalNotes.notes || [];
+  els.alwaysNotesCount.textContent = String(notes.length);
+  if (!notes.length) {
+    els.personalNotesBoard.innerHTML = '<div class="personal-notes-empty">Create a note, then arrange your desktop around the way you think.</div>';
+    return;
+  }
+  els.personalNotesBoard.innerHTML = notes.map(note => `
+    <div class="personal-note-card" data-personal-note-id="${escapeHtml(note.id)}" data-note-color="${note.color}" style="left:${note.x}px;top:${note.y}px;z-index:${note.z}" title="Right-click for actions">
+      <div class="personal-note-head" data-note-drag>
+        <span class="personal-note-grip" aria-hidden="true" title="Drag note">::</span>
+        <input class="personal-note-title" data-note-title maxlength="120" value="${escapeHtml(note.title)}" aria-label="Note title">
+      </div>
+      <textarea class="personal-note-body" data-note-body maxlength="10000" aria-label="Note body">${escapeHtml(note.text)}</textarea>
+    </div>
+  `).join("");
+}
+
+function topPersonalNoteZ() {
+  return Math.max(0, ...state.personalNotes.notes.map(note => Number(note.z) || 0));
+}
+
+function createPersonalNote() {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID?.() || `note-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const offset = state.personalNotes.notes.length * 26;
+  const x = clampPersonalNotePosition(els.personalNotesCanvas.scrollLeft + 34 + (offset % 520), PERSONAL_NOTE_BOARD_WIDTH - PERSONAL_NOTE_CARD_WIDTH - 12);
+  const y = clampPersonalNotePosition(els.personalNotesCanvas.scrollTop + 34 + (offset % 310), PERSONAL_NOTE_BOARD_HEIGHT - PERSONAL_NOTE_CARD_HEIGHT - 12);
+  state.personalNotes.notes.push({
+    id,
+    title: "New note",
+    text: "",
+    x,
+    y,
+    z: topPersonalNoteZ() + 1,
+    color: state.personalNotes.notes.length % 6,
+    createdAt: now,
+    updatedAt: now
+  });
+  state.personalNotes.notes = state.personalNotes.notes.slice(-PERSONAL_NOTES_LIMIT);
+  state.personalNotesDirty = true;
+  renderPersonalNotes();
+  schedulePersonalNotesSave(0);
+  trackFeature("always_notes.add");
+  window.setTimeout(() => {
+    const card = [...els.personalNotesBoard.querySelectorAll("[data-personal-note-id]")].find(item => item.dataset.personalNoteId === id);
+    const titleInput = card?.querySelector("[data-note-title]");
+    titleInput?.focus();
+    titleInput?.select();
+  }, 0);
+}
+
+function bringPersonalNoteToFront(id, card) {
+  const note = state.personalNotes.notes.find(item => item.id === id);
+  if (!note || note.z === topPersonalNoteZ()) return;
+  note.z = topPersonalNoteZ() + 1;
+  note.updatedAt = new Date().toISOString();
+  if (card) card.style.zIndex = String(note.z);
+  state.personalNotesDirty = true;
+  schedulePersonalNotesSave(900);
+}
+
+function startPersonalNoteDrag(event, card) {
+  const handle = event.target.closest("[data-note-drag]");
+  if (!handle || event.target.closest("input, textarea, button")) return;
+  const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
+  if (!note) return;
+  event.preventDefault();
+  bringPersonalNoteToFront(note.id, card);
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const originX = note.x;
+  const originY = note.y;
+  let moved = false;
+  card.classList.add("is-dragging");
+  const move = moveEvent => {
+    const nextX = clampPersonalNotePosition(originX + moveEvent.clientX - startX, PERSONAL_NOTE_BOARD_WIDTH - PERSONAL_NOTE_CARD_WIDTH - 12);
+    const nextY = clampPersonalNotePosition(originY + moveEvent.clientY - startY, PERSONAL_NOTE_BOARD_HEIGHT - PERSONAL_NOTE_CARD_HEIGHT - 12);
+    moved ||= nextX !== originX || nextY !== originY;
+    note.x = nextX;
+    note.y = nextY;
+    card.style.left = `${nextX}px`;
+    card.style.top = `${nextY}px`;
+  };
+  const stop = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+    card.classList.remove("is-dragging");
+    if (!moved) return;
+    note.updatedAt = new Date().toISOString();
+    state.personalNotesDirty = true;
+    schedulePersonalNotesSave();
+    trackFeature("always_notes.move");
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
+function deletePersonalNote(id) {
+  const note = state.personalNotes.notes.find(item => item.id === id);
+  if (!note || !confirm("Delete this note?")) return;
+  state.personalNotes.notes = state.personalNotes.notes.filter(item => item.id !== id);
+  state.personalNotesDirty = true;
+  renderPersonalNotes();
+  schedulePersonalNotesSave(0);
+  trackFeature("always_notes.delete");
+}
+
+function setAlwaysNotesOpen(open) {
+  state.alwaysNotesOpen = Boolean(open);
+  els.alwaysNotesPopover.classList.toggle("hidden", !state.alwaysNotesOpen);
+  els.alwaysNotesBtn.setAttribute("aria-expanded", String(state.alwaysNotesOpen));
+  if (state.alwaysNotesOpen) {
+    renderPersonalNotes();
+    trackFeature("always_notes.open");
+  }
+}
+
+function updateReportNoteButton() {
+  const hasNote = Boolean(reportNoteText(state.selectedWorklogReport?.id));
+  els.quickReportNoteBtn.classList.toggle("has-note", hasNote);
+  els.quickReportNoteDot.classList.toggle("hidden", !hasNote);
+}
+
+function setReportNotePopoverOpen(open) {
+  const canOpen = Boolean(state.selectedWorklogReport);
+  state.reportNotePopoverOpen = Boolean(open && canOpen);
+  els.reportNotePopover.classList.toggle("hidden", !state.reportNotePopoverOpen);
+  els.quickReportNoteBtn.setAttribute("aria-expanded", String(state.reportNotePopoverOpen));
+  if (state.reportNotePopoverOpen) {
+    els.reportPersonalNoteInput.value = reportNoteText(state.selectedWorklogReport.id);
+    setReportNotesStatus(els.reportPersonalNoteInput.value ? "Saved" : "");
+    trackFeature("report_note.open");
+    window.setTimeout(() => els.reportPersonalNoteInput.focus(), 0);
+  }
+}
+
+function openReportNote(reportId = "") {
+  if (reportId && state.selectedWorklogReport?.id !== reportId) selectWorklogReport(reportId);
+  setReportNotePopoverOpen(true);
 }
 
 async function ensureGuidelineFileToken() {
@@ -3010,6 +3464,7 @@ function reportMatchesQuery(report, query) {
     report.bodyPart,
     report.keywords,
     report.note,
+    reportNoteText(report.id),
     plainText(report.report)
   ].join(" ").toLowerCase();
   return query.toLowerCase().split(/\s+/).every(term => haystack.includes(term));
@@ -3034,6 +3489,7 @@ function worklogDateCounts() {
 }
 
 async function loadWorkLog() {
+  await loadReportNotes();
   const data = await pbList("old_reports", {
     page: 1,
     perPage: 500,
@@ -3074,14 +3530,16 @@ function renderWorkLog() {
   }
   els.worklogList.innerHTML = reports.map((report, index) => {
     const date = savedDate(report);
+    const personalNote = reportNoteText(report.id);
     return `
       <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-worklog-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
         <span>
-          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
+          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}</span>
           <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
           ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
           ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
+          ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, query), query)}</span>` : ""}
         </span>
       </button>
     `;
@@ -3091,6 +3549,7 @@ function renderWorkLog() {
 function selectWorklogReport(id) {
   const report = state.workLogReports.find(item => item.id === id);
   if (!report) return;
+  if (state.selectedWorklogReport?.id !== id) setReportNotePopoverOpen(false);
   state.selectedWorklogReport = report;
   renderWorkLog();
   renderInterestingCases();
@@ -3098,6 +3557,7 @@ function selectWorklogReport(id) {
 }
 
 function closeWorklogPreview() {
+  setReportNotePopoverOpen(false);
   state.selectedWorklogReport = null;
   renderWorkLog();
   renderInterestingCases();
@@ -3111,6 +3571,8 @@ function renderWorklogPreview() {
     els.worklogPreviewMeta.textContent = "";
     els.worklogPreviewText.textContent = "Select a report to preview it here.";
     els.editWorklogReportBtn.disabled = true;
+    els.quickReportNoteBtn.disabled = true;
+    updateReportNoteButton();
     return;
   }
   const date = savedDate(report);
@@ -3124,6 +3586,8 @@ function renderWorklogPreview() {
   ].filter(Boolean).map(escapeHtml).join(" / ");
   els.worklogPreviewText.innerHTML = reportHtml(report.report);
   els.editWorklogReportBtn.disabled = false;
+  els.quickReportNoteBtn.disabled = false;
+  updateReportNoteButton();
 }
 
 async function editWorklogDate(id) {
@@ -3207,16 +3671,21 @@ function renderInterestingCases() {
     els.interestingList.innerHTML = `<div class="empty">Mark a saved report as interesting to keep it here for quick lookup.</div>`;
     return;
   }
-  els.interestingList.innerHTML = reports.map((report, index) => `
-    <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-interesting-id="${report.id}" type="button">
-      <span class="result-no">${index + 1}.</span>
-      <span>
-        <span class="result-title">${highlight(report.title || "Untitled", query)}</span>
-        <span class="result-meta">${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
-        ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
-      </span>
-    </button>
-  `).join("");
+  els.interestingList.innerHTML = reports.map((report, index) => {
+    const personalNote = reportNoteText(report.id);
+    return `
+      <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-interesting-id="${report.id}" type="button">
+        <span class="result-no">${index + 1}.</span>
+        <span>
+          <span class="result-title">${highlight(report.title || "Untitled", query)}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}</span>
+          <span class="result-meta">${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
+          ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
+          ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
+          ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, query), query)}</span>` : ""}
+        </span>
+      </button>
+    `;
+  }).join("");
 }
 
 function reportTextWithBreaks(value) {
@@ -3739,6 +4208,11 @@ function debounce(fn, ms = 250) {
   };
 }
 
+const refreshReportNoteLists = debounce(() => {
+  renderWorkLog();
+  renderInterestingCases();
+}, 180);
+
 function handleModeLink(event, mode) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
@@ -4072,6 +4546,62 @@ els.templateList.addEventListener("contextmenu", event => {
 });
 els.contextMenu?.addEventListener("click", event => event.stopPropagation());
 document.addEventListener("click", hideContextMenu);
+els.alwaysNotesBtn.addEventListener("click", () => setAlwaysNotesOpen(!state.alwaysNotesOpen));
+els.closeAlwaysNotesBtn.addEventListener("click", () => setAlwaysNotesOpen(false));
+els.newPersonalNoteBtn.addEventListener("click", createPersonalNote);
+els.personalNotesBoard.addEventListener("input", event => {
+  const titleInput = event.target.closest("[data-note-title]");
+  const bodyInput = event.target.closest("[data-note-body]");
+  const card = event.target.closest("[data-personal-note-id]");
+  if ((!titleInput && !bodyInput) || !card) return;
+  const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
+  if (!note) return;
+  if (titleInput) note.title = titleInput.value.replace(/\s+/g, " ").slice(0, 120);
+  if (bodyInput) note.text = bodyInput.value.replace(/\r/g, "").slice(0, 10000);
+  note.updatedAt = new Date().toISOString();
+  state.personalNotesDirty = true;
+  state.personalNotesEditPending = true;
+  schedulePersonalNotesSave();
+});
+els.personalNotesBoard.addEventListener("focusout", event => {
+  const titleInput = event.target.closest("[data-note-title]");
+  if (!titleInput || titleInput.value.trim()) return;
+  titleInput.value = "Untitled note";
+  titleInput.dispatchEvent(new Event("input", { bubbles: true }));
+});
+els.personalNotesBoard.addEventListener("pointerdown", event => {
+  const card = event.target.closest("[data-personal-note-id]");
+  if (!card) return;
+  bringPersonalNoteToFront(card.dataset.personalNoteId, card);
+  startPersonalNoteDrag(event, card);
+});
+els.personalNotesBoard.addEventListener("contextmenu", event => {
+  const card = event.target.closest("[data-personal-note-id]");
+  if (!card) return;
+  event.preventDefault();
+  showContextMenu(event.clientX, event.clientY, [
+    { label: "Delete note", danger: true, run: () => deletePersonalNote(card.dataset.personalNoteId) }
+  ]);
+});
+els.quickReportNoteBtn.addEventListener("click", () => setReportNotePopoverOpen(!state.reportNotePopoverOpen));
+els.closeReportNoteBtn.addEventListener("click", () => setReportNotePopoverOpen(false));
+els.reportPersonalNoteInput.addEventListener("input", () => {
+  const reportId = state.selectedWorklogReport?.id;
+  if (!reportId) return;
+  setReportNote(reportId, els.reportPersonalNoteInput.value);
+  refreshReportNoteLists();
+});
+document.addEventListener("pointerdown", event => {
+  if (state.alwaysNotesOpen && !els.alwaysNotesShell.contains(event.target) && !els.contextMenu.contains(event.target)) setAlwaysNotesOpen(false);
+  if (state.reportNotePopoverOpen && !els.reportNotePopover.contains(event.target) && !els.quickReportNoteBtn.contains(event.target)) {
+    setReportNotePopoverOpen(false);
+  }
+});
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  if (state.reportNotePopoverOpen) setReportNotePopoverOpen(false);
+  if (state.alwaysNotesOpen) setAlwaysNotesOpen(false);
+});
 els.newReportBtn.addEventListener("click", () => startNewReport());
 els.copyReportBtn.addEventListener("click", () => {
   withButtonFeedback(els.copyReportBtn, "Copying...", async () => {
@@ -4174,6 +4704,7 @@ els.worklogList.addEventListener("contextmenu", event => {
   const report = state.workLogReports.find(item => item.id === id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
+    { label: reportNoteText(id) ? "Edit personal note" : "Add personal note", run: () => openReportNote(id) },
     { label: "Change report date", run: () => editWorklogDate(id) },
     { label: report?.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: !report?.isInteresting });
@@ -4188,8 +4719,9 @@ els.worklogList.addEventListener("contextmenu", event => {
       if (state.reportDraftId === id) {
         resetReportDraft();
       }
-      if (state.selectedWorklogReport?.id === id) state.selectedWorklogReport = null;
-      await loadWorkLog();
+       if (state.selectedWorklogReport?.id === id) state.selectedWorklogReport = null;
+       removeReportNote(id);
+       await loadWorkLog();
       await loadOldReports();
       showToast("Saved report deleted", report?.title || "Report");
     }}
@@ -4203,6 +4735,7 @@ els.interestingList.addEventListener("contextmenu", event => {
   const report = state.workLogReports.find(item => item.id === id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
+    { label: reportNoteText(id) ? "Edit personal note" : "Add personal note", run: () => openReportNote(id) },
     { label: "Change report date", run: () => editWorklogDate(id) },
     { label: "Remove interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: false });
@@ -4224,9 +4757,9 @@ els.loginForm.addEventListener("submit", async event => {
 });
 els.logoutBtn.addEventListener("click", async () => {
   try {
-    await saveFeatureUsage();
+    await Promise.all([saveFeatureUsage(), saveReportNotes(), savePersonalNotes()]);
   } catch (error) {
-    console.warn("Feature usage could not be flushed before sign out.", error);
+    console.warn("Personal settings could not be flushed before sign out.", error);
   }
   logout();
 });
@@ -4241,6 +4774,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     if (state.reportAutosaveDirty) saveWorkingDraft();
     saveFeatureUsage().catch(error => console.warn("Feature usage could not be flushed.", error));
+    saveReportNotes().catch(error => console.warn("Report notes could not be flushed.", error));
+    savePersonalNotes().catch(error => console.warn("Personal notes could not be flushed.", error));
     return;
   }
   if (!state.auth?.token) return;
@@ -4264,6 +4799,7 @@ async function loadApp() {
   await initTiptapEditors();
   await loadPersonalDictionary();
   await loadAiSettings();
+  await Promise.all([loadReportNotes(), loadPersonalNotes()]);
   loadFeatureUsage().catch(error => console.warn("Feature usage could not be loaded.", error));
   loadSpellchecker();
   updateTemplateModeBadge();
