@@ -11,6 +11,7 @@ const MODE_ROUTES = {
   builder: "template-builder",
   writer: "report-writer",
   worklog: "work-log",
+  interesting: "interesting-cases",
   insights: "insights"
 };
 const ROUTE_MODES = Object.fromEntries(Object.entries(MODE_ROUTES).map(([mode, route]) => [route, mode]));
@@ -174,6 +175,7 @@ const TRACKED_FEATURES = new Set([
   "navigation.template_builder",
   "navigation.report_writer",
   "navigation.work_log",
+  "navigation.interesting_cases",
   "navigation.insights",
   "reference.templates",
   "reference.snippets",
@@ -192,6 +194,8 @@ const TRACKED_FEATURES = new Set([
   "work_log.preview",
   "work_log.edit_report",
   "work_log.calendar_filter",
+  "interesting.preview",
+  "interesting.edit_report",
   "interesting.toggle",
   "insight.refresh",
   "insight.copy_prompt",
@@ -283,10 +287,12 @@ const els = {
   builderModeBtn: document.getElementById("builderModeBtn"),
   writerModeBtn: document.getElementById("writerModeBtn"),
   worklogModeBtn: document.getElementById("worklogModeBtn"),
+  interestingModeBtn: document.getElementById("interestingModeBtn"),
   insightsModeBtn: document.getElementById("insightsModeBtn"),
   builderTopbarContext: document.getElementById("builderTopbarContext"),
   writerTopbarContext: document.getElementById("writerTopbarContext"),
   worklogTopbarContext: document.getElementById("worklogTopbarContext"),
+  interestingTopbarContext: document.getElementById("interestingTopbarContext"),
   insightsTopbarContext: document.getElementById("insightsTopbarContext"),
   builderView: document.getElementById("builderView"),
   writerView: document.getElementById("writerView"),
@@ -384,6 +390,8 @@ const els = {
   saveReportBtn: document.getElementById("saveReportBtn"),
   worklogSearchInput: document.getElementById("worklogSearchInput"),
   worklogSummary: document.getElementById("worklogSummary"),
+  worklogMain: document.getElementById("worklogMain"),
+  interestingCasesMain: document.getElementById("interestingCasesMain"),
   worklogHeatmap: document.getElementById("worklogHeatmap"),
   worklogList: document.getElementById("worklogList"),
   interestingSearchInput: document.getElementById("interestingSearchInput"),
@@ -2248,6 +2256,7 @@ function showMode(mode, options = {}) {
     [els.builderModeBtn, "builder"],
     [els.writerModeBtn, "writer"],
     [els.worklogModeBtn, "worklog"],
+    [els.interestingModeBtn, "interesting"],
     [els.insightsModeBtn, "insights"]
   ].forEach(([link, linkMode]) => {
     const active = mode === linkMode;
@@ -2257,22 +2266,28 @@ function showMode(mode, options = {}) {
   });
   els.builderView.classList.toggle("hidden", mode !== "builder");
   els.writerView.classList.toggle("hidden", mode !== "writer");
-  els.worklogView.classList.toggle("hidden", mode !== "worklog");
+  els.worklogView.classList.toggle("hidden", mode !== "worklog" && mode !== "interesting");
   els.insightsView.classList.toggle("hidden", mode !== "insights");
   els.builderTopbarContext.classList.toggle("hidden", mode !== "builder");
   els.writerTopbarContext.classList.toggle("hidden", mode !== "writer");
   els.worklogTopbarContext.classList.toggle("hidden", mode !== "worklog");
+  els.interestingTopbarContext.classList.toggle("hidden", mode !== "interesting");
   els.insightsTopbarContext.classList.toggle("hidden", mode !== "insights");
   els.worklogSummary.classList.toggle("hidden", mode !== "worklog");
+  els.worklogMain.classList.toggle("hidden", mode !== "worklog");
+  els.interestingCasesMain.classList.toggle("hidden", mode !== "interesting");
   if (mode === "writer") {
     loadViewData(loadTemplates(), "Templates");
   }
-  if (mode === "worklog") loadViewData(loadWorkLog(), "Work Log");
+  if (mode === "worklog" || mode === "interesting") {
+    loadViewData(loadWorkLog(), mode === "interesting" ? "Interesting Cases" : "Work Log");
+  }
   if (mode === "insights") loadViewData(loadInsights(), "Insights");
   document.title = `PawPlate · ${{
     builder: "Template Builder",
     writer: "Report Writer",
     worklog: "Work Log",
+    interesting: "Interesting Cases",
     insights: "Insights"
   }[mode]}`;
   if (options.updateRoute !== false) updateRoute(mode);
@@ -3094,7 +3109,7 @@ function renderWorklogPreview() {
   if (!report) {
     els.worklogPreviewTitle.textContent = "Select a report";
     els.worklogPreviewMeta.textContent = "";
-    els.worklogPreviewText.textContent = "Click a saved report or interesting case to preview it here.";
+    els.worklogPreviewText.textContent = "Select a report to preview it here.";
     els.editWorklogReportBtn.disabled = true;
     return;
   }
@@ -3732,6 +3747,7 @@ function handleModeLink(event, mode) {
     builder: "navigation.template_builder",
     writer: "navigation.report_writer",
     worklog: "navigation.work_log",
+    interesting: "navigation.interesting_cases",
     insights: "navigation.insights"
   }[mode]);
 }
@@ -3749,16 +3765,22 @@ function runFormatCommand(button) {
     if (button.dataset.command === "underline") chain.toggleUnderline().run();
     if (button.dataset.command === "foreColor" && value) chain.setColor(value).run();
     if (button.dataset.command === "backColor" && value) chain.setHighlight({ color: value }).run();
+    if (button.dataset.command === "clearHighlight") chain.unsetHighlight().run();
     updateProofing(editor, { fallback: false });
     return;
   }
   editor.focus();
+  if (button.dataset.command === "clearHighlight") {
+    document.execCommand("backColor", false, "transparent");
+    return;
+  }
   document.execCommand(button.dataset.command, false, button.dataset.value || null);
 }
 
 els.builderModeBtn.addEventListener("click", event => handleModeLink(event, "builder"));
 els.writerModeBtn.addEventListener("click", event => handleModeLink(event, "writer"));
 els.worklogModeBtn.addEventListener("click", event => handleModeLink(event, "worklog"));
+els.interestingModeBtn.addEventListener("click", event => handleModeLink(event, "interesting"));
 els.insightsModeBtn.addEventListener("click", event => handleModeLink(event, "insights"));
 document.querySelectorAll("[data-reference-tab]").forEach(button => {
   button.addEventListener("click", () => {
@@ -4101,13 +4123,13 @@ els.interestingList.addEventListener("click", event => {
   const button = event.target.closest("[data-interesting-id]");
   if (button) {
     selectWorklogReport(button.dataset.interestingId);
-    trackFeature("work_log.preview");
+    trackFeature("interesting.preview");
   }
 });
 els.editWorklogReportBtn.addEventListener("click", () => {
   if (state.selectedWorklogReport) {
     openSavedReport(state.selectedWorklogReport.id);
-    trackFeature("work_log.edit_report");
+    trackFeature(state.mode === "interesting" ? "interesting.edit_report" : "work_log.edit_report");
   }
 });
 els.closeWorklogPreviewBtn.addEventListener("click", closeWorklogPreview);

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260731-all-mode-header">
+  <link rel="stylesheet" href="style.css?v=20260731-interesting-highlight">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -53,6 +53,11 @@
         <div id="worklogSummary" class="worklog-summary" aria-label="Work Log summary"></div>
         <input id="worklogSearchInput" class="topbar-search" type="search" aria-label="Search saved reports" placeholder="Search saved reports">
       </div>
+      <div id="interestingTopbarContext" class="topbar-mode-context interesting-topbar-context hidden">
+        <span class="topbar-divider" aria-hidden="true"></span>
+        <span class="topbar-page-title">Interesting Cases</span>
+        <input id="interestingSearchInput" class="topbar-search" type="search" aria-label="Search interesting cases" placeholder="Search interesting cases">
+      </div>
       <div id="insightsTopbarContext" class="topbar-mode-context insights-topbar-context hidden">
         <span class="topbar-divider" aria-hidden="true"></span>
         <span class="topbar-page-title">Template Opportunities</span>
@@ -65,6 +70,7 @@
           <a id="builderModeBtn" class="active" href="#/template-builder" aria-current="page">Template Builder</a>
           <a id="writerModeBtn" href="#/report-writer/templates">Report Writer</a>
           <a id="worklogModeBtn" href="#/work-log">Work Log</a>
+          <a id="interestingModeBtn" href="#/interesting-cases">Interesting Cases</a>
           <a id="insightsModeBtn" href="#/insights">Insights</a>
         </nav>
         <button id="logoutBtn" class="logout-button" type="button">Sign Out</button>
@@ -105,6 +111,7 @@
             <button class="highlight-swatch sky" type="button" data-command="backColor" data-value="#cfefff" aria-label="Blue highlight"></button>
             <button class="highlight-swatch rose" type="button" data-command="backColor" data-value="#ffd6e2" aria-label="Pink highlight"></button>
             <button class="highlight-swatch lilac" type="button" data-command="backColor" data-value="#e3d8ff" aria-label="Purple highlight"></button>
+            <button class="clear-highlight-button" type="button" data-command="clearHighlight" aria-label="Remove highlight" title="Remove highlight"></button>
           </div>
         </div>
         <div id="templateTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" lang="en-US" autocapitalize="sentences" data-placeholder="Write the reusable template here."></div>
@@ -173,6 +180,7 @@
             <button class="highlight-swatch sky" type="button" data-command="backColor" data-value="#cfefff" aria-label="Blue highlight"></button>
             <button class="highlight-swatch rose" type="button" data-command="backColor" data-value="#ffd6e2" aria-label="Pink highlight"></button>
             <button class="highlight-swatch lilac" type="button" data-command="backColor" data-value="#e3d8ff" aria-label="Purple highlight"></button>
+            <button class="clear-highlight-button" type="button" data-command="clearHighlight" aria-label="Remove highlight" title="Remove highlight"></button>
           </div>
         </div>
         <div id="reportTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" lang="en-US" autocapitalize="sentences" data-placeholder="Pick a template, then type the full report here. Saved reports return to Old Report Lookup."></div>
@@ -267,15 +275,14 @@
     </section>
 
     <section id="worklogView" class="worklog-view hidden">
-      <section class="worklog-main">
+      <section id="worklogMain" class="worklog-main">
         <div id="worklogHeatmap" class="heatmap" aria-label="Saved reports calendar"></div>
         <div id="worklogList" class="result-list worklog-list"></div>
       </section>
+      <section id="interestingCasesMain" class="interesting-list-pane hidden">
+        <div id="interestingList" class="result-list"></div>
+      </section>
       <aside class="lookup-pane interesting-pane">
-        <div class="pane-head">
-          <h2>Interesting Cases</h2>
-          <input id="interestingSearchInput" type="search" placeholder="quick lookup">
-        </div>
         <article class="worklog-preview">
           <div class="preview-head">
             <h3 id="worklogPreviewTitle">Select a report</h3>
@@ -287,7 +294,6 @@
           <div id="worklogPreviewMeta" class="preview-meta"></div>
           <pre id="worklogPreviewText"></pre>
         </article>
-        <div id="interestingList" class="result-list"></div>
       </aside>
     </section>
 
@@ -354,6 +360,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typo-js@1.3.2/typo.js"></script>
-  <script src="app-20260706.js?v=20260731-all-mode-header"></script>
+  <script src="app-20260706.js?v=20260731-interesting-highlight"></script>
 </body>
 </html>
