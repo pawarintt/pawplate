@@ -402,8 +402,10 @@ input[type="radio"] {
 
 .personal-note-card {
   position: absolute;
-  width: 240px;
-  height: 190px;
+  min-width: 180px;
+  min-height: 130px;
+  max-width: 720px;
+  max-height: 720px;
   display: grid;
   grid-template-rows: 38px minmax(0, 1fr);
   border: 1px solid #e6d487;
@@ -414,8 +416,37 @@ input[type="radio"] {
   transition: box-shadow .15s ease;
 }
 
+.personal-note-resize {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 15px;
+  min-height: 15px;
+  padding: 0;
+  border: 0;
+  border-right: 2px solid rgba(90, 73, 49, .28);
+  border-bottom: 2px solid rgba(90, 73, 49, .28);
+  border-radius: 0 0 3px 0;
+  background: transparent;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.personal-note-card.is-collapsed {
+  min-height: 38px;
+  max-height: 38px;
+  height: 38px !important;
+  grid-template-rows: 38px;
+}
+
+.personal-note-card.is-collapsed .personal-note-resize,
+.personal-note-card.is-collapsed .personal-note-body {
+  display: none;
+}
+
 .personal-note-card:focus-within,
-.personal-note-card.is-dragging {
+.personal-note-card.is-dragging,
+.personal-note-card.is-resizing {
   box-shadow: 0 13px 30px rgba(82, 55, 45, .2);
 }
 
@@ -428,13 +459,31 @@ input[type="radio"] {
 .personal-note-head {
   min-width: 0;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 22px minmax(0, 1fr) 25px;
   align-items: center;
   gap: 3px;
   padding: 4px 6px;
   border-bottom: 1px solid rgba(111, 89, 50, .15);
   cursor: grab;
   touch-action: none;
+}
+
+.personal-note-collapse {
+  width: 24px;
+  min-height: 24px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .28);
+  color: rgba(70, 58, 43, .7);
+  font-size: .9rem;
+  line-height: 1;
+}
+
+.personal-note-collapse:hover {
+  background: rgba(255, 255, 255, .55);
 }
 
 .personal-note-card.is-dragging .personal-note-head {

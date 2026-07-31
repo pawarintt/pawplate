@@ -179,6 +179,9 @@ const PERSONAL_NOTE_BOARD_WIDTH = 1800;
 const PERSONAL_NOTE_BOARD_HEIGHT = 1200;
 const PERSONAL_NOTE_CARD_WIDTH = 240;
 const PERSONAL_NOTE_CARD_HEIGHT = 190;
+const PERSONAL_NOTE_CARD_MIN_WIDTH = 180;
+const PERSONAL_NOTE_CARD_MIN_HEIGHT = 130;
+const PERSONAL_NOTE_CARD_MAX_SIZE = 720;
 const TRACKED_FEATURES = new Set([
   "navigation.template_builder",
   "navigation.report_writer",
@@ -208,6 +211,8 @@ const TRACKED_FEATURES = new Set([
   "always_notes.add",
   "always_notes.edit",
   "always_notes.move",
+  "always_notes.resize",
+  "always_notes.collapse",
   "always_notes.delete",
   "interesting.preview",
   "interesting.edit_report",
@@ -291,13 +296,15 @@ const state = {
   reportNotesDirty: false,
   reportNotePopoverOpen: false,
   personalNotesSettingsId: "",
-  personalNotes: { version: 1, notes: [] },
+  personalNotes: { version: 3, notes: [] },
   personalNotesLoaded: false,
   personalNotesLoadPromise: null,
   personalNotesSaveTimer: 0,
   personalNotesSavePromise: null,
   personalNotesDirty: false,
   personalNotesEditPending: false,
+  personalNotesResizeObserver: null,
+  personalNotesResizeTrackTimer: 0,
   alwaysNotesOpen: false,
   guidelineFileToken: "",
   guidelineFileTokenExpiresAt: 0,
@@ -1908,6 +1915,10 @@ function logout(message = "") {
   state.personalNotesSavePromise = null;
   state.personalNotesDirty = false;
   state.personalNotesEditPending = false;
+  state.personalNotesResizeObserver?.disconnect();
+  state.personalNotesResizeObserver = null;
+  window.clearTimeout(state.personalNotesResizeTrackTimer);
+  state.personalNotesResizeTrackTimer = 0;
   state.alwaysNotesOpen = false;
   els.alwaysNotesPopover.classList.add("hidden");
   els.reportNotePopover.classList.add("hidden");
@@ -2210,7 +2221,7 @@ function removeReportNote(reportId) {
 }
 
 function emptyPersonalNotes() {
-  return { version: 2, notes: [] };
+  return { version: 3, notes: [] };
 }
 
 function titleFromPersonalNoteText(text) {
@@ -2223,6 +2234,11 @@ function clampPersonalNotePosition(value, max) {
   return Math.round(Math.min(max, Math.max(12, Number.isFinite(number) ? number : 12)));
 }
 
+function clampPersonalNoteSize(value, min, max, fallback) {
+  const number = Number(value);
+  return Math.round(Math.min(max, Math.max(min, Number.isFinite(number) ? number : fallback)));
+}
+
 function normalizePersonalNotes(value) {
   const notes = (Array.isArray(value?.notes) ? value.notes : [])
     .map((note, index) => {
@@ -2230,12 +2246,17 @@ function normalizePersonalNotes(value) {
       const fallbackX = 26 + (index % 6) * 265;
       const fallbackY = 26 + Math.floor(index / 6) * 215;
       const color = Number(note?.color);
+      const width = clampPersonalNoteSize(note?.width, PERSONAL_NOTE_CARD_MIN_WIDTH, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_WIDTH);
+      const height = clampPersonalNoteSize(note?.height, PERSONAL_NOTE_CARD_MIN_HEIGHT, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_HEIGHT);
       return {
         id: String(note?.id || ""),
         title: String(note?.title || titleFromPersonalNoteText(text)).replace(/\s+/g, " ").trim().slice(0, 120) || "Untitled note",
         text,
-        x: clampPersonalNotePosition(note?.x ?? fallbackX, PERSONAL_NOTE_BOARD_WIDTH - PERSONAL_NOTE_CARD_WIDTH - 12),
-        y: clampPersonalNotePosition(note?.y ?? fallbackY, PERSONAL_NOTE_BOARD_HEIGHT - PERSONAL_NOTE_CARD_HEIGHT - 12),
+        x: clampPersonalNotePosition(note?.x ?? fallbackX, PERSONAL_NOTE_BOARD_WIDTH - width - 12),
+        y: clampPersonalNotePosition(note?.y ?? fallbackY, PERSONAL_NOTE_BOARD_HEIGHT - height - 12),
+        width,
+        height,
+        collapsed: Boolean(note?.collapsed),
         z: Math.max(1, Math.round(Number(note?.z) || index + 1)),
         color: Math.max(0, Math.min(5, Math.round(Number.isFinite(color) ? color : index % 6))),
         createdAt: typeof note?.createdAt === "string" ? note.createdAt : "",
@@ -2245,7 +2266,7 @@ function normalizePersonalNotes(value) {
     .filter(note => note.id)
     .sort((left, right) => left.z - right.z)
     .slice(-PERSONAL_NOTES_LIMIT);
-  return { version: 2, notes };
+  return { version: 3, notes };
 }
 
 function setPersonalNotesStatus(message) {
@@ -2327,22 +2348,75 @@ async function savePersonalNotes() {
   }
 }
 
+function observePersonalNoteSizes() {
+  state.personalNotesResizeObserver?.disconnect();
+  state.personalNotesResizeObserver = null;
+  if (!("ResizeObserver" in window)) return;
+  state.personalNotesResizeObserver = new ResizeObserver(entries => {
+    let changed = false;
+    entries.forEach(entry => {
+      let entryChanged = false;
+      const card = entry.target;
+      const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
+      if (!note) return;
+      const rect = card.getBoundingClientRect();
+      if (rect.width < PERSONAL_NOTE_CARD_MIN_WIDTH || (!note.collapsed && rect.height < PERSONAL_NOTE_CARD_MIN_HEIGHT)) return;
+      const width = clampPersonalNoteSize(rect.width, PERSONAL_NOTE_CARD_MIN_WIDTH, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_WIDTH);
+      const height = clampPersonalNoteSize(rect.height, PERSONAL_NOTE_CARD_MIN_HEIGHT, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_HEIGHT);
+      if (width !== note.width) {
+        note.width = width;
+        entryChanged = true;
+      }
+      if (!note.collapsed && height !== note.height) {
+        note.height = height;
+        entryChanged = true;
+      }
+      const nextX = clampPersonalNotePosition(note.x, PERSONAL_NOTE_BOARD_WIDTH - note.width - 12);
+      const nextY = clampPersonalNotePosition(note.y, PERSONAL_NOTE_BOARD_HEIGHT - (note.collapsed ? 38 : note.height) - 12);
+      if (nextX !== note.x || nextY !== note.y) {
+        note.x = nextX;
+        note.y = nextY;
+        card.style.left = `${nextX}px`;
+        card.style.top = `${nextY}px`;
+        entryChanged = true;
+      }
+      if (entryChanged) {
+        note.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+    });
+    if (!changed) return;
+    state.personalNotesDirty = true;
+    schedulePersonalNotesSave();
+    window.clearTimeout(state.personalNotesResizeTrackTimer);
+    state.personalNotesResizeTrackTimer = window.setTimeout(() => {
+      state.personalNotesResizeTrackTimer = 0;
+      trackFeature("always_notes.resize");
+    }, 900);
+  });
+  els.personalNotesBoard.querySelectorAll("[data-personal-note-id]").forEach(card => state.personalNotesResizeObserver.observe(card));
+}
+
 function renderPersonalNotes() {
   const notes = state.personalNotes.notes || [];
   els.alwaysNotesCount.textContent = String(notes.length);
   if (!notes.length) {
+    state.personalNotesResizeObserver?.disconnect();
     els.personalNotesBoard.innerHTML = '<div class="personal-notes-empty">Create a note, then arrange your desktop around the way you think.</div>';
     return;
   }
   els.personalNotesBoard.innerHTML = notes.map(note => `
-    <div class="personal-note-card" data-personal-note-id="${escapeHtml(note.id)}" data-note-color="${note.color}" style="left:${note.x}px;top:${note.y}px;z-index:${note.z}" title="Right-click for actions">
+    <div class="personal-note-card ${note.collapsed ? "is-collapsed" : ""}" data-personal-note-id="${escapeHtml(note.id)}" data-note-color="${note.color}" style="left:${note.x}px;top:${note.y}px;width:${note.width}px;height:${note.collapsed ? 38 : note.height}px;z-index:${note.z}" title="Right-click for actions">
       <div class="personal-note-head" data-note-drag>
         <span class="personal-note-grip" aria-hidden="true" title="Drag note">::</span>
         <input class="personal-note-title" data-note-title maxlength="120" value="${escapeHtml(note.title)}" aria-label="Note title">
+        <button class="personal-note-collapse" data-note-collapse type="button" aria-label="${note.collapsed ? "Expand" : "Collapse"} note" title="${note.collapsed ? "Expand" : "Collapse"} note">${note.collapsed ? "+" : "&minus;"}</button>
       </div>
       <textarea class="personal-note-body" data-note-body maxlength="10000" aria-label="Note body">${escapeHtml(note.text)}</textarea>
+      <button class="personal-note-resize" data-note-resize type="button" aria-label="Resize note" title="Resize note"></button>
     </div>
   `).join("");
+  observePersonalNoteSizes();
 }
 
 function topPersonalNoteZ() {
@@ -2361,6 +2435,9 @@ function createPersonalNote() {
     text: "",
     x,
     y,
+    width: PERSONAL_NOTE_CARD_WIDTH,
+    height: PERSONAL_NOTE_CARD_HEIGHT,
+    collapsed: false,
     z: topPersonalNoteZ() + 1,
     color: state.personalNotes.notes.length % 6,
     createdAt: now,
@@ -2403,8 +2480,8 @@ function startPersonalNoteDrag(event, card) {
   let moved = false;
   card.classList.add("is-dragging");
   const move = moveEvent => {
-    const nextX = clampPersonalNotePosition(originX + moveEvent.clientX - startX, PERSONAL_NOTE_BOARD_WIDTH - PERSONAL_NOTE_CARD_WIDTH - 12);
-    const nextY = clampPersonalNotePosition(originY + moveEvent.clientY - startY, PERSONAL_NOTE_BOARD_HEIGHT - PERSONAL_NOTE_CARD_HEIGHT - 12);
+    const nextX = clampPersonalNotePosition(originX + moveEvent.clientX - startX, PERSONAL_NOTE_BOARD_WIDTH - note.width - 12);
+    const nextY = clampPersonalNotePosition(originY + moveEvent.clientY - startY, PERSONAL_NOTE_BOARD_HEIGHT - (note.collapsed ? 38 : note.height) - 12);
     moved ||= nextX !== originX || nextY !== originY;
     note.x = nextX;
     note.y = nextY;
@@ -2425,6 +2502,69 @@ function startPersonalNoteDrag(event, card) {
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", stop);
   window.addEventListener("pointercancel", stop);
+}
+
+function startPersonalNoteResize(event, card) {
+  if (!event.target.closest("[data-note-resize]") || card.classList.contains("is-collapsed")) return;
+  const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
+  if (!note) return;
+  event.preventDefault();
+  event.stopPropagation();
+  bringPersonalNoteToFront(note.id, card);
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const originWidth = card.getBoundingClientRect().width;
+  const originHeight = card.getBoundingClientRect().height;
+  let resized = false;
+  card.classList.add("is-resizing");
+  const move = moveEvent => {
+    const width = clampPersonalNoteSize(originWidth + moveEvent.clientX - startX, PERSONAL_NOTE_CARD_MIN_WIDTH, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_WIDTH);
+    const height = clampPersonalNoteSize(originHeight + moveEvent.clientY - startY, PERSONAL_NOTE_CARD_MIN_HEIGHT, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_HEIGHT);
+    resized ||= width !== originWidth || height !== originHeight;
+    note.width = width;
+    note.height = height;
+    note.x = clampPersonalNotePosition(note.x, PERSONAL_NOTE_BOARD_WIDTH - width - 12);
+    note.y = clampPersonalNotePosition(note.y, PERSONAL_NOTE_BOARD_HEIGHT - height - 12);
+    card.style.width = `${width}px`;
+    card.style.height = `${height}px`;
+    card.style.left = `${note.x}px`;
+    card.style.top = `${note.y}px`;
+  };
+  const stop = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+    card.classList.remove("is-resizing");
+    if (!resized) return;
+    note.updatedAt = new Date().toISOString();
+    state.personalNotesDirty = true;
+    schedulePersonalNotesSave();
+    trackFeature("always_notes.resize");
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
+function togglePersonalNoteCollapsed(id, card, button) {
+  const note = state.personalNotes.notes.find(item => item.id === id);
+  if (!note) return;
+  if (!note.collapsed) {
+    const rect = card.getBoundingClientRect();
+    note.width = clampPersonalNoteSize(rect.width, PERSONAL_NOTE_CARD_MIN_WIDTH, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_WIDTH);
+    note.height = clampPersonalNoteSize(rect.height, PERSONAL_NOTE_CARD_MIN_HEIGHT, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_HEIGHT);
+  }
+  note.collapsed = !note.collapsed;
+  note.updatedAt = new Date().toISOString();
+  card.classList.toggle("is-collapsed", note.collapsed);
+  card.style.width = `${note.width}px`;
+  card.style.height = `${note.collapsed ? 38 : note.height}px`;
+  button.textContent = note.collapsed ? "+" : "-";
+  button.setAttribute("aria-label", `${note.collapsed ? "Expand" : "Collapse"} note`);
+  button.title = `${note.collapsed ? "Expand" : "Collapse"} note`;
+  state.personalNotesDirty = true;
+  schedulePersonalNotesSave();
+  trackFeature("always_notes.collapse");
 }
 
 function deletePersonalNote(id) {
@@ -4569,9 +4709,19 @@ els.personalNotesBoard.addEventListener("focusout", event => {
   titleInput.value = "Untitled note";
   titleInput.dispatchEvent(new Event("input", { bubbles: true }));
 });
+els.personalNotesBoard.addEventListener("click", event => {
+  const collapseButton = event.target.closest("[data-note-collapse]");
+  const card = event.target.closest("[data-personal-note-id]");
+  if (!collapseButton || !card) return;
+  togglePersonalNoteCollapsed(card.dataset.personalNoteId, card, collapseButton);
+});
 els.personalNotesBoard.addEventListener("pointerdown", event => {
   const card = event.target.closest("[data-personal-note-id]");
   if (!card) return;
+  if (event.target.closest("[data-note-resize]")) {
+    startPersonalNoteResize(event, card);
+    return;
+  }
   bringPersonalNoteToFront(card.dataset.personalNoteId, card);
   startPersonalNoteDrag(event, card);
 });
