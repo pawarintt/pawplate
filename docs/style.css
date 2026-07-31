@@ -212,9 +212,14 @@ input[type="radio"] {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 9px;
+  min-height: 44px;
+  padding: 4px 5px 4px 10px;
+  border: 1px solid var(--rose-line);
+  border-radius: 8px;
   margin-bottom: 6px;
+  background: linear-gradient(90deg, rgba(244, 184, 187, .92), rgba(249, 215, 213, .88) 46%, rgba(255, 244, 233, .9));
+  box-shadow: 0 1px 2px rgba(82, 55, 45, .04);
 }
 
 .topbar h1 {
@@ -222,6 +227,64 @@ input[type="radio"] {
   font-size: 1.04rem;
   line-height: 1.15;
   letter-spacing: 0;
+}
+
+.topbar-brand {
+  flex: 0 0 auto;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 24px;
+  flex: 0 0 1px;
+  background: rgba(103, 70, 64, .22);
+}
+
+.topbar-mode-context {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-mode-context.hidden {
+  display: none;
+}
+
+.writer-topbar-context {
+  flex: 0 1 auto;
+}
+
+.worklog-topbar-context {
+  flex: 1 1 auto;
+}
+
+.topbar-page-title {
+  flex: 0 0 auto;
+  color: #655355;
+  font-size: .74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.topbar-primary-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar-spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.topbar-search {
+  width: clamp(160px, 15vw, 240px);
+  min-height: 32px;
+  flex: 0 1 240px;
+  background: rgba(255, 253, 248, .88);
 }
 
 .topbar p {
@@ -398,6 +461,7 @@ body[data-theme="dark"] #worklogModeBtn {
 }
 
 .topbar-actions {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -484,6 +548,10 @@ body[data-theme="dark"] #worklogModeBtn {
   min-width: 560px;
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+
+#writerView .editor-pane {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .primary-pane {
@@ -1635,7 +1703,7 @@ mark {
 .worklog-main {
   flex: 0 1 42%;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   background: linear-gradient(180deg, rgba(230, 241, 239, .72), rgba(255,253,248,.86) 220px), var(--paper);
 }
 
@@ -1648,11 +1716,11 @@ mark {
 }
 
 .worklog-summary {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
 }
 
 .worklog-summary.hidden {
@@ -1664,15 +1732,10 @@ mark {
   display: flex;
   align-items: baseline;
   gap: 4px;
-  border: 0;
-  border-left: 1px solid var(--line-strong);
-  border-radius: 0;
-  padding: 0 11px;
-  background: transparent;
-}
-
-.summary-card:first-child {
-  border-left: 0;
+  border: 1px solid rgba(220, 196, 185, .72);
+  border-radius: 6px;
+  padding: 3px 7px;
+  background: rgba(255, 253, 248, .62);
 }
 
 .summary-card strong {
@@ -1688,6 +1751,27 @@ mark {
   font-size: .68rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.summary-card:nth-child(1) { background: var(--peach); }
+.summary-card:nth-child(2) { background: var(--mint); }
+.summary-card:nth-child(3) { background: var(--sky); }
+.summary-card:nth-child(4) { background: var(--lilac); }
+
+@media (max-width: 1480px) {
+  .worklog-topbar-context .summary-card span {
+    display: none;
+  }
+
+  .worklog-topbar-context .summary-card {
+    min-width: 30px;
+    justify-content: center;
+  }
+
+  .topbar-search {
+    width: clamp(150px, 13vw, 200px);
+    flex-basis: 200px;
+  }
 }
 
 .heatmap {
@@ -2456,8 +2540,29 @@ body[data-theme="dark"] .draft-recovery-actions .primary-button {
   }
 
   .topbar {
-    align-items: start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .topbar-mode-context {
+    order: 3;
+    flex: 1 0 100%;
+    padding-top: 4px;
+    border-top: 1px solid rgba(103, 70, 64, .14);
+  }
+
+  .topbar-spacer {
+    display: none;
+  }
+
+  .topbar-actions {
+    margin-left: auto;
+  }
+
+  .topbar-search {
+    width: min(260px, 100%);
+    margin-left: auto;
   }
 
   .worklog-summary {
@@ -2520,6 +2625,52 @@ body[data-theme="dark"] .draft-recovery-actions .primary-button {
   .calendar-day {
     aspect-ratio: 1;
     min-height: 38px;
+  }
+}
+
+@media (max-width: 680px) {
+  .topbar-brand {
+    flex: 1 0 100%;
+  }
+
+  .topbar-actions {
+    order: 2;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .mode-tabs {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-x: auto;
+  }
+
+  .topbar-mode-context {
+    flex-wrap: wrap;
+  }
+
+  .topbar-divider {
+    display: none;
+  }
+
+  .topbar-page-title {
+    flex: 1 0 100%;
+  }
+
+  .topbar-primary-actions {
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+  }
+
+  .worklog-summary {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .topbar-search {
+    width: 100%;
+    flex: 1 0 100%;
+    margin-left: 0;
   }
 }
 

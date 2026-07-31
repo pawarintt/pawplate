@@ -284,6 +284,8 @@ const els = {
   writerModeBtn: document.getElementById("writerModeBtn"),
   worklogModeBtn: document.getElementById("worklogModeBtn"),
   insightsModeBtn: document.getElementById("insightsModeBtn"),
+  writerTopbarContext: document.getElementById("writerTopbarContext"),
+  worklogTopbarContext: document.getElementById("worklogTopbarContext"),
   builderView: document.getElementById("builderView"),
   writerView: document.getElementById("writerView"),
   worklogView: document.getElementById("worklogView"),
@@ -2255,6 +2257,8 @@ function showMode(mode, options = {}) {
   els.writerView.classList.toggle("hidden", mode !== "writer");
   els.worklogView.classList.toggle("hidden", mode !== "worklog");
   els.insightsView.classList.toggle("hidden", mode !== "insights");
+  els.writerTopbarContext.classList.toggle("hidden", mode !== "writer");
+  els.worklogTopbarContext.classList.toggle("hidden", mode !== "worklog");
   els.worklogSummary.classList.toggle("hidden", mode !== "worklog");
   if (mode === "writer") {
     loadViewData(loadTemplates(), "Templates");
