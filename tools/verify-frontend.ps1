@@ -4,8 +4,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $docs = Join-Path $Root "docs"
-$canonicalApp = Join-Path $docs "app-20260706.js"
-$mirrorApp = Join-Path $docs "app.js"
+$appDirectory = Join-Path $docs "app"
+$compatibilityApps = @(
+  (Join-Path $docs "app-20260706.js"),
+  (Join-Path $docs "app.js")
+) | ForEach-Object { Get-Item -LiteralPath $_ }
 $index = Join-Path $docs "index.html"
 
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
@@ -15,12 +18,17 @@ if (-not $node) {
 }
 if (-not $node) { throw "Node.js is required for the JavaScript syntax check." }
 
-& $node --check $canonicalApp
-if ($LASTEXITCODE) { throw "JavaScript syntax check failed for app-20260706.js." }
-& $node --check $mirrorApp
-if ($LASTEXITCODE) { throw "JavaScript syntax check failed for app.js." }
+$modules = Get-ChildItem -LiteralPath $appDirectory -Filter "*.js" -File | Sort-Object FullName
+if (-not $modules) { throw "No JavaScript modules found in docs/app." }
 
-$appSource = Get-Content -Raw -Encoding utf8 -LiteralPath $canonicalApp
+foreach ($script in @($modules) + $compatibilityApps) {
+  & $node --check $script.FullName
+  if ($LASTEXITCODE) { throw "JavaScript syntax check failed for $($script.Name)." }
+}
+
+$appSource = ($modules | ForEach-Object {
+  Get-Content -Raw -Encoding utf8 -LiteralPath $_.FullName
+}) -join "`n"
 $htmlSource = Get-Content -Raw -Encoding utf8 -LiteralPath $index
 $appIds = [regex]::Matches($appSource, 'getElementById\("([^"]+)"\)') |
   ForEach-Object { $_.Groups[1].Value } |
@@ -33,9 +41,14 @@ if ($missingIds) { throw "Missing HTML IDs: $($missingIds -join ', ')" }
 $duplicateIds = $htmlIds | Group-Object | Where-Object Count -gt 1
 if ($duplicateIds) { throw "Duplicate HTML IDs: $($duplicateIds.Name -join ', ')" }
 
-$canonicalHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $canonicalApp).Hash
-$mirrorHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $mirrorApp).Hash
-if ($canonicalHash -ne $mirrorHash) { throw "docs/app.js is out of sync with app-20260706.js." }
-if ($htmlSource -notmatch 'app-20260706\.js\?v=[^"'']+') { throw "The deployed script is missing a cache-busting version." }
+foreach ($compatibilityApp in $compatibilityApps) {
+  $loader = (Get-Content -Raw -Encoding utf8 -LiteralPath $compatibilityApp).Trim()
+  if ($loader -ne 'import("./app/main.js");') {
+    throw "$($compatibilityApp.Name) must remain a compatibility loader for app/main.js."
+  }
+}
+if ($htmlSource -notmatch '<script type="module" src="app/main\.js\?v=[^"'']+"></script>') {
+  throw "The deployed module entry is missing or has no cache-busting version."
+}
 
-Write-Output "Frontend verification passed: JavaScript syntax, DOM bindings, IDs, mirror, and cache version."
+Write-Output "Frontend verification passed: module syntax, DOM bindings, IDs, compatibility loaders, and cache version."
