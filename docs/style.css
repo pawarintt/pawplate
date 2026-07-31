@@ -1110,11 +1110,15 @@ body[data-theme="dark"] #worklogModeBtn {
 
 .report-note-snippet {
   display: -webkit-box;
-  margin-top: 5px;
-  padding-left: 8px;
-  border-left: 3px solid #e8c95f;
-  color: #79662e;
+  margin-top: 6px;
+  padding: 6px 9px;
+  border: 1px solid #ead076;
+  border-left: 4px solid #ddb94d;
+  border-radius: 4px;
+  background: #fff1b8;
+  color: #66541f;
   font-size: .78rem;
+  font-weight: 650;
   line-height: 1.35;
   overflow: hidden;
   -webkit-box-orient: vertical;
