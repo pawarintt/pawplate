@@ -67,6 +67,10 @@
 
 * { box-sizing: border-box; }
 
+html {
+  height: 100%;
+}
+
 body[data-theme="dark"] {
   color-scheme: dark;
   --bg: #101010;
@@ -103,7 +107,9 @@ body[data-theme="dark"] {
 
 body {
   margin: 0;
+  height: 100%;
   min-height: 100vh;
+  overflow: hidden;
   background-color: var(--bg);
   background:
     radial-gradient(circle at 76% 18%, rgba(255, 253, 248, .72), transparent 24vw),
@@ -194,8 +200,13 @@ input[type="radio"] {
 
 .page {
   width: min(1840px, calc(100% - 24px));
+  height: 100vh;
+  height: 100dvh;
   margin: 0 auto;
   padding: 8px 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .topbar {
@@ -324,7 +335,15 @@ body[data-theme="dark"] #worklogModeBtn {
   display: flex;
   gap: 10px;
   align-items: stretch;
-  min-height: calc(100vh - 70px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.split-view > *,
+.worklog-view > *,
+.insights-view > * {
+  min-height: 0;
 }
 
 .hidden {
@@ -647,10 +666,12 @@ body[data-theme="dark"] #worklogModeBtn {
 
 .result-list {
   height: auto;
+  min-height: 0;
   overflow: auto;
   border-bottom: 1px solid var(--line);
   padding: 4px 0;
-  resize: vertical;
+  resize: none;
+  overscroll-behavior: contain;
   background: linear-gradient(180deg, rgba(255, 250, 243, .62), rgba(255, 246, 237, .42));
 }
 
@@ -1044,10 +1065,11 @@ body[data-theme="dark"] #worklogModeBtn {
 
 .preview {
   height: auto;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  resize: vertical;
-  overflow: auto;
+  resize: none;
+  overflow: hidden;
   background: rgba(255, 253, 248, .58);
 }
 
@@ -1591,7 +1613,9 @@ mark {
 .worklog-view {
   display: flex;
   gap: 10px;
-  min-height: calc(100vh - 70px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .worklog-view.hidden {
@@ -1783,7 +1807,9 @@ mark {
 .insights-view {
   display: flex;
   gap: 10px;
-  min-height: calc(100vh - 70px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .insights-view.hidden {
@@ -2403,8 +2429,18 @@ body[data-theme="dark"] .draft-recovery-actions .primary-button {
 }
 
 @media (max-width: 1240px) {
+  body {
+    height: auto;
+    overflow: auto;
+  }
+
   .page {
     width: min(100% - 24px, 980px);
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: block;
+    overflow: visible;
   }
 
   .topbar {
@@ -2412,16 +2448,27 @@ body[data-theme="dark"] .draft-recovery-actions .primary-button {
     flex-direction: column;
   }
 
-  .split-view {
-    flex-direction: column;
-  }
-
-  .worklog-view {
-    flex-direction: column;
-  }
-
+  .split-view,
+  .worklog-view,
   .insights-view {
     flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .split-view > .editor-pane {
+    min-height: max(620px, calc(100dvh - 140px));
+  }
+
+  .split-view > .lookup-pane,
+  .worklog-main,
+  .interesting-pane {
+    min-height: 720px;
+  }
+
+  .insights-list-pane,
+  .insights-detail-pane {
+    min-height: 620px;
   }
 
   .lookup-pane, .editor-pane, .guideline-editor-pane, .guideline-preview-pane,
