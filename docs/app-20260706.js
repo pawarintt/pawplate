@@ -16,6 +16,7 @@ const MODE_ROUTES = {
 const ROUTE_MODES = Object.fromEntries(Object.entries(MODE_ROUTES).map(([mode, route]) => [route, mode]));
 const REFERENCE_ROUTES = {
   templates: "templates",
+  snippets: "snippets",
   "ai-draft": "ai-draft"
 };
 const ROUTE_REFERENCES = Object.fromEntries(Object.entries(REFERENCE_ROUTES).map(([tab, route]) => [route, tab]));
@@ -167,6 +168,44 @@ const TEMPLATE_TYPE_FILTERS = [
   { value: "disease", label: "Disease" }
 ];
 const INSIGHT_SETTINGS_KEY = "templateInsights";
+const FEATURE_USAGE_SETTINGS_KEY = "featureUsageV1";
+const FEATURE_USAGE_DAYS = 90;
+const TRACKED_FEATURES = new Set([
+  "navigation.template_builder",
+  "navigation.report_writer",
+  "navigation.work_log",
+  "navigation.insights",
+  "reference.templates",
+  "reference.snippets",
+  "reference.ai_assist",
+  "template.new",
+  "template.save.created",
+  "template.save.updated",
+  "template.use",
+  "old_report.preview",
+  "old_report.use_as_template",
+  "report.new",
+  "report.copy",
+  "report.interesting_toggle",
+  "report.save.created",
+  "report.save.updated",
+  "work_log.preview",
+  "work_log.edit_report",
+  "work_log.calendar_filter",
+  "interesting.toggle",
+  "insight.refresh",
+  "insight.copy_prompt",
+  "insight.dismiss",
+  "snippet.add_finding.tirads",
+  "snippet.add_finding.birads",
+  "snippet.copy.tirads",
+  "snippet.copy.birads",
+  "snippet.insert.tirads",
+  "snippet.insert.birads",
+  "ai.generate",
+  "ai.accept.impression",
+  "ai.accept.metadata"
+]);
 const INSIGHT_MIN_REPORTS = 3;
 const INSIGHT_SIMILARITY_THRESHOLD = 0.44;
 const INSIGHT_MIN_COHESION = 0.34;
@@ -217,6 +256,13 @@ const state = {
   userSettingsId: "",
   aiSettingsId: "",
   aiSettingsLoaded: false,
+  featureUsageSettingsId: "",
+  featureUsage: { version: 1, features: {} },
+  featureUsageLoaded: false,
+  featureUsageLoadPromise: null,
+  featureUsageSaveTimer: 0,
+  featureUsageSavePromise: null,
+  featureUsageDirty: false,
   guidelineFileToken: "",
   guidelineFileTokenExpiresAt: 0,
   snippet: structuredClone(SNIPPET_DEFAULTS),
@@ -541,6 +587,7 @@ function showReferenceTab(tab, options = {}) {
   if (tab === "ai-draft" && !state.aiSettingsLoaded) {
     loadAiSettings().catch(error => console.warn("AI settings could not be loaded.", error));
   }
+  if (tab === "snippets") renderSnippetGenerator();
   if (options.updateRoute !== false && state.mode === "writer") updateRoute("writer", tab);
 }
 
@@ -604,6 +651,7 @@ async function generateAiDraft() {
   if (!response.ok) throw new Error(payload.message || "AI draft could not be created.");
   state.aiDraft = { ...payload, rejected: [] };
   renderAiDraft();
+  trackFeature("ai.generate");
   showToast("Draft ready", "Review each proposal before applying it.");
   return true;
 }
@@ -612,9 +660,11 @@ function applyAiDraftSuggestion(key) {
   const field = aiDraftFields().find(item => item.key === key);
   if (key === "impression") {
     insertReportText(`${state.aiDraft.impression || ""}\n`);
+    trackFeature("ai.accept.impression");
   } else if (field) {
     field.target.value = field.value;
     field.target.dispatchEvent(new Event("input", { bubbles: true }));
+    trackFeature("ai.accept.metadata");
   }
   state.aiDraft.rejected = [...new Set([...(state.aiDraft.rejected || []), key])];
   renderAiDraft();
@@ -1773,6 +1823,14 @@ function logout(message = "") {
   state.aiDraft = null;
   state.aiSettingsId = "";
   state.aiSettingsLoaded = false;
+  window.clearTimeout(state.featureUsageSaveTimer);
+  state.featureUsageSettingsId = "";
+  state.featureUsage = emptyFeatureUsage();
+  state.featureUsageLoaded = false;
+  state.featureUsageLoadPromise = null;
+  state.featureUsageSaveTimer = 0;
+  state.featureUsageSavePromise = null;
+  state.featureUsageDirty = false;
   window.clearTimeout(state.reportAutosaveTimer);
   state.reportAutosaveTimer = 0;
   state.reportAutosaveDirty = false;
@@ -1842,6 +1900,109 @@ async function pbUpdate(collection, id, data) {
 async function pbDelete(collection, id) {
   const response = await authenticatedFetch(`${API}/${collection}/records/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(await response.text());
+}
+
+function emptyFeatureUsage() {
+  return { version: 1, features: {} };
+}
+
+function normalizeFeatureUsage(value) {
+  const normalized = emptyFeatureUsage();
+  Object.entries(value?.features || {}).forEach(([feature, entry]) => {
+    if (!TRACKED_FEATURES.has(feature) || !entry || typeof entry !== "object") return;
+    const daily = Object.fromEntries(Object.entries(entry.daily || {})
+      .filter(([day, count]) => /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(Number(count)))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .slice(-FEATURE_USAGE_DAYS)
+      .map(([day, count]) => [day, Math.max(0, Number(count))]));
+    normalized.features[feature] = {
+      count: Math.max(0, Number(entry.count) || 0),
+      lastUsedAt: typeof entry.lastUsedAt === "string" ? entry.lastUsedAt : "",
+      daily
+    };
+  });
+  return normalized;
+}
+
+async function loadFeatureUsage() {
+  if (state.featureUsageLoaded) return state.featureUsage;
+  if (state.featureUsageLoadPromise) return state.featureUsageLoadPromise;
+  const owner = state.auth?.user?.id || "";
+  if (!owner) return state.featureUsage;
+  state.featureUsageLoadPromise = (async () => {
+    try {
+      const filter = `owner="${owner}" && key="${FEATURE_USAGE_SETTINGS_KEY}"`;
+      const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+      const record = data.items?.[0];
+      state.featureUsageSettingsId = record?.id || "";
+      state.featureUsage = normalizeFeatureUsage(record?.value);
+    } catch (error) {
+      state.featureUsage = emptyFeatureUsage();
+      console.warn("Feature usage sync unavailable.", error);
+    } finally {
+      state.featureUsageLoaded = true;
+      state.featureUsageLoadPromise = null;
+    }
+    return state.featureUsage;
+  })();
+  return state.featureUsageLoadPromise;
+}
+
+function scheduleFeatureUsageSave(delay = 1200) {
+  window.clearTimeout(state.featureUsageSaveTimer);
+  state.featureUsageSaveTimer = window.setTimeout(() => {
+    saveFeatureUsage().catch(error => console.warn("Feature usage could not be saved.", error));
+  }, delay);
+}
+
+async function saveFeatureUsage() {
+  window.clearTimeout(state.featureUsageSaveTimer);
+  state.featureUsageSaveTimer = 0;
+  if (!state.auth?.user?.id || !state.featureUsageDirty) return;
+  if (state.featureUsageSavePromise) return state.featureUsageSavePromise;
+  const owner = state.auth.user.id;
+  state.featureUsageSavePromise = (async () => {
+    while (state.featureUsageDirty && state.auth?.user?.id === owner) {
+      state.featureUsageDirty = false;
+      const value = structuredClone(state.featureUsage);
+      try {
+        if (state.featureUsageSettingsId) {
+          await pbUpdate("user_settings", state.featureUsageSettingsId, { value });
+        } else {
+          const created = await pbCreate("user_settings", {
+            owner,
+            key: FEATURE_USAGE_SETTINGS_KEY,
+            value
+          });
+          state.featureUsageSettingsId = created.id;
+        }
+      } catch (error) {
+        state.featureUsageDirty = true;
+        throw error;
+      }
+    }
+  })();
+  try {
+    await state.featureUsageSavePromise;
+  } finally {
+    state.featureUsageSavePromise = null;
+  }
+}
+
+async function trackFeature(feature) {
+  if (!TRACKED_FEATURES.has(feature) || !state.auth?.user?.id) return;
+  await loadFeatureUsage();
+  if (!state.auth?.user?.id) return;
+  const now = new Date().toISOString();
+  const day = now.slice(0, 10);
+  const current = state.featureUsage.features[feature] || { count: 0, lastUsedAt: "", daily: {} };
+  const daily = { ...(current.daily || {}), [day]: (Number(current.daily?.[day]) || 0) + 1 };
+  current.count = (Number(current.count) || 0) + 1;
+  current.lastUsedAt = now;
+  current.daily = Object.fromEntries(Object.entries(daily).sort(([left], [right]) => left.localeCompare(right)).slice(-FEATURE_USAGE_DAYS));
+  state.featureUsage.features[feature] = current;
+  state.featureUsageDirty = true;
+  scheduleFeatureUsageSave();
 }
 
 async function ensureGuidelineFileToken() {
@@ -2196,6 +2357,7 @@ function useOldReportAsTemplate() {
   setTemplateKind(report.kind === "reference-template" ? "normal" : "disease");
   setEditorHtml(els.templateTextEditor, report.report || "");
   updateEditorDatalists("template");
+  trackFeature("old_report.use_as_template");
 }
 
 function templateData() {
@@ -2218,7 +2380,8 @@ async function saveTemplate() {
     showToast("Nothing to save", "Write a template first.", "info");
     return false;
   }
-  if (state.templateDraftId) {
+  const wasExisting = Boolean(state.templateDraftId);
+  if (wasExisting) {
     await pbUpdate("templates", state.templateDraftId, data);
   } else {
     const created = await pbCreate("templates", data);
@@ -2227,6 +2390,7 @@ async function saveTemplate() {
   }
   await loadTemplateFacets();
   await loadTemplates();
+  trackFeature(wasExisting ? "template.save.updated" : "template.save.created");
   showToast("Template saved", data.title);
   return true;
 }
@@ -2628,6 +2792,7 @@ async function useTemplateForReport(template = null) {
   scheduleReportAutosave(100);
   showMode("writer");
   renderTemplates();
+  trackFeature("template.use");
   return true;
 }
 
@@ -2653,6 +2818,7 @@ async function startNewReport() {
   const canReplace = await discardWorkingDraft("Start a new report and discard the current draft?");
   if (!canReplace) return false;
   blankReport();
+  trackFeature("report.new");
   return true;
 }
 
@@ -2785,6 +2951,7 @@ async function saveFullReport() {
   state.selectedOldReport = null;
   await loadOldReports();
   await loadWorkLog();
+  trackFeature(wasExisting ? "report.save.updated" : "report.save.created");
   showToast(wasExisting ? "Report updated" : "Report created", data.isInteresting ? "Saved and marked as interesting." : "Updated in Old Reports and Work Log.");
   showMode("builder");
   return true;
@@ -3553,6 +3720,12 @@ function handleModeLink(event, mode) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
   showMode(mode);
+  trackFeature({
+    builder: "navigation.template_builder",
+    writer: "navigation.report_writer",
+    worklog: "navigation.work_log",
+    insights: "navigation.insights"
+  }[mode]);
 }
 
 function runFormatCommand(button) {
@@ -3580,7 +3753,11 @@ els.writerModeBtn.addEventListener("click", event => handleModeLink(event, "writ
 els.worklogModeBtn.addEventListener("click", event => handleModeLink(event, "worklog"));
 els.insightsModeBtn.addEventListener("click", event => handleModeLink(event, "insights"));
 document.querySelectorAll("[data-reference-tab]").forEach(button => {
-  button.addEventListener("click", () => showReferenceTab(button.dataset.referenceTab));
+  button.addEventListener("click", () => {
+    const tab = button.dataset.referenceTab;
+    showReferenceTab(tab);
+    trackFeature({ templates: "reference.templates", snippets: "reference.snippets", "ai-draft": "reference.ai_assist" }[tab]);
+  });
 });
 els.generateAiDraftBtn?.addEventListener("click", () => {
   withButtonFeedback(els.generateAiDraftBtn, "Drafting...", generateAiDraft, "Draft ready");
@@ -3679,6 +3856,7 @@ els.addSnippetFindingBtn?.addEventListener("click", () => {
   if (!text) return;
   state.snippetItems.push({ text });
   renderSnippetFindingList();
+  trackFeature(`snippet.add_finding.${state.snippet.system}`);
   showToast("Finding added", `${state.snippetItems.length} finding${state.snippetItems.length === 1 ? "" : "s"} ready.`);
 });
 els.clearSnippetFindingsBtn?.addEventListener("click", () => {
@@ -3693,12 +3871,16 @@ els.snippetFindingList?.addEventListener("click", event => {
 });
 els.insertSnippetBtn?.addEventListener("click", () => {
   const snippet = combinedSnippetText();
+  if (!snippet) return;
   insertReportText(snippet);
+  trackFeature(`snippet.insert.${state.snippet.system}`);
   showToast("Snippet inserted", snippet);
 });
 els.copySnippetBtn?.addEventListener("click", async () => {
   const snippet = combinedSnippetText();
+  if (!snippet) return;
   await navigator.clipboard.writeText(snippet);
+  trackFeature(`snippet.copy.${state.snippet.system}`);
   showToast("Snippet copied", snippet);
 });
 els.resetSnippetBtn?.addEventListener("click", () => {
@@ -3712,7 +3894,10 @@ els.oldSearchInput.addEventListener("input", debounce(() => {
 }));
 els.oldReportList.addEventListener("click", event => {
   const button = event.target.closest("[data-old-id]");
-  if (button) selectOldReport(button.dataset.oldId);
+  if (button) {
+    selectOldReport(button.dataset.oldId);
+    trackFeature("old_report.preview");
+  }
 });
 els.oldReportList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-old-id]");
@@ -3734,6 +3919,7 @@ els.oldReportList.addEventListener("contextmenu", event => {
       await pbUpdate("old_reports", id, { isInteresting: !report.isInteresting });
       await loadOldReports();
       await loadWorkLog();
+      trackFeature("interesting.toggle");
       showToast(report.isInteresting ? "Removed from interesting" : "Saved as interesting", report.title || "Saved report");
     }});
     actions.push({ label: "Delete saved report", danger: true, run: async () => {
@@ -3752,7 +3938,10 @@ els.oldReportList.addEventListener("contextmenu", event => {
   showContextMenu(event.clientX, event.clientY, actions);
 });
 els.useOldReportBtn.addEventListener("click", useOldReportAsTemplate);
-els.newTemplateBtn.addEventListener("click", blankTemplate);
+els.newTemplateBtn.addEventListener("click", () => {
+  blankTemplate();
+  trackFeature("template.new");
+});
 els.saveTemplateBtn.addEventListener("click", () => {
   withButtonFeedback(els.saveTemplateBtn, "Saving...", saveTemplate, "Saved");
 });
@@ -3797,7 +3986,10 @@ els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
   els.reportKeywordInput,
   els.reportNoteInput
 ].forEach(element => element.addEventListener("input", scheduleReportAutosave));
-els.reportInterestingInput.addEventListener("change", scheduleReportAutosave);
+els.reportInterestingInput.addEventListener("change", () => {
+  scheduleReportAutosave();
+  trackFeature("report.interesting_toggle");
+});
 document.querySelectorAll(".format-toolbar").forEach(toolbar => {
   toolbar.addEventListener("click", event => {
     const button = event.target.closest("[data-command]");
@@ -3854,6 +4046,7 @@ els.newReportBtn.addEventListener("click", () => startNewReport());
 els.copyReportBtn.addEventListener("click", () => {
   withButtonFeedback(els.copyReportBtn, "Copying...", async () => {
     await navigator.clipboard.writeText(getEditorText(els.reportTextEditor));
+    trackFeature("report.copy");
     showToast("Copied", "Plain text is ready to paste.");
   }, "Copied");
 });
@@ -3886,18 +4079,28 @@ els.worklogHeatmap.addEventListener("click", event => {
   const dayButton = event.target.closest("[data-worklog-date]");
   if (!dayButton) return;
   state.worklogSelectedDate = state.worklogSelectedDate === dayButton.dataset.worklogDate ? "" : dayButton.dataset.worklogDate;
+  trackFeature("work_log.calendar_filter");
   renderWorkLog();
 });
 els.worklogList.addEventListener("click", event => {
   const button = event.target.closest("[data-worklog-id]");
-  if (button) selectWorklogReport(button.dataset.worklogId);
+  if (button) {
+    selectWorklogReport(button.dataset.worklogId);
+    trackFeature("work_log.preview");
+  }
 });
 els.interestingList.addEventListener("click", event => {
   const button = event.target.closest("[data-interesting-id]");
-  if (button) selectWorklogReport(button.dataset.interestingId);
+  if (button) {
+    selectWorklogReport(button.dataset.interestingId);
+    trackFeature("work_log.preview");
+  }
 });
 els.editWorklogReportBtn.addEventListener("click", () => {
-  if (state.selectedWorklogReport) openSavedReport(state.selectedWorklogReport.id);
+  if (state.selectedWorklogReport) {
+    openSavedReport(state.selectedWorklogReport.id);
+    trackFeature("work_log.edit_report");
+  }
 });
 els.closeWorklogPreviewBtn.addEventListener("click", closeWorklogPreview);
 els.insightsList.addEventListener("click", event => {
@@ -3915,17 +4118,23 @@ els.insightReportChoices.addEventListener("change", event => {
 els.refreshInsightsBtn.addEventListener("click", () => {
   withButtonFeedback(els.refreshInsightsBtn, "Scanning...", async () => {
     await loadInsights({ force: true });
+    trackFeature("insight.refresh");
     showToast("Insights refreshed", `${state.insightOpportunities.length} template opportunit${state.insightOpportunities.length === 1 ? "y" : "ies"} found.`);
   }, "Refreshed");
 });
 els.copyInsightPromptBtn.addEventListener("click", () => {
   withButtonFeedback(els.copyInsightPromptBtn, "Copying...", async () => {
     await navigator.clipboard.writeText(els.insightPromptText.value);
+    trackFeature("insight.copy_prompt");
     showToast("Prompt copied", "Ready to paste into the model you choose.");
   }, "Copied");
 });
 els.dismissInsightBtn.addEventListener("click", () => {
-  withButtonFeedback(els.dismissInsightBtn, "Dismissing...", dismissSelectedInsight, "Dismissed");
+  withButtonFeedback(els.dismissInsightBtn, "Dismissing...", async () => {
+    const result = await dismissSelectedInsight();
+    if (result !== false) trackFeature("insight.dismiss");
+    return result;
+  }, "Dismissed");
 });
 els.worklogList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-worklog-id]");
@@ -3940,6 +4149,7 @@ els.worklogList.addEventListener("contextmenu", event => {
       await pbUpdate("old_reports", id, { isInteresting: !report?.isInteresting });
       await loadWorkLog();
       await loadOldReports();
+      trackFeature("interesting.toggle");
       showToast(report?.isInteresting ? "Removed from interesting" : "Saved as interesting", report?.title || "Saved report");
     }},
     { label: "Delete saved report", danger: true, run: async () => {
@@ -3968,6 +4178,7 @@ els.interestingList.addEventListener("contextmenu", event => {
       await pbUpdate("old_reports", id, { isInteresting: false });
       await loadWorkLog();
       await loadOldReports();
+      trackFeature("interesting.toggle");
       showToast("Removed from interesting");
     }}
   ]);
@@ -3981,7 +4192,14 @@ els.loginForm.addEventListener("submit", async event => {
     els.loginError.textContent = error.message;
   }
 });
-els.logoutBtn.addEventListener("click", () => logout());
+els.logoutBtn.addEventListener("click", async () => {
+  try {
+    await saveFeatureUsage();
+  } catch (error) {
+    console.warn("Feature usage could not be flushed before sign out.", error);
+  }
+  logout();
+});
 els.continueRecoveredDraftBtn.addEventListener("click", continueRecoveredDraft);
 els.discardRecoveredDraftBtn.addEventListener("click", () => {
   withButtonFeedback(els.discardRecoveredDraftBtn, "Discarding...", discardRecoveredDraft, "Discarded");
@@ -3992,6 +4210,7 @@ window.addEventListener("hashchange", () => syncRouteFromLocation({ replace: fal
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     if (state.reportAutosaveDirty) saveWorkingDraft();
+    saveFeatureUsage().catch(error => console.warn("Feature usage could not be flushed.", error));
     return;
   }
   if (!state.auth?.token) return;
@@ -4015,6 +4234,7 @@ async function loadApp() {
   await initTiptapEditors();
   await loadPersonalDictionary();
   await loadAiSettings();
+  loadFeatureUsage().catch(error => console.warn("Feature usage could not be loaded.", error));
   loadSpellchecker();
   updateTemplateModeBadge();
   updateReportModeBadge();

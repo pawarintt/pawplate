@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260731-report-first">
+  <link rel="stylesheet" href="style.css?v=20260731-snippets-usage">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -168,6 +168,7 @@
       <aside class="lookup-pane templates-pane">
         <div class="reference-tabs" role="tablist" aria-label="Report reference panels">
           <button class="active" type="button" data-reference-tab="templates">Templates</button>
+          <button type="button" data-reference-tab="snippets">Snippets</button>
           <button type="button" data-reference-tab="ai-draft">AI Assist</button>
         </div>
         <div class="writer-reference reference-panel active" data-reference-panel="templates">
@@ -188,6 +189,36 @@
             <div id="templateTypeRadios" class="filter-chips" aria-label="Template type"></div>
           </div>
           <div id="templateList" class="result-list"></div>
+        </div>
+        <div class="writer-reference snippet-reference reference-panel" data-reference-panel="snippets">
+          <div class="pane-head">
+            <h2>Snippet Generator</h2>
+            <button id="resetSnippetBtn" type="button">Reset</button>
+          </div>
+          <div class="snippet-controls">
+            <select id="snippetSystemSelect" class="hidden-select" aria-label="Snippet system">
+              <option value="tirads">TI-RADS</option>
+              <option value="birads">BI-RADS</option>
+            </select>
+            <div id="snippetSystemRadios" class="filter-chips" aria-label="Snippet system"></div>
+            <select id="snippetModalitySelect" class="hidden-select" aria-label="Snippet modality"></select>
+            <div id="snippetModalityRadios" class="filter-chips" aria-label="Snippet modality"></div>
+            <select id="snippetFindingSelect" class="hidden-select" aria-label="Snippet finding"></select>
+            <div id="snippetFindingRadios" class="filter-chips" aria-label="Snippet finding"></div>
+          </div>
+          <div id="snippetFields" class="snippet-fields"></div>
+          <article class="snippet-preview">
+            <div id="snippetPreviewText" class="snippet-preview-text"></div>
+            <div class="snippet-actions">
+              <button id="addSnippetFindingBtn" type="button">Add Finding</button>
+              <button id="clearSnippetFindingsBtn" type="button">Clear</button>
+            </div>
+            <div id="snippetFindingList" class="snippet-finding-list"></div>
+            <div class="snippet-actions">
+              <button id="copySnippetBtn" type="button">Copy</button>
+              <button id="insertSnippetBtn" type="button">Insert</button>
+            </div>
+          </article>
         </div>
         <div class="writer-reference ai-draft-reference reference-panel" data-reference-panel="ai-draft">
           <div class="pane-head">
@@ -322,6 +353,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typo-js@1.3.2/typo.js"></script>
-  <script src="app-20260706.js?v=20260731-report-first"></script>
+  <script src="app-20260706.js?v=20260731-snippets-usage"></script>
 </body>
 </html>
