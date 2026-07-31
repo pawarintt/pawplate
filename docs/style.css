@@ -1551,15 +1551,19 @@ textarea {
   min-height: 100%;
   padding: 16px 18px;
   outline: none;
+  line-height: 1.45;
   white-space: pre-wrap;
 }
 
-.pawplate-prosemirror p {
-  margin: 0 0 .72em;
+.pawplate-prosemirror p,
+.report-document p {
+  min-height: 1.45em;
+  margin: 0;
 }
 
-.pawplate-prosemirror p:last-child {
-  margin-bottom: 0;
+.report-document {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .pawplate-prosemirror .is-empty:first-child::before {
