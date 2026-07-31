@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260731-focus-ui">
+  <link rel="stylesheet" href="style.css?v=20260731-insights-v2">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -31,6 +31,7 @@
           <a id="builderModeBtn" class="active" href="#/template-builder" aria-current="page">Template Builder</a>
           <a id="writerModeBtn" href="#/report-writer/templates">Report Writer</a>
           <a id="worklogModeBtn" href="#/work-log">Work Log</a>
+          <a id="insightsModeBtn" href="#/insights">Insights</a>
         </nav>
         <button id="logoutBtn" class="logout-button" type="button">Sign Out</button>
       </div>
@@ -250,6 +251,50 @@
         <div id="interestingList" class="result-list"></div>
       </aside>
     </section>
+
+    <section id="insightsView" class="insights-view hidden">
+      <section class="insights-list-pane">
+        <div class="pane-head">
+          <h2>Template Opportunities</h2>
+          <div class="inline-actions">
+            <span id="insightsSummary" class="insights-summary"></span>
+            <button id="refreshInsightsBtn" type="button">Refresh</button>
+          </div>
+        </div>
+        <div id="insightsList" class="result-list insights-list"></div>
+      </section>
+
+      <section class="insights-detail-pane">
+        <div class="pane-head">
+          <h2 id="insightDetailTitle">Select an opportunity</h2>
+          <div class="inline-actions">
+            <button id="dismissInsightBtn" class="quiet-button" type="button" disabled>Dismiss</button>
+            <button id="copyInsightPromptBtn" type="button" disabled>Copy Prompt</button>
+          </div>
+        </div>
+        <div id="insightEmpty" class="empty">No opportunity selected.</div>
+        <div id="insightDetailContent" class="insight-detail-content hidden">
+          <div id="insightDetailMeta" class="insight-detail-meta"></div>
+          <div class="insight-detail-scroll">
+            <section class="insight-section">
+              <p id="insightReason" class="insight-reason"></p>
+            </section>
+            <section class="insight-section">
+              <h3>Recurring structure</h3>
+              <div id="insightCommonLines" class="insight-common-lines"></div>
+            </section>
+            <section class="insight-section">
+              <h3>Representative reports</h3>
+              <div id="insightReportChoices" class="insight-report-choices"></div>
+            </section>
+            <section class="insight-section insight-prompt-section">
+              <h3>Handoff prompt</h3>
+              <textarea id="insightPromptText" spellcheck="false" aria-label="Template synthesis handoff prompt"></textarea>
+            </section>
+          </div>
+        </div>
+      </section>
+    </section>
   </main>
 
   <dialog id="draftRecoveryDialog" class="draft-recovery-dialog" aria-labelledby="draftRecoveryTitle">
@@ -277,6 +322,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typo-js@1.3.2/typo.js"></script>
-  <script src="app-20260706.js?v=20260731-focus-ui"></script>
+  <script src="app-20260706.js?v=20260731-insights-v2"></script>
 </body>
 </html>

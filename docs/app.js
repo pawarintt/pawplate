@@ -10,7 +10,8 @@ const AUTH_REFRESH_LEEWAY_MS = 60 * 60 * 1000;
 const MODE_ROUTES = {
   builder: "template-builder",
   writer: "report-writer",
-  worklog: "work-log"
+  worklog: "work-log",
+  insights: "insights"
 };
 const ROUTE_MODES = Object.fromEntries(Object.entries(MODE_ROUTES).map(([mode, route]) => [route, mode]));
 const REFERENCE_ROUTES = {
@@ -165,6 +166,11 @@ const TEMPLATE_TYPE_FILTERS = [
   { value: "normal", label: "Normal" },
   { value: "disease", label: "Disease" }
 ];
+const INSIGHT_SETTINGS_KEY = "templateInsights";
+const INSIGHT_MIN_REPORTS = 3;
+const INSIGHT_SIMILARITY_THRESHOLD = 0.44;
+const INSIGHT_MIN_COHESION = 0.34;
+const INSIGHT_MAX_EXAMPLES = 5;
 
 const state = {
   mode: "builder",
@@ -197,6 +203,14 @@ const state = {
   worklogMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   worklogSelectedDate: "",
   workLogReports: [],
+  insightOpportunities: [],
+  selectedInsightKey: "",
+  insightSelectedReportIds: new Set(),
+  insightCorpusFingerprint: "",
+  insightSettingsId: "",
+  dismissedInsightKeys: new Set(),
+  insightsLoaded: false,
+  insightsScanning: false,
   dictionary: null,
   dictionaryReady: false,
   personalDictionary: new Set(),
@@ -223,9 +237,11 @@ const els = {
   builderModeBtn: document.getElementById("builderModeBtn"),
   writerModeBtn: document.getElementById("writerModeBtn"),
   worklogModeBtn: document.getElementById("worklogModeBtn"),
+  insightsModeBtn: document.getElementById("insightsModeBtn"),
   builderView: document.getElementById("builderView"),
   writerView: document.getElementById("writerView"),
   worklogView: document.getElementById("worklogView"),
+  insightsView: document.getElementById("insightsView"),
   oldSearchInput: document.getElementById("oldSearchInput"),
   oldModalityFilter: document.getElementById("oldModalityFilter"),
   oldTopicFilter: document.getElementById("oldTopicFilter"),
@@ -327,6 +343,19 @@ const els = {
   worklogPreviewText: document.getElementById("worklogPreviewText"),
   editWorklogReportBtn: document.getElementById("editWorklogReportBtn"),
   closeWorklogPreviewBtn: document.getElementById("closeWorklogPreviewBtn"),
+  refreshInsightsBtn: document.getElementById("refreshInsightsBtn"),
+  insightsSummary: document.getElementById("insightsSummary"),
+  insightsList: document.getElementById("insightsList"),
+  insightDetailTitle: document.getElementById("insightDetailTitle"),
+  dismissInsightBtn: document.getElementById("dismissInsightBtn"),
+  copyInsightPromptBtn: document.getElementById("copyInsightPromptBtn"),
+  insightEmpty: document.getElementById("insightEmpty"),
+  insightDetailContent: document.getElementById("insightDetailContent"),
+  insightDetailMeta: document.getElementById("insightDetailMeta"),
+  insightReason: document.getElementById("insightReason"),
+  insightCommonLines: document.getElementById("insightCommonLines"),
+  insightReportChoices: document.getElementById("insightReportChoices"),
+  insightPromptText: document.getElementById("insightPromptText"),
   draftRecoveryDialog: document.getElementById("draftRecoveryDialog"),
   draftRecoveryReportTitle: document.getElementById("draftRecoveryReportTitle"),
   draftRecoveryMeta: document.getElementById("draftRecoveryMeta"),
@@ -1729,6 +1758,14 @@ function logout(message = "") {
   state.guidelines = [];
   state.writerGuidelines = [];
   state.workLogReports = [];
+  state.insightOpportunities = [];
+  state.selectedInsightKey = "";
+  state.insightSelectedReportIds = new Set();
+  state.insightCorpusFingerprint = "";
+  state.insightSettingsId = "";
+  state.dismissedInsightKeys = new Set();
+  state.insightsLoaded = false;
+  state.insightsScanning = false;
   state.selectedOldReport = null;
   state.selectedTemplate = null;
   state.selectedGuideline = null;
@@ -2045,7 +2082,8 @@ function showMode(mode, options = {}) {
   [
     [els.builderModeBtn, "builder"],
     [els.writerModeBtn, "writer"],
-    [els.worklogModeBtn, "worklog"]
+    [els.worklogModeBtn, "worklog"],
+    [els.insightsModeBtn, "insights"]
   ].forEach(([link, linkMode]) => {
     const active = mode === linkMode;
     link.classList.toggle("active", active);
@@ -2055,14 +2093,17 @@ function showMode(mode, options = {}) {
   els.builderView.classList.toggle("hidden", mode !== "builder");
   els.writerView.classList.toggle("hidden", mode !== "writer");
   els.worklogView.classList.toggle("hidden", mode !== "worklog");
+  els.insightsView.classList.toggle("hidden", mode !== "insights");
   if (mode === "writer") {
     loadViewData(loadTemplates(), "Templates");
   }
   if (mode === "worklog") loadViewData(loadWorkLog(), "Work Log");
+  if (mode === "insights") loadViewData(loadInsights(), "Insights");
   document.title = `PawPlate · ${{
     builder: "Template Builder",
     writer: "Report Writer",
-    worklog: "Work Log"
+    worklog: "Work Log",
+    insights: "Insights"
   }[mode]}`;
   if (options.updateRoute !== false) updateRoute(mode);
 }
@@ -2807,7 +2848,7 @@ async function loadWorkLog() {
     perPage: 500,
     sort: "-created",
     filter: 'sourceType="final-report"',
-    fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,note,isInteresting,owner"
+    fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,updated,note,isInteresting,owner"
   });
   state.workLogReports = data.items;
   if (state.selectedWorklogReport) {
@@ -2987,6 +3028,495 @@ function renderInterestingCases() {
   `).join("");
 }
 
+function reportTextWithBreaks(value) {
+  const raw = String(value || "");
+  if (!isHtml(raw)) return raw.replace(/\r/g, "");
+  const container = document.createElement("div");
+  container.innerHTML = raw;
+  container.querySelectorAll("br").forEach(node => node.replaceWith(document.createTextNode("\n")));
+  container.querySelectorAll("p, div, li, h1, h2, h3, h4, h5, h6").forEach(node => node.append("\n"));
+  return (container.textContent || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function normalizeInsightLabel(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizeInsightLine(value) {
+  let line = String(value || "").trim();
+  if (!line) return "";
+  if (/pawarin\s+tongpiputn|\bradiologist\b|\b(?:m\.?d\.?|md)\s*$/i.test(line)) return "";
+  const variableHeading = line.match(/^(history|clinical history|clinical indication|indication|comparison)\s*:/i);
+  if (variableHeading) return `${variableHeading[1].toLowerCase()}:`;
+  line = line
+    .replace(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g, "<date>")
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "<date>")
+    .replace(/\b\d+(?:\.\d+)?(?:\s*[xX\u00d7]\s*\d+(?:\.\d+)?){1,2}\s*(?:cm|mm)?\b/g, "<measurement>")
+    .replace(/\b\d+(?:\.\d+)?\s*(?:cm|mm)\b/gi, "<measurement>")
+    .replace(/\b\d{1,3}[\s-]*(?:year|yr)s?[\s-]*old\b/gi, "<age>")
+    .replace(/\b\d{6,}\b/g, "<identifier>")
+    .replace(/\b\d+(?:\.\d+)?\b/g, "<number>")
+    .toLowerCase()
+    .replace(/^[\s#*\-\u2022]+/, "")
+    .replace(/[()[\],.;]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return line.length >= 8 ? line : "";
+}
+
+function insightWordShingles(lines) {
+  const tokens = lines.join(" ").match(/[a-z]+|<[^>]+>/g) || [];
+  const shingles = new Set();
+  for (let index = 0; index < tokens.length - 2 && shingles.size < 500; index += 1) {
+    shingles.add(`${tokens[index]} ${tokens[index + 1]} ${tokens[index + 2]}`);
+  }
+  return shingles;
+}
+
+function insightReportFeatures(report) {
+  const rawLines = reportTextWithBreaks(report.report)
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const normalizedLines = rawLines.map(normalizeInsightLine).filter(Boolean);
+  const lineSet = new Set(normalizedLines);
+  const headings = new Set(normalizedLines.map(line => {
+    const match = line.match(/^([a-z][a-z /&-]{1,40}):/);
+    return match ? `${match[1]}:` : "";
+  }).filter(Boolean));
+  return {
+    report,
+    normalizedLines,
+    lineSet,
+    headings,
+    shingles: insightWordShingles(normalizedLines)
+  };
+}
+
+function insightSetSimilarity(left, right) {
+  if (!left.size || !right.size) return 0;
+  const smaller = left.size <= right.size ? left : right;
+  const larger = smaller === left ? right : left;
+  let intersection = 0;
+  smaller.forEach(value => {
+    if (larger.has(value)) intersection += 1;
+  });
+  return intersection / (left.size + right.size - intersection);
+}
+
+function insightSimilarity(left, right) {
+  const lineScore = insightSetSimilarity(left.lineSet, right.lineSet);
+  const shingleScore = insightSetSimilarity(left.shingles, right.shingles);
+  const headingScore = insightSetSimilarity(left.headings, right.headings);
+  return (lineScore * 0.48) + (shingleScore * 0.27) + (headingScore * 0.25);
+}
+
+function insightPairKey(left, right) {
+  return left.report.id < right.report.id
+    ? `${left.report.id}|${right.report.id}`
+    : `${right.report.id}|${left.report.id}`;
+}
+
+function clusterInsightBucket(features) {
+  const scores = new Map();
+  const score = (left, right) => {
+    if (left === right) return 1;
+    const key = insightPairKey(left, right);
+    if (!scores.has(key)) scores.set(key, insightSimilarity(left, right));
+    return scores.get(key);
+  };
+  const remaining = new Set(features);
+  const clusters = [];
+
+  while (remaining.size >= INSIGHT_MIN_REPORTS) {
+    let bestSeed = null;
+    let bestMembers = [];
+    let bestScore = 0;
+    remaining.forEach(seed => {
+      const members = [...remaining].filter(candidate => score(seed, candidate) >= INSIGHT_SIMILARITY_THRESHOLD);
+      const total = members.reduce((sum, member) => sum + score(seed, member), 0);
+      if (members.length > bestMembers.length || (members.length === bestMembers.length && total > bestScore)) {
+        bestSeed = seed;
+        bestMembers = members;
+        bestScore = total;
+      }
+    });
+
+    if (!bestSeed || bestMembers.length < INSIGHT_MIN_REPORTS) break;
+    for (let pass = 0; pass < 2 && bestMembers.length >= INSIGHT_MIN_REPORTS; pass += 1) {
+      bestMembers = bestMembers.filter(member => {
+        const others = bestMembers.filter(candidate => candidate !== member);
+        const average = others.reduce((sum, candidate) => sum + score(member, candidate), 0) / Math.max(1, others.length);
+        return average >= INSIGHT_MIN_COHESION;
+      });
+    }
+    if (bestMembers.length < INSIGHT_MIN_REPORTS) {
+      remaining.delete(bestSeed);
+      continue;
+    }
+    clusters.push({ members: bestMembers, score });
+    bestMembers.forEach(member => remaining.delete(member));
+  }
+  return clusters;
+}
+
+function hashInsightValue(value) {
+  let hash = 2166136261;
+  const text = String(value || "");
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function insightCommonLines(features) {
+  const counts = new Map();
+  features.forEach(feature => {
+    feature.lineSet.forEach(line => counts.set(line, (counts.get(line) || 0) + 1));
+  });
+  const minimum = Math.max(2, Math.ceil(features.length * 0.6));
+  const common = new Set([...counts.entries()].filter(([, count]) => count >= minimum).map(([line]) => line));
+  const medoid = features
+    .map(feature => ({
+      feature,
+      score: features.reduce((sum, candidate) => sum + insightSimilarity(feature, candidate), 0)
+    }))
+    .sort((left, right) => right.score - left.score)[0]?.feature;
+  const ordered = [];
+  (medoid?.normalizedLines || []).forEach(line => {
+    if (common.has(line) && !ordered.includes(line)) ordered.push(line);
+  });
+  return ordered.slice(0, 10);
+}
+
+function insightOpportunityTitle(features, modality, topic, bodyPart) {
+  const titles = new Map();
+  features.forEach(({ report }) => {
+    const title = String(report.title || "").trim().replace(/\b\d{6,}\b/g, "").replace(/\s+/g, " ");
+    if (!title || /^untitled report$/i.test(title)) return;
+    const key = title.toLowerCase();
+    const current = titles.get(key) || { title, count: 0 };
+    current.count += 1;
+    titles.set(key, current);
+  });
+  const commonTitle = [...titles.values()].sort((left, right) => right.count - left.count || left.title.length - right.title.length)[0];
+  if (commonTitle?.count >= 2) return commonTitle.title.slice(0, 100);
+  const target = bodyPart || topic;
+  if (target && modality && target.toLowerCase().includes(modality.toLowerCase())) return target;
+  return [modality, target].filter(Boolean).join(" ") || "Recurring report pattern";
+}
+
+function createInsightOpportunity(cluster, metadata) {
+  const features = cluster.members;
+  let pairTotal = 0;
+  let pairCount = 0;
+  features.forEach((feature, index) => {
+    features.slice(index + 1).forEach(candidate => {
+      pairTotal += cluster.score(feature, candidate);
+      pairCount += 1;
+    });
+  });
+  const cohesion = pairCount ? pairTotal / pairCount : 0;
+  const commonLines = insightCommonLines(features);
+  const ranked = features
+    .map(feature => ({
+      report: feature.report,
+      score: features.reduce((sum, candidate) => sum + insightSimilarity(feature, candidate), 0) / features.length
+    }))
+    .sort((left, right) => right.score - left.score);
+  const stableKey = [metadata.key, ...commonLines.slice(0, 12)].join("|");
+  return {
+    key: `opportunity-${hashInsightValue(stableKey)}`,
+    title: insightOpportunityTitle(features, metadata.modality, metadata.topic, metadata.bodyPart),
+    modality: metadata.modality,
+    topic: metadata.topic,
+    bodyPart: metadata.bodyPart,
+    reportIds: features.map(feature => feature.report.id),
+    representativeReportIds: ranked.slice(0, INSIGHT_MAX_EXAMPLES).map(item => item.report.id),
+    reportCount: features.length,
+    cohesion,
+    commonLines,
+    reason: `${features.length} finalized reports repeatedly use the same sections and phrasing. This pattern may be worth turning into a reusable starting template.`
+  };
+}
+
+function detectInsightOpportunities(reports) {
+  const buckets = new Map();
+  reports.forEach(report => {
+    const modality = String(report.modality || "").trim();
+    const topic = String(report.topic || "").trim();
+    const bodyPart = String(report.bodyPart || "").trim();
+    const key = [modality, topic, bodyPart].map(normalizeInsightLabel).join("|");
+    if (!key.replace(/\|/g, "") || !plainText(report.report).trim()) return;
+    const bucket = buckets.get(key) || { key, modality, topic, bodyPart, features: [] };
+    bucket.features.push(insightReportFeatures(report));
+    buckets.set(key, bucket);
+  });
+
+  const opportunities = [];
+  buckets.forEach(bucket => {
+    if (bucket.features.length < INSIGHT_MIN_REPORTS) return;
+    clusterInsightBucket(bucket.features).forEach(cluster => {
+      opportunities.push(createInsightOpportunity(cluster, bucket));
+    });
+  });
+  return opportunities
+    .filter(item => !state.dismissedInsightKeys.has(item.key))
+    .sort((left, right) => right.reportCount - left.reportCount || right.cohesion - left.cohesion);
+}
+
+function insightCorpusFingerprint(reports) {
+  return hashInsightValue(reports
+    .map(report => `${report.id}:${report.updated || report.created || ""}:${String(report.report || "").length}`)
+    .sort()
+    .join("|"));
+}
+
+async function loadInsightSettings() {
+  state.insightSettingsId = "";
+  state.dismissedInsightKeys = new Set();
+  try {
+    const filter = `owner="${state.auth?.user?.id || ""}" && key="${INSIGHT_SETTINGS_KEY}"`;
+    const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+    const record = data.items?.[0];
+    if (record) {
+      state.insightSettingsId = record.id;
+      const dismissed = Array.isArray(record.value?.dismissed) ? record.value.dismissed : [];
+      state.dismissedInsightKeys = new Set(dismissed.map(String).filter(Boolean));
+    }
+  } catch (error) {
+    console.warn("Insight preferences unavailable; dismissed items will not sync.", error);
+  }
+  state.insightsLoaded = true;
+}
+
+async function saveInsightSettings() {
+  const value = { dismissed: [...state.dismissedInsightKeys].slice(-250) };
+  if (state.insightSettingsId) {
+    await pbUpdate("user_settings", state.insightSettingsId, { value });
+    return;
+  }
+  const created = await pbCreate("user_settings", {
+    owner: state.auth?.user?.id || "",
+    key: INSIGHT_SETTINGS_KEY,
+    value
+  });
+  state.insightSettingsId = created.id;
+}
+
+function selectedInsight() {
+  return state.insightOpportunities.find(item => item.key === state.selectedInsightKey) || null;
+}
+
+function deidentifyInsightReport(report) {
+  const lines = reportTextWithBreaks(report.report).split("\n");
+  const cleaned = lines.map(line => {
+    const trimmed = line.trim();
+    if (/pawarin\s+tongpiputn|\bradiologist\b|\b(?:m\.?d\.?|md)\s*$/i.test(trimmed)) return "";
+    if (/^(history|clinical history|clinical indication|indication)\s*:/i.test(trimmed)) {
+      return `${trimmed.split(":")[0]}: [case-specific history removed]`;
+    }
+    if (/^comparison\s*:/i.test(trimmed)) return "COMPARISON: [case-specific comparison removed]";
+    if (/^(name|patient name|date of birth|dob)\s*:/i.test(trimmed)) {
+      return `${trimmed.split(":")[0]}: [removed]`;
+    }
+    return line
+      .replace(/\b(HN|MRN|accession(?: number)?|patient id)\s*[:#-]?\s*[A-Za-z0-9-]+/gi, "$1: [removed]")
+      .replace(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g, "[date]")
+      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "[date]")
+      .replace(/\b\d{6,}\b/g, "[identifier removed]")
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email removed]");
+  });
+  return cleaned.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 14000);
+}
+
+function insightPromptReportTitle(report) {
+  return String(report.title || "Untitled report")
+    .replace(/\b(HN|MRN|accession(?: number)?|patient id)\s*[:#-]?\s*[A-Za-z0-9-]+/gi, "$1 [removed]")
+    .replace(/\b\d{6,}\b/g, "[identifier removed]")
+    .replace(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g, "[date]")
+    .trim() || "Untitled report";
+}
+
+function insightSelectedReports(opportunity = selectedInsight()) {
+  if (!opportunity) return [];
+  const reportsById = new Map(state.workLogReports.map(report => [report.id, report]));
+  return opportunity.representativeReportIds
+    .filter(id => state.insightSelectedReportIds.has(id))
+    .map(id => reportsById.get(id))
+    .filter(Boolean);
+}
+
+function buildInsightPrompt(opportunity = selectedInsight()) {
+  if (!opportunity) return "";
+  const reports = insightSelectedReports(opportunity);
+  if (!reports.length) return "Select at least one representative report.";
+  const metadata = [opportunity.modality, opportunity.topic, opportunity.bodyPart].filter(Boolean).join(" / ");
+  const examples = reports.map((report, index) => [
+    `--- REPORT ${index + 1}: ${insightPromptReportTitle(report)} ---`,
+    deidentifyInsightReport(report)
+  ].join("\n")).join("\n\n");
+  return [
+    "Create one reusable personal radiology reporting template from the representative reports below.",
+    "",
+    `Detected pattern: ${opportunity.title}`,
+    `Metadata: ${metadata || "Not specified"}`,
+    "",
+    "Requirements:",
+    "- Preserve the user's section order, capitalization, raw spacing, and dash-based findings.",
+    "- Extract stable statements shared across the reports instead of copying one case verbatim.",
+    "- Replace measurements, laterality, dates, and case-specific findings with clear editable placeholders.",
+    "- Separate stable normal statements from optional disease-specific or finding-specific insertions.",
+    "- Do not add findings, diagnoses, recommendations, or classifications unsupported by the examples.",
+    "- Do not include patient identifiers, signatures, or case-specific clinical history.",
+    "- Make the result easy to paste into another reporting program as plain text.",
+    "",
+    "Return exactly:",
+    "TEMPLATE TITLE:",
+    "MODALITY:",
+    "TOPIC:",
+    "BODY PART:",
+    "TYPE: Normal or Disease",
+    "",
+    "TEMPLATE:",
+    "[plain-text template]",
+    "",
+    "OPTIONAL INSERTIONS:",
+    "[plain-text optional sections, if supported]",
+    "",
+    "REPRESENTATIVE REPORTS:",
+    examples
+  ].join("\n");
+}
+
+function formatInsightCommonLine(line) {
+  return String(line || "")
+    .replace(/<measurement>/g, "[measurement]")
+    .replace(/<identifier>/g, "[identifier]")
+    .replace(/<number>/g, "[number]")
+    .replace(/<date>/g, "[date]")
+    .replace(/<age>/g, "[age]");
+}
+
+function renderInsightDetail() {
+  const opportunity = selectedInsight();
+  if (!opportunity) {
+    els.insightDetailTitle.textContent = "Select an opportunity";
+    els.insightEmpty.classList.remove("hidden");
+    els.insightDetailContent.classList.add("hidden");
+    els.dismissInsightBtn.disabled = true;
+    els.copyInsightPromptBtn.disabled = true;
+    return;
+  }
+  const reportsById = new Map(state.workLogReports.map(report => [report.id, report]));
+  els.insightDetailTitle.textContent = opportunity.title;
+  els.insightEmpty.classList.add("hidden");
+  els.insightDetailContent.classList.remove("hidden");
+  els.dismissInsightBtn.disabled = false;
+  els.insightDetailMeta.textContent = [
+    `${opportunity.reportCount} matching reports`,
+    opportunity.modality,
+    opportunity.topic,
+    opportunity.bodyPart
+  ].filter(Boolean).join(" / ");
+  els.insightReason.textContent = opportunity.reason;
+  els.insightCommonLines.innerHTML = opportunity.commonLines.length
+    ? opportunity.commonLines.map(line => `<div class="insight-common-line">${escapeHtml(formatInsightCommonLine(line))}</div>`).join("")
+    : '<div class="empty">The reports share an overall structure but no single repeated line passed the display threshold.</div>';
+  els.insightReportChoices.innerHTML = opportunity.representativeReportIds.map(id => {
+    const report = reportsById.get(id);
+    if (!report) return "";
+    const date = savedDate(report);
+    return `
+      <label class="insight-report-choice">
+        <input type="checkbox" data-insight-report-id="${id}" ${state.insightSelectedReportIds.has(id) ? "checked" : ""}>
+        <span>
+          <strong>${escapeHtml(report.title || "Untitled report")}</strong>
+          <span>${escapeHtml([date ? dateKey(date) : "", report.modality, report.topic, report.bodyPart].filter(Boolean).join(" / "))}</span>
+        </span>
+      </label>
+    `;
+  }).join("");
+  const prompt = buildInsightPrompt(opportunity);
+  els.insightPromptText.value = prompt;
+  els.copyInsightPromptBtn.disabled = !insightSelectedReports(opportunity).length;
+}
+
+function renderInsights() {
+  const opportunities = state.insightOpportunities;
+  els.refreshInsightsBtn.disabled = state.insightsScanning;
+  els.refreshInsightsBtn.textContent = state.insightsScanning ? "Scanning..." : "Refresh";
+  els.insightsSummary.textContent = state.insightsScanning
+    ? "Scanning reports"
+    : `${state.workLogReports.length} reports, ${opportunities.length} opportunities`;
+  if (!opportunities.length) {
+    els.insightsList.innerHTML = `<div class="empty">${state.insightsScanning ? "Looking for repeated report structures..." : "No recurring template opportunity found yet."}</div>`;
+    state.selectedInsightKey = "";
+    renderInsightDetail();
+    return;
+  }
+  if (!opportunities.some(item => item.key === state.selectedInsightKey)) {
+    state.selectedInsightKey = opportunities[0].key;
+    state.insightSelectedReportIds = new Set(opportunities[0].representativeReportIds);
+  }
+  els.insightsList.innerHTML = opportunities.map((item, index) => `
+    <button class="result-item ${item.key === state.selectedInsightKey ? "active" : ""}" data-insight-key="${item.key}" type="button">
+      <span class="result-no">${index + 1}.</span>
+      <span>
+        <span class="result-title">${escapeHtml(item.title)}</span>
+        <span class="result-meta">${escapeHtml([item.modality, item.topic, item.bodyPart].filter(Boolean).join(" / "))}</span>
+        <span class="result-snippet">${item.reportCount} matching reports</span>
+      </span>
+    </button>
+  `).join("");
+  renderInsightDetail();
+}
+
+function selectInsight(key) {
+  const opportunity = state.insightOpportunities.find(item => item.key === key);
+  if (!opportunity) return;
+  state.selectedInsightKey = key;
+  state.insightSelectedReportIds = new Set(opportunity.representativeReportIds);
+  renderInsights();
+}
+
+async function loadInsights(options = {}) {
+  if (state.insightsScanning) return;
+  state.insightsScanning = true;
+  renderInsights();
+  try {
+    if (!state.insightsLoaded) await loadInsightSettings();
+    await loadWorkLog();
+    const fingerprint = insightCorpusFingerprint(state.workLogReports);
+    if (options.force || fingerprint !== state.insightCorpusFingerprint) {
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+      state.insightOpportunities = detectInsightOpportunities(state.workLogReports);
+      state.insightCorpusFingerprint = fingerprint;
+    }
+  } finally {
+    state.insightsScanning = false;
+    renderInsights();
+  }
+}
+
+async function dismissSelectedInsight() {
+  const opportunity = selectedInsight();
+  if (!opportunity) return;
+  state.dismissedInsightKeys.add(opportunity.key);
+  try {
+    await saveInsightSettings();
+  } catch (error) {
+    state.dismissedInsightKeys.delete(opportunity.key);
+    throw error;
+  }
+  state.insightOpportunities = state.insightOpportunities.filter(item => item.key !== opportunity.key);
+  state.selectedInsightKey = "";
+  state.insightSelectedReportIds = new Set();
+  renderInsights();
+  showToast("Suggestion dismissed", opportunity.title);
+}
+
 async function openSavedReport(id) {
   const report = state.workLogReports.find(item => item.id === id) || state.selectedWorklogReport;
   if (!report) return;
@@ -3047,6 +3577,7 @@ function runFormatCommand(button) {
 els.builderModeBtn.addEventListener("click", event => handleModeLink(event, "builder"));
 els.writerModeBtn.addEventListener("click", event => handleModeLink(event, "writer"));
 els.worklogModeBtn.addEventListener("click", event => handleModeLink(event, "worklog"));
+els.insightsModeBtn.addEventListener("click", event => handleModeLink(event, "insights"));
 document.querySelectorAll("[data-reference-tab]").forEach(button => {
   button.addEventListener("click", () => showReferenceTab(button.dataset.referenceTab));
 });
@@ -3368,6 +3899,33 @@ els.editWorklogReportBtn.addEventListener("click", () => {
   if (state.selectedWorklogReport) openSavedReport(state.selectedWorklogReport.id);
 });
 els.closeWorklogPreviewBtn.addEventListener("click", closeWorklogPreview);
+els.insightsList.addEventListener("click", event => {
+  const button = event.target.closest("[data-insight-key]");
+  if (button) selectInsight(button.dataset.insightKey);
+});
+els.insightReportChoices.addEventListener("change", event => {
+  const input = event.target.closest("[data-insight-report-id]");
+  if (!input) return;
+  if (input.checked) state.insightSelectedReportIds.add(input.dataset.insightReportId);
+  else state.insightSelectedReportIds.delete(input.dataset.insightReportId);
+  els.insightPromptText.value = buildInsightPrompt();
+  els.copyInsightPromptBtn.disabled = !insightSelectedReports().length;
+});
+els.refreshInsightsBtn.addEventListener("click", () => {
+  withButtonFeedback(els.refreshInsightsBtn, "Scanning...", async () => {
+    await loadInsights({ force: true });
+    showToast("Insights refreshed", `${state.insightOpportunities.length} template opportunit${state.insightOpportunities.length === 1 ? "y" : "ies"} found.`);
+  }, "Refreshed");
+});
+els.copyInsightPromptBtn.addEventListener("click", () => {
+  withButtonFeedback(els.copyInsightPromptBtn, "Copying...", async () => {
+    await navigator.clipboard.writeText(els.insightPromptText.value);
+    showToast("Prompt copied", "Ready to paste into the model you choose.");
+  }, "Copied");
+});
+els.dismissInsightBtn.addEventListener("click", () => {
+  withButtonFeedback(els.dismissInsightBtn, "Dismissing...", dismissSelectedInsight, "Dismissed");
+});
 els.worklogList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-worklog-id]");
   if (!button) return;
@@ -3439,6 +3997,7 @@ document.addEventListener("visibilitychange", () => {
   refreshAuthSession()
     .then(() => {
       if (state.mode === "worklog") return loadWorkLog();
+      if (state.mode === "insights") return loadInsights();
       return null;
     })
     .catch(error => {

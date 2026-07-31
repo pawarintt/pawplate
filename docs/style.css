@@ -152,6 +152,13 @@ button.is-done {
   box-shadow: 0 0 0 3px rgba(220, 239, 200, .72);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+  filter: saturate(.45);
+  transform: none;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -293,6 +300,17 @@ input[type="radio"] {
   background: linear-gradient(180deg, #edf8f8, var(--blue-soft));
   border-color: var(--blue-line);
   box-shadow: 0 3px 10px rgba(78, 105, 112, .14);
+}
+
+#insightsModeBtn {
+  background: var(--lilac);
+  color: #765d75;
+}
+
+#insightsModeBtn.active {
+  background: linear-gradient(180deg, #f8f1f8, var(--lilac));
+  border-color: var(--lilac-line);
+  box-shadow: 0 3px 10px rgba(118, 93, 117, .14);
 }
 
 body[data-theme="dark"] #builderModeBtn,
@@ -1762,6 +1780,171 @@ mark {
   overflow: hidden;
 }
 
+.insights-view {
+  display: flex;
+  gap: 10px;
+  min-height: calc(100vh - 70px);
+}
+
+.insights-view.hidden {
+  display: none;
+}
+
+.insights-list-pane,
+.insights-detail-pane {
+  min-width: 0;
+  overflow: hidden;
+  resize: horizontal;
+  border: 1px solid var(--lilac-line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.insights-list-pane {
+  flex: 0 1 34%;
+  min-width: 330px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: linear-gradient(180deg, rgba(238, 230, 238, .76), rgba(255, 253, 248, .88) 190px), var(--paper);
+}
+
+.insights-detail-pane {
+  flex: 1 1 66%;
+  min-width: 520px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: linear-gradient(180deg, rgba(230, 241, 239, .7), rgba(255, 253, 248, .88) 210px), var(--paper);
+  border-color: var(--blue-line);
+}
+
+.insights-summary {
+  color: var(--muted);
+  font-size: .74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.insights-list .result-item {
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.insight-detail-content {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.insight-detail-content.hidden {
+  display: none;
+}
+
+.insight-detail-meta {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(231, 239, 227, .68), rgba(230, 241, 239, .62));
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.insight-detail-scroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.insight-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.insight-section:last-child {
+  border-bottom: 0;
+}
+
+.insight-section h3 {
+  margin: 0 0 9px;
+  color: #525b6b;
+  font-size: .76rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.insight-reason {
+  margin: 0;
+  color: var(--ink);
+  font-size: .94rem;
+  line-height: 1.5;
+}
+
+.insight-common-lines {
+  display: grid;
+  gap: 6px;
+}
+
+.insight-common-line {
+  padding-left: 12px;
+  border-left: 3px solid var(--sage-line);
+  color: var(--muted);
+  font-size: .84rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.insight-report-choices {
+  border-top: 1px solid var(--line);
+}
+
+.insight-report-choice {
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.insight-report-choice input {
+  width: auto;
+  min-height: 0;
+  margin-top: 3px;
+  accent-color: var(--coffee);
+}
+
+.insight-report-choice strong,
+.insight-report-choice span {
+  display: block;
+}
+
+.insight-report-choice strong {
+  color: var(--ink);
+  font-size: .86rem;
+}
+
+.insight-report-choice span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: .74rem;
+}
+
+.insight-prompt-section {
+  min-height: 390px;
+  display: grid;
+  grid-template-rows: auto minmax(320px, 1fr);
+}
+
+#insightPromptText {
+  min-height: 320px;
+  resize: vertical;
+  border-color: var(--peach-line);
+  background: rgba(255, 250, 243, .8);
+  color: var(--ink);
+  line-height: 1.48;
+  white-space: pre-wrap;
+}
+
 .preview-meta {
   padding: 7px 10px;
   border-bottom: 1px solid rgba(217, 213, 204, .6);
@@ -2237,7 +2420,12 @@ body[data-theme="dark"] .draft-recovery-actions .primary-button {
     flex-direction: column;
   }
 
-  .lookup-pane, .editor-pane, .guideline-editor-pane, .guideline-preview-pane {
+  .insights-view {
+    flex-direction: column;
+  }
+
+  .lookup-pane, .editor-pane, .guideline-editor-pane, .guideline-preview-pane,
+  .insights-list-pane, .insights-detail-pane {
     min-width: 0;
     resize: vertical;
   }
