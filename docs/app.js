@@ -3,7 +3,6 @@ const POCKETBASE_URL = CONFIG.pocketbaseUrl || window.location.origin;
 const API = `${POCKETBASE_URL.replace(/\/$/, "")}/api/collections`;
 const AUTH_KEY = "pawplate.auth";
 const PALETTE_KEY_PREFIX = "pawplate.palette.";
-const THEME_KEY_PREFIX = "pawplate.theme.";
 const PERSONAL_DICTIONARY_KEY_PREFIX = "pawplate.dictionary.";
 const REPORT_DRAFT_KEY_PREFIX = "pawplate.report-draft.";
 const AUTH_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
@@ -11,14 +10,11 @@ const AUTH_REFRESH_LEEWAY_MS = 60 * 60 * 1000;
 const MODE_ROUTES = {
   builder: "template-builder",
   writer: "report-writer",
-  guidelines: "guidelines",
   worklog: "work-log"
 };
 const ROUTE_MODES = Object.fromEntries(Object.entries(MODE_ROUTES).map(([mode, route]) => [route, mode]));
 const REFERENCE_ROUTES = {
   templates: "templates",
-  guidelines: "guidelines",
-  snippets: "snippets",
   "ai-draft": "ai-draft"
 };
 const ROUTE_REFERENCES = Object.fromEntries(Object.entries(REFERENCE_ROUTES).map(([tab, route]) => [route, tab]));
@@ -226,12 +222,9 @@ const els = {
   logoutBtn: document.getElementById("logoutBtn"),
   builderModeBtn: document.getElementById("builderModeBtn"),
   writerModeBtn: document.getElementById("writerModeBtn"),
-  guidelineModeBtn: document.getElementById("guidelineModeBtn"),
   worklogModeBtn: document.getElementById("worklogModeBtn"),
-  themeToggleBtn: document.getElementById("themeToggleBtn"),
   builderView: document.getElementById("builderView"),
   writerView: document.getElementById("writerView"),
-  guidelineView: document.getElementById("guidelineView"),
   worklogView: document.getElementById("worklogView"),
   oldSearchInput: document.getElementById("oldSearchInput"),
   oldModalityFilter: document.getElementById("oldModalityFilter"),
@@ -324,7 +317,6 @@ const els = {
   copyReportBtn: document.getElementById("copyReportBtn"),
   saveReportBtn: document.getElementById("saveReportBtn"),
   worklogSearchInput: document.getElementById("worklogSearchInput"),
-  reviewVisibleReportsBtn: document.getElementById("reviewVisibleReportsBtn"),
   worklogSummary: document.getElementById("worklogSummary"),
   worklogHeatmap: document.getElementById("worklogHeatmap"),
   worklogList: document.getElementById("worklogList"),
@@ -1430,10 +1422,6 @@ function paletteKey() {
   return `${PALETTE_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
 }
 
-function themeKey() {
-  return `${THEME_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
-}
-
 function personalDictionaryKey() {
   return `${PERSONAL_DICTIONARY_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
 }
@@ -1450,22 +1438,6 @@ function readLocalPersonalDictionary() {
 
 function writeLocalPersonalDictionary(words = [...state.personalDictionary]) {
   localStorage.setItem(personalDictionaryKey(), JSON.stringify([...new Set(words.map(normalizeDictionaryWord).filter(Boolean))].sort()));
-}
-
-function readTheme() {
-  const saved = localStorage.getItem(themeKey());
-  return saved === "dark" ? "dark" : "light";
-}
-
-function applyTheme(theme = readTheme()) {
-  document.body.dataset.theme = theme;
-  if (els.themeToggleBtn) els.themeToggleBtn.textContent = theme === "dark" ? "Light" : "Dark";
-}
-
-function toggleTheme() {
-  const next = document.body.dataset.theme === "dark" ? "light" : "dark";
-  localStorage.setItem(themeKey(), next);
-  applyTheme(next);
 }
 
 function readPalette() {
@@ -1562,6 +1534,15 @@ async function loadTiptapModules() {
 
 async function initTiptapEditors() {
   if (state.tiptapReady) return;
+  const editorElements = [els.templateTextEditor, els.reportTextEditor].filter(Boolean);
+  const restoreFallbackEditor = (element, initialContent = "") => {
+    if (!element || element.__pawplateEditor) return;
+    element.classList.remove("tiptap-host");
+    element.setAttribute("contenteditable", "true");
+    element.setAttribute("spellcheck", "true");
+    element.setAttribute("lang", "en-US");
+    if (!element.innerHTML && initialContent) element.innerHTML = initialContent;
+  };
   try {
     const {
       Editor,
@@ -1588,52 +1569,58 @@ async function initTiptapEditors() {
         };
       }
     });
-    [els.templateTextEditor, els.reportTextEditor].forEach(element => {
+    editorElements.forEach(element => {
       if (!element || element.__pawplateEditor) return;
       const placeholder = element.dataset.placeholder || "";
       const initialContent = element.innerHTML || "";
-      element.removeAttribute("contenteditable");
-      element.classList.add("tiptap-host");
-      const editor = new Editor({
-        element,
-        content: initialContent,
-        extensions: [
-          StarterKit.configure({
-            history: true,
-            bulletList: false,
-            orderedList: false,
-            listItem: false,
-            heading: false,
-            blockquote: false,
-            codeBlock: false
-          }),
-          Underline,
-          TextStyle,
-          Color,
-          Highlight.configure({ multicolor: true }),
-          Placeholder.configure({ placeholder }),
-          TabSpaces
-        ],
-        editorProps: {
-          attributes: {
-            class: "pawplate-prosemirror",
-            spellcheck: "true",
-            lang: "en-US",
-            autocapitalize: "sentences"
-          }
-        },
-        parseOptions: { preserveWhitespace: "full" },
-        onUpdate: () => {
-          scheduleEditorProofing(element);
-          if (element === els.reportTextEditor) scheduleReportAutosave();
-        },
-        onFocus: () => clearProofingFallback(element),
-        onBlur: () => updateProofing(element)
-      });
-      element.__pawplateEditor = editor;
+      try {
+        element.removeAttribute("contenteditable");
+        element.classList.add("tiptap-host");
+        const editor = new Editor({
+          element,
+          content: initialContent,
+          extensions: [
+            StarterKit.configure({
+              history: true,
+              bulletList: false,
+              orderedList: false,
+              listItem: false,
+              heading: false,
+              blockquote: false,
+              codeBlock: false
+            }),
+            Underline,
+            TextStyle,
+            Color,
+            Highlight.configure({ multicolor: true }),
+            Placeholder.configure({ placeholder }),
+            TabSpaces
+          ],
+          editorProps: {
+            attributes: {
+              class: "pawplate-prosemirror",
+              spellcheck: "true",
+              lang: "en-US",
+              autocapitalize: "sentences"
+            }
+          },
+          parseOptions: { preserveWhitespace: "full" },
+          onUpdate: () => {
+            scheduleEditorProofing(element);
+            if (element === els.reportTextEditor) scheduleReportAutosave();
+          },
+          onFocus: () => clearProofingFallback(element),
+          onBlur: () => updateProofing(element)
+        });
+        element.__pawplateEditor = editor;
+      } catch (error) {
+        restoreFallbackEditor(element, initialContent);
+        console.warn("TipTap editor could not start; using the editable fallback.", error);
+      }
     });
-    state.tiptapReady = true;
+    state.tiptapReady = editorElements.every(element => Boolean(element.__pawplateEditor));
   } catch (error) {
+    editorElements.forEach(element => restoreFallbackEditor(element));
     console.warn("TipTap unavailable; using the fallback editor.", error);
   }
 }
@@ -2058,7 +2045,6 @@ function showMode(mode, options = {}) {
   [
     [els.builderModeBtn, "builder"],
     [els.writerModeBtn, "writer"],
-    [els.guidelineModeBtn, "guidelines"],
     [els.worklogModeBtn, "worklog"]
   ].forEach(([link, linkMode]) => {
     const active = mode === linkMode;
@@ -2068,18 +2054,14 @@ function showMode(mode, options = {}) {
   });
   els.builderView.classList.toggle("hidden", mode !== "builder");
   els.writerView.classList.toggle("hidden", mode !== "writer");
-  els.guidelineView.classList.toggle("hidden", mode !== "guidelines");
   els.worklogView.classList.toggle("hidden", mode !== "worklog");
   if (mode === "writer") {
     loadViewData(loadTemplates(), "Templates");
-    loadViewData(loadWriterGuidelines(), "Guidelines");
   }
-  if (mode === "guidelines") loadViewData(loadGuidelines(), "Guidelines");
   if (mode === "worklog") loadViewData(loadWorkLog(), "Work Log");
   document.title = `PawPlate · ${{
     builder: "Template Builder",
     writer: "Report Writer",
-    guidelines: "Guidelines",
     worklog: "Work Log"
   }[mode]}`;
   if (options.updateRoute !== false) updateRoute(mode);
@@ -2655,9 +2637,6 @@ function editTemplate(id) {
 }
 
 function reportData() {
-  const existingReport = state.reportDraftId
-    ? state.workLogReports.find(item => item.id === state.reportDraftId)
-    : null;
   return {
     title: els.reportTitleInput.value.trim() || "Untitled report",
     modality: els.reportModalityInput.value.trim(),
@@ -2670,7 +2649,6 @@ function reportData() {
     sourceDate: state.reportDraftSourceDate || new Date().toISOString(),
     note: els.reportNoteInput.value.trim(),
     isInteresting: els.reportInterestingInput.checked,
-    isReviewed: Boolean(existingReport?.isReviewed),
     owner: state.auth?.user?.id || ""
   };
 }
@@ -2818,11 +2796,7 @@ function worklogDateCounts() {
     const date = savedDate(report);
     if (!date) continue;
     const key = dateKey(date);
-    const bucket = counts.get(key) || { total: 0, reviewed: 0, unreviewed: 0 };
-    bucket.total += 1;
-    if (report.isReviewed) bucket.reviewed += 1;
-    else bucket.unreviewed += 1;
-    counts.set(key, bucket);
+    counts.set(key, (counts.get(key) || 0) + 1);
   }
   return counts;
 }
@@ -2833,7 +2807,7 @@ async function loadWorkLog() {
     perPage: 500,
     sort: "-created",
     filter: 'sourceType="final-report"',
-    fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,note,isInteresting,isReviewed,owner"
+    fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,note,isInteresting,owner"
   });
   state.workLogReports = data.items;
   if (state.selectedWorklogReport) {
@@ -2850,23 +2824,15 @@ function renderWorkLog() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const counts = worklogDateCounts();
-  const todayCount = counts.get(dateKey(today))?.total || 0;
+  const todayCount = counts.get(dateKey(today)) || 0;
   const interestingCount = state.workLogReports.filter(report => report.isInteresting).length;
-  const reviewCount = state.workLogReports.filter(report => report.isReviewed).length;
-  const unreviewedCount = state.workLogReports.length - reviewCount;
-  const visibleUnreviewedCount = reports.filter(report => !report.isReviewed).length;
   const activeDays = counts.size;
   els.worklogSummary.innerHTML = [
     ["Total reports", state.workLogReports.length],
     ["Saved today", todayCount],
     ["Active days", activeDays],
-    ["Interesting", interestingCount],
-    ["Unreviewed", unreviewedCount]
+    ["Interesting", interestingCount]
   ].map(([label, value]) => `<div class="summary-card"><strong>${value}</strong><span>${label}</span></div>`).join("");
-  if (els.reviewVisibleReportsBtn) {
-    els.reviewVisibleReportsBtn.disabled = !visibleUnreviewedCount;
-    els.reviewVisibleReportsBtn.textContent = visibleUnreviewedCount ? `Review all (${visibleUnreviewedCount})` : "All reviewed";
-  }
 
   renderWorklogCalendar(counts, today);
 
@@ -2880,7 +2846,7 @@ function renderWorkLog() {
       <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-worklog-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
         <span>
-          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${report.isReviewed ? '<span class="review-badge reviewed">Reviewed</span>' : '<span class="review-badge">Unreviewed</span>'}</span>
+          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
           <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
           ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
           ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
@@ -2919,7 +2885,6 @@ function renderWorklogPreview() {
   els.worklogPreviewTitle.textContent = report.title || "Untitled";
   els.worklogPreviewMeta.innerHTML = [
     date ? dateKey(date) : "",
-    report.isReviewed ? "Reviewed" : "Unreviewed",
     report.modality,
     report.topic,
     report.bodyPart,
@@ -2927,25 +2892,6 @@ function renderWorklogPreview() {
   ].filter(Boolean).map(escapeHtml).join(" / ");
   els.worklogPreviewText.innerHTML = reportHtml(report.report);
   els.editWorklogReportBtn.disabled = false;
-}
-
-async function toggleWorklogReview(id) {
-  const report = state.workLogReports.find(item => item.id === id);
-  if (!report) return;
-  await pbUpdate("old_reports", id, { isReviewed: !report.isReviewed });
-  await loadWorkLog();
-  showToast(report.isReviewed ? "Marked unreviewed" : "Marked reviewed", report.title || "Saved report");
-}
-
-async function reviewVisibleReports() {
-  const reports = filteredWorklogReports().filter(report => !report.isReviewed);
-  if (!reports.length) {
-    showToast("All reviewed", "No visible reports need review.", "info");
-    return;
-  }
-  await Promise.all(reports.map(report => pbUpdate("old_reports", report.id, { isReviewed: true })));
-  await loadWorkLog();
-  showToast("Marked reviewed", `${reports.length} report${reports.length === 1 ? "" : "s"} updated.`);
 }
 
 async function editWorklogDate(id) {
@@ -2987,8 +2933,7 @@ function renderWorklogCalendar(counts, today) {
   for (let day = 1; day <= lastDay.getDate(); day += 1) {
     const date = new Date(month.getFullYear(), month.getMonth(), day);
     const key = dateKey(date);
-    const dayCounts = counts.get(key) || { total: 0, reviewed: 0, unreviewed: 0 };
-    const count = dayCounts.total;
+    const count = counts.get(key) || 0;
     const level = count >= 4 ? 4 : count;
     const classes = [
       "calendar-day",
@@ -2997,15 +2942,9 @@ function renderWorklogCalendar(counts, today) {
       key === state.worklogSelectedDate ? "selected" : ""
     ].filter(Boolean).join(" ");
     cells.push(`
-      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} total, ${dayCounts.unreviewed} unreviewed, ${dayCounts.reviewed} reviewed">
+      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}">
         <span class="calendar-number">${day}</span>
-        ${count ? `
-          <span class="calendar-counts">
-            <span class="calendar-count total" title="Total">${count}</span>
-            <span class="calendar-count unreviewed" title="Unreviewed">${dayCounts.unreviewed}</span>
-            <span class="calendar-count reviewed" title="Reviewed">${dayCounts.reviewed}</span>
-          </span>
-        ` : ""}
+        ${count ? `<span class="calendar-count" title="Reports">${count}</span>` : ""}
       </button>
     `);
   }
@@ -3107,9 +3046,7 @@ function runFormatCommand(button) {
 
 els.builderModeBtn.addEventListener("click", event => handleModeLink(event, "builder"));
 els.writerModeBtn.addEventListener("click", event => handleModeLink(event, "writer"));
-els.guidelineModeBtn.addEventListener("click", event => handleModeLink(event, "guidelines"));
 els.worklogModeBtn.addEventListener("click", event => handleModeLink(event, "worklog"));
-els.themeToggleBtn.addEventListener("click", toggleTheme);
 document.querySelectorAll("[data-reference-tab]").forEach(button => {
   button.addEventListener("click", () => showReferenceTab(button.dataset.referenceTab));
 });
@@ -3289,31 +3226,6 @@ els.saveTemplateBtn.addEventListener("click", () => {
 });
 els.useTemplateBtn.addEventListener("click", () => useTemplateForReport());
 els.templateSearchInput.addEventListener("input", debounce(loadTemplates));
-els.writerGuidelineSearchInput.addEventListener("input", debounce(() => {
-  state.selectedWriterGuideline = null;
-  loadWriterGuidelines();
-}));
-els.guidelineSearchInput.addEventListener("input", debounce(() => {
-  state.selectedGuideline = null;
-  loadGuidelines();
-}));
-els.guidelineMarkdownInput.addEventListener("input", debounce(() => renderGuidelinePreview(null), 80));
-els.guidelineMarkdownInput.addEventListener("paste", event => {
-  handleGuidelinePaste(event);
-});
-els.newGuidelineBtn.addEventListener("click", blankGuideline);
-els.insertGuidelineImageBtn.addEventListener("click", () => els.guidelineImageInput.click());
-els.guidelineImageInput.addEventListener("change", () => {
-  insertGuidelineImage(els.guidelineImageInput.files?.[0]);
-  els.guidelineImageInput.value = "";
-});
-els.saveGuidelineBtn.addEventListener("click", () => {
-  withButtonFeedback(els.saveGuidelineBtn, "Saving...", saveGuideline, "Saved");
-});
-els.openGuidelineBuilderBtn.addEventListener("click", () => {
-  if (state.selectedWriterGuideline) editGuideline(state.selectedWriterGuideline.id);
-  else showMode("guidelines");
-});
 [
   els.oldModalityFilter,
   els.oldTopicFilter,
@@ -3386,14 +3298,6 @@ els.templateList.addEventListener("click", event => {
   const button = event.target.closest("[data-template-id]");
   if (button) selectTemplate(button.dataset.templateId);
 });
-els.guidelineList.addEventListener("click", event => {
-  const button = event.target.closest("[data-guideline-id]");
-  if (button) selectGuideline(button.dataset.guidelineId);
-});
-els.writerGuidelineList.addEventListener("click", event => {
-  const button = event.target.closest("[data-writer-guideline-id]");
-  if (button) selectWriterGuideline(button.dataset.writerGuidelineId);
-});
 els.templateList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-template-id]");
   if (!button) return;
@@ -3412,44 +3316,6 @@ els.templateList.addEventListener("contextmenu", event => {
     }}
   ]);
 });
-els.guidelineList.addEventListener("contextmenu", event => {
-  const button = event.target.closest("[data-guideline-id]");
-  if (!button) return;
-  event.preventDefault();
-  const id = button.dataset.guidelineId;
-  showContextMenu(event.clientX, event.clientY, [
-    { label: "Edit guideline", run: () => editGuideline(id) },
-    { label: "Delete guideline", danger: true, run: async () => {
-      if (!confirm("Delete this guideline?")) return;
-      await pbDelete("guidelines", id);
-      if (state.selectedGuideline?.id === id) state.selectedGuideline = null;
-      if (state.selectedWriterGuideline?.id === id) state.selectedWriterGuideline = null;
-      if (state.guidelineDraftId === id) blankGuideline();
-      await loadGuidelines();
-      await loadWriterGuidelines();
-      showToast("Guideline deleted");
-    }}
-  ]);
-});
-els.writerGuidelineList.addEventListener("contextmenu", event => {
-  const button = event.target.closest("[data-writer-guideline-id]");
-  if (!button) return;
-  event.preventDefault();
-  const id = button.dataset.writerGuidelineId;
-  showContextMenu(event.clientX, event.clientY, [
-    { label: "Open guideline", run: () => editGuideline(id) },
-    { label: "Delete guideline", danger: true, run: async () => {
-      if (!confirm("Delete this guideline?")) return;
-      await pbDelete("guidelines", id);
-      if (state.selectedGuideline?.id === id) state.selectedGuideline = null;
-      if (state.selectedWriterGuideline?.id === id) state.selectedWriterGuideline = null;
-      if (state.guidelineDraftId === id) blankGuideline();
-      await loadGuidelines();
-      await loadWriterGuidelines();
-      showToast("Guideline deleted");
-    }}
-  ]);
-});
 els.contextMenu?.addEventListener("click", event => event.stopPropagation());
 document.addEventListener("click", hideContextMenu);
 els.newReportBtn.addEventListener("click", () => startNewReport());
@@ -3463,14 +3329,6 @@ els.saveReportBtn.addEventListener("click", () => {
   withButtonFeedback(els.saveReportBtn, "Saving...", saveFullReport, "Saved");
 });
 els.worklogSearchInput.addEventListener("input", debounce(renderWorkLog));
-els.reviewVisibleReportsBtn?.addEventListener("click", () => {
-  els.reviewVisibleReportsBtn.disabled = true;
-  els.reviewVisibleReportsBtn.textContent = "Reviewing...";
-  reviewVisibleReports().catch(error => {
-    showToast("Action failed", error.message || "Please try again.", "error");
-    renderWorkLog();
-  });
-});
 els.interestingSearchInput.addEventListener("input", debounce(renderInterestingCases));
 els.worklogHeatmap.addEventListener("click", event => {
   const actionButton = event.target.closest("[data-calendar-action]");
@@ -3518,7 +3376,6 @@ els.worklogList.addEventListener("contextmenu", event => {
   const report = state.workLogReports.find(item => item.id === id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
-    { label: report?.isReviewed ? "Mark unreviewed" : "Mark reviewed", run: () => toggleWorklogReview(id) },
     { label: "Change report date", run: () => editWorklogDate(id) },
     { label: report?.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: !report?.isInteresting });
@@ -3547,7 +3404,6 @@ els.interestingList.addEventListener("contextmenu", event => {
   const report = state.workLogReports.find(item => item.id === id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
-    { label: report?.isReviewed ? "Mark unreviewed" : "Mark reviewed", run: () => toggleWorklogReview(id) },
     { label: "Change report date", run: () => editWorklogDate(id) },
     { label: "Remove interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: false });
@@ -3592,7 +3448,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 async function loadApp() {
-  applyTheme();
+  document.body.removeAttribute("data-theme");
   applyPalette();
   syncRouteFromLocation({ force: true });
   await loadWorkingDraft();
@@ -3601,17 +3457,12 @@ async function loadApp() {
   await loadAiSettings();
   loadSpellchecker();
   updateTemplateModeBadge();
-  updateGuidelineModeBadge();
   updateReportModeBadge();
   showReferenceTab(state.referenceTab, { updateRoute: false });
-  renderSnippetGenerator();
   blankTemplate();
-  blankGuideline();
   await loadFacets();
   await loadOldReports();
   await loadTemplates();
-  await loadGuidelines();
-  await loadWriterGuidelines();
   await loadWorkLog();
 }
 
