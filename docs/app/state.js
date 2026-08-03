@@ -72,6 +72,7 @@ export function createInitialState(snippetDefaults) {
     personalNotesResizeObserver: null,
     personalNotesResizeTrackTimer: 0,
     personalNoteImageTargetId: "",
+    personalNotePasteTargetId: "",
     alwaysNotesOpen: false,
     guidelineFileToken: "",
     guidelineFileTokenExpiresAt: 0,

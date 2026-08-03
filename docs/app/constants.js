@@ -81,6 +81,10 @@ export const PERSONAL_NOTE_CARD_HEIGHT = 190;
 export const PERSONAL_NOTE_CARD_MIN_WIDTH = 180;
 export const PERSONAL_NOTE_CARD_MIN_HEIGHT = 130;
 export const PERSONAL_NOTE_CARD_MAX_SIZE = 720;
+export const PERSONAL_NOTE_IMAGE_MIN_WIDTH = 96;
+export const PERSONAL_NOTE_IMAGE_MIN_HEIGHT = 80;
+export const PERSONAL_NOTE_IMAGE_MAX_WIDTH = 640;
+export const PERSONAL_NOTE_IMAGE_MAX_HEIGHT = 600;
 
 export const TRACKED_FEATURES = new Set([
   "navigation.template_builder",
@@ -112,6 +116,7 @@ export const TRACKED_FEATURES = new Set([
   "always_notes.image_card",
   "always_notes.image_embed",
   "always_notes.image_delete",
+  "always_notes.image_resize",
   "always_notes.edit",
   "always_notes.move",
   "always_notes.resize",

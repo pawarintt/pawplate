@@ -582,7 +582,9 @@ input[type="radio"] {
 
 .personal-note-content .personal-note-image {
   height: 128px;
-  min-height: 96px;
+  min-height: 80px;
+  max-width: 100%;
+  flex: 0 0 auto;
 }
 
 .personal-note-content .personal-note-image img {
@@ -602,6 +604,12 @@ input[type="radio"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding: 0 8px 9px;
+}
+
+.personal-note-content .personal-note-images {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
 }
 
 .personal-note-image-body .personal-note-images {
@@ -640,7 +648,7 @@ input[type="radio"] {
   min-height: 0;
 }
 
-.personal-note-image button {
+.personal-note-image-remove {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -659,13 +667,40 @@ input[type="radio"] {
   transition: opacity .14s ease;
 }
 
-.personal-note-image:hover button,
-.personal-note-image button:focus-visible {
+.personal-note-image:hover .personal-note-image-remove,
+.personal-note-image-remove:focus-visible {
   opacity: 1;
 }
 
+.personal-note-image-resize {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 17px;
+  min-height: 17px;
+  padding: 0;
+  border: 0;
+  border-right: 2px solid rgba(90, 73, 49, .44);
+  border-bottom: 2px solid rgba(90, 73, 49, .44);
+  border-radius: 0 0 3px 0;
+  background: rgba(255, 253, 248, .38);
+  cursor: nwse-resize;
+  opacity: .78;
+  touch-action: none;
+}
+
+.personal-note-image-resize:hover,
+.personal-note-image-resize:focus-visible {
+  background: rgba(255, 253, 248, .82);
+  opacity: 1;
+}
+
+.personal-note-image.is-resizing {
+  box-shadow: 0 0 0 2px rgba(118, 145, 128, .28);
+}
+
 @media (hover: none) {
-  .personal-note-image button {
+  .personal-note-image-remove {
     opacity: .82;
   }
 }

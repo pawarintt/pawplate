@@ -25,6 +25,10 @@ import {
   PERSONAL_NOTE_CARD_MIN_HEIGHT,
   PERSONAL_NOTE_CARD_MIN_WIDTH,
   PERSONAL_NOTE_CARD_WIDTH,
+  PERSONAL_NOTE_IMAGE_MAX_HEIGHT,
+  PERSONAL_NOTE_IMAGE_MAX_WIDTH,
+  PERSONAL_NOTE_IMAGE_MIN_HEIGHT,
+  PERSONAL_NOTE_IMAGE_MIN_WIDTH,
   POCKETBASE_URL,
   REFERENCE_ROUTES,
   REPORT_DRAFT_KEY_PREFIX,
@@ -37,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260803-pawlet-images";
-import { collectDom } from "./dom.js?v=20260803-pawlet-images";
-import { createInitialState } from "./state.js?v=20260803-pawlet-images";
+} from "./constants.js?v=20260803-pawlet-paste-resize";
+import { collectDom } from "./dom.js?v=20260803-pawlet-paste-resize";
+import { createInitialState } from "./state.js?v=20260803-pawlet-paste-resize";
 import {
   copyText,
   debounce,
@@ -50,7 +54,7 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260803-pawlet-images";
+} from "./utils.js?v=20260803-pawlet-paste-resize";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1577,6 +1581,7 @@ function logout(message = "") {
   window.clearTimeout(state.personalNotesResizeTrackTimer);
   state.personalNotesResizeTrackTimer = 0;
   state.personalNoteImageTargetId = "";
+  state.personalNotePasteTargetId = "";
   state.alwaysNotesOpen = false;
   els.alwaysNotesPopover.classList.add("hidden");
   els.reportNotePopover.classList.add("hidden");
@@ -1898,10 +1903,18 @@ function normalizePersonalNoteAsset(asset) {
   const recordId = String(asset?.recordId || "").trim();
   const filename = String(asset?.filename || "").trim();
   if (!recordId || !filename) return null;
+  const width = Number(asset?.width);
+  const height = Number(asset?.height);
   return {
     recordId,
     filename,
-    alt: String(asset?.alt || imageAltFromName(filename)).replace(/\s+/g, " ").trim().slice(0, 160) || "Pawlet image"
+    alt: String(asset?.alt || imageAltFromName(filename)).replace(/\s+/g, " ").trim().slice(0, 160) || "Pawlet image",
+    width: Number.isFinite(width) && width > 0
+      ? clampPersonalNoteSize(width, PERSONAL_NOTE_IMAGE_MIN_WIDTH, PERSONAL_NOTE_IMAGE_MAX_WIDTH, PERSONAL_NOTE_IMAGE_MIN_WIDTH)
+      : 0,
+    height: Number.isFinite(height) && height > 0
+      ? clampPersonalNoteSize(height, PERSONAL_NOTE_IMAGE_MIN_HEIGHT, PERSONAL_NOTE_IMAGE_MAX_HEIGHT, PERSONAL_NOTE_IMAGE_MIN_HEIGHT)
+      : 0
   };
 }
 
@@ -2119,7 +2132,7 @@ function renderPersonalNotes() {
       ` : `
         <div class="personal-note-content">
           <textarea class="personal-note-body" data-note-body maxlength="10000" aria-label="Note body">${escapeHtml(note.text)}</textarea>
-          ${personalNoteImageGallery(note)}
+          ${personalNoteImageGallery(note, { resizable: true })}
         </div>
       `}
       <button class="personal-note-resize" data-note-resize type="button" aria-label="Resize note" title="Resize note"></button>
@@ -2128,13 +2141,14 @@ function renderPersonalNotes() {
   observePersonalNoteSizes();
 }
 
-function personalNoteImageGallery(note, { showEmpty = false } = {}) {
+function personalNoteImageGallery(note, { showEmpty = false, resizable = false } = {}) {
   const images = personalNoteAssets(note);
   if (!images.length) return showEmpty ? '<div class="personal-note-image-empty">Add or paste an image</div>' : "";
   return `<div class="personal-note-images ${images.length === 1 ? "is-single" : ""}">${images.map((asset, index) => `
-    <figure class="personal-note-image">
+    <figure class="personal-note-image" data-note-image-index="${index}"${resizable ? ` style="width:${asset.width ? `${asset.width}px` : images.length === 1 ? "100%" : "calc(50% - 3px)"};height:${asset.height ? `${asset.height}px` : "128px"}"` : ""}>
       <img src="${escapeHtml(personalNoteImageUrl(asset))}" alt="${escapeHtml(asset.alt)}" loading="lazy" data-note-image-record="${escapeHtml(asset.recordId)}" data-note-image-file="${escapeHtml(asset.filename)}">
-      <button type="button" data-note-image-remove="${index}" aria-label="Remove ${escapeHtml(asset.alt)}" title="Remove image">&times;</button>
+      <button class="personal-note-image-remove" type="button" data-note-image-remove="${index}" aria-label="Remove ${escapeHtml(asset.alt)}" title="Remove image">&times;</button>
+      ${resizable ? `<button class="personal-note-image-resize" type="button" data-note-image-resize="${index}" aria-label="Resize ${escapeHtml(asset.alt)}" title="Resize image"></button>` : ""}
     </figure>
   `).join("")}</div>`;
 }
@@ -2407,6 +2421,51 @@ function startPersonalNoteResize(event, card) {
   window.addEventListener("pointercancel", stop);
 }
 
+function startPersonalNoteImageResize(event, card, handle) {
+  if (!handle || card.classList.contains("is-collapsed")) return;
+  const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
+  const images = personalNoteAssets(note);
+  const imageIndex = Number(handle.dataset.noteImageResize);
+  const asset = images[imageIndex];
+  const figure = handle.closest("[data-note-image-index]");
+  if (!note || !asset || !figure) return;
+  event.preventDefault();
+  event.stopPropagation();
+  bringPersonalNoteToFront(note.id, card);
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const rect = figure.getBoundingClientRect();
+  const originWidth = rect.width;
+  const originHeight = rect.height;
+  const maxWidth = Math.max(PERSONAL_NOTE_IMAGE_MIN_WIDTH, Math.min(PERSONAL_NOTE_IMAGE_MAX_WIDTH, card.clientWidth - 24));
+  let resized = false;
+  figure.classList.add("is-resizing");
+  const move = moveEvent => {
+    const width = clampPersonalNoteSize(originWidth + moveEvent.clientX - startX, PERSONAL_NOTE_IMAGE_MIN_WIDTH, maxWidth, originWidth);
+    const height = clampPersonalNoteSize(originHeight + moveEvent.clientY - startY, PERSONAL_NOTE_IMAGE_MIN_HEIGHT, PERSONAL_NOTE_IMAGE_MAX_HEIGHT, originHeight);
+    resized ||= width !== Math.round(originWidth) || height !== Math.round(originHeight);
+    asset.width = width;
+    asset.height = height;
+    figure.style.width = `${width}px`;
+    figure.style.height = `${height}px`;
+  };
+  const stop = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+    figure.classList.remove("is-resizing");
+    if (!resized) return;
+    note.images = images;
+    note.updatedAt = new Date().toISOString();
+    state.personalNotesDirty = true;
+    schedulePersonalNotesSave();
+    trackFeature("always_notes.image_resize");
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
 function togglePersonalNoteCollapsed(id, card, button) {
   const note = state.personalNotes.notes.find(item => item.id === id);
   if (!note) return;
@@ -2444,6 +2503,7 @@ function setAlwaysNotesOpen(open) {
   els.alwaysNotesPopover.classList.toggle("hidden", !state.alwaysNotesOpen);
   els.alwaysNotesBtn.setAttribute("aria-expanded", String(state.alwaysNotesOpen));
   if (state.alwaysNotesOpen) {
+    state.personalNotePasteTargetId = "";
     renderPersonalNotes();
     if (state.personalNotes.notes.some(note => personalNoteAssets(note).length)) {
       ensureGuidelineFileToken()
@@ -4642,6 +4702,11 @@ els.personalNotesBoard.addEventListener("focusout", event => {
   titleInput.value = "Untitled note";
   titleInput.dispatchEvent(new Event("input", { bubbles: true }));
 });
+els.personalNotesBoard.addEventListener("focusin", event => {
+  const card = event.target.closest("[data-personal-note-id]");
+  if (!card || !event.target.closest("[data-note-title], [data-note-body]")) return;
+  state.personalNotePasteTargetId = card.dataset.personalNoteId;
+});
 els.personalNotesBoard.addEventListener("click", event => {
   const addImageButton = event.target.closest("[data-note-add-image]");
   const removeImageButton = event.target.closest("[data-note-image-remove]");
@@ -4662,8 +4727,7 @@ els.alwaysNotesPopover.addEventListener("paste", event => {
   const files = pawletImageFiles(event.clipboardData?.files);
   if (!files.length) return;
   event.preventDefault();
-  const card = event.target.closest("[data-personal-note-id]");
-  uploadPawletImages(files, { targetNoteId: card?.dataset.personalNoteId || "" });
+  uploadPawletImages(files, { targetNoteId: state.personalNotePasteTargetId });
 });
 els.personalNotesBoard.addEventListener("dragover", event => {
   if (!event.dataTransfer?.types?.includes("Files")) return;
@@ -4702,7 +4766,19 @@ els.personalNotesBoard.addEventListener("error", event => {
 }, true);
 els.personalNotesBoard.addEventListener("pointerdown", event => {
   const card = event.target.closest("[data-personal-note-id]");
-  if (!card) return;
+  if (!card) {
+    state.personalNotePasteTargetId = "";
+    els.personalNotesBoard.focus({ preventScroll: true });
+    return;
+  }
+  state.personalNotePasteTargetId = event.target.closest("[data-note-title], [data-note-body], .personal-note-content, .personal-note-image-body")
+    ? card.dataset.personalNoteId
+    : "";
+  const imageResizeHandle = event.target.closest("[data-note-image-resize]");
+  if (imageResizeHandle) {
+    startPersonalNoteImageResize(event, card, imageResizeHandle);
+    return;
+  }
   if (event.target.closest("[data-note-resize]")) {
     startPersonalNoteResize(event, card);
     return;
