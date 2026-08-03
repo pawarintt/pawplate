@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260803-pawlet-paste-resize";
-import { collectDom } from "./dom.js?v=20260803-pawlet-paste-resize";
-import { createInitialState } from "./state.js?v=20260803-pawlet-paste-resize";
+} from "./constants.js?v=20260803-pawlet-lightbox";
+import { collectDom } from "./dom.js?v=20260803-pawlet-lightbox";
+import { createInitialState } from "./state.js?v=20260803-pawlet-lightbox";
 import {
   copyText,
   debounce,
@@ -54,7 +54,7 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260803-pawlet-paste-resize";
+} from "./utils.js?v=20260803-pawlet-lightbox";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -2146,7 +2146,7 @@ function personalNoteImageGallery(note, { showEmpty = false, resizable = false }
   if (!images.length) return showEmpty ? '<div class="personal-note-image-empty">Add or paste an image</div>' : "";
   return `<div class="personal-note-images ${images.length === 1 ? "is-single" : ""}">${images.map((asset, index) => `
     <figure class="personal-note-image" data-note-image-index="${index}"${resizable ? ` style="width:${asset.width ? `${asset.width}px` : images.length === 1 ? "100%" : "calc(50% - 3px)"};height:${asset.height ? `${asset.height}px` : "128px"}"` : ""}>
-      <img src="${escapeHtml(personalNoteImageUrl(asset))}" alt="${escapeHtml(asset.alt)}" loading="lazy" data-note-image-record="${escapeHtml(asset.recordId)}" data-note-image-file="${escapeHtml(asset.filename)}">
+      <img src="${escapeHtml(personalNoteImageUrl(asset))}" alt="${escapeHtml(asset.alt)}" loading="lazy" data-note-image-record="${escapeHtml(asset.recordId)}" data-note-image-file="${escapeHtml(asset.filename)}" title="Double-click to view full screen">
       <button class="personal-note-image-remove" type="button" data-note-image-remove="${index}" aria-label="Remove ${escapeHtml(asset.alt)}" title="Remove image">&times;</button>
       ${resizable ? `<button class="personal-note-image-resize" type="button" data-note-image-resize="${index}" aria-label="Resize ${escapeHtml(asset.alt)}" title="Resize image"></button>` : ""}
     </figure>
@@ -2514,6 +2514,21 @@ function setAlwaysNotesOpen(open) {
     }
     trackFeature("always_notes.open");
   }
+}
+
+function openPawletImageLightbox(image) {
+  const card = image.closest("[data-personal-note-id]");
+  const noteTitle = card?.querySelector("[data-note-title]")?.value?.trim();
+  const caption = image.alt?.trim() || noteTitle || "Pawlet image";
+  els.pawletImageLightboxImage.src = image.currentSrc || image.src;
+  els.pawletImageLightboxImage.alt = caption;
+  els.pawletImageLightboxCaption.textContent = caption;
+  if (!els.pawletImageLightbox.open) els.pawletImageLightbox.showModal();
+  trackFeature("always_notes.image_view");
+}
+
+function closePawletImageLightbox() {
+  if (els.pawletImageLightbox.open) els.pawletImageLightbox.close();
 }
 
 function updateReportNoteButton() {
@@ -4723,6 +4738,24 @@ els.personalNotesBoard.addEventListener("click", event => {
   }
   if (collapseButton) togglePersonalNoteCollapsed(card.dataset.personalNoteId, card, collapseButton);
 });
+els.personalNotesBoard.addEventListener("dblclick", event => {
+  const image = event.target.closest(".personal-note-image img");
+  if (!image) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openPawletImageLightbox(image);
+});
+els.closePawletImageLightboxBtn.addEventListener("click", closePawletImageLightbox);
+els.pawletImageLightbox.addEventListener("click", event => {
+  if (event.target === els.pawletImageLightbox || event.target.classList?.contains("pawlet-image-lightbox-stage")) {
+    closePawletImageLightbox();
+  }
+});
+els.pawletImageLightbox.addEventListener("close", () => {
+  els.pawletImageLightboxImage.removeAttribute("src");
+  els.pawletImageLightboxImage.alt = "";
+  els.pawletImageLightboxCaption.textContent = "";
+});
 els.alwaysNotesPopover.addEventListener("paste", event => {
   const files = pawletImageFiles(event.clipboardData?.files);
   if (!files.length) return;
@@ -4803,6 +4836,7 @@ els.reportPersonalNoteInput.addEventListener("input", () => {
   refreshReportNoteLists();
 });
 document.addEventListener("pointerdown", event => {
+  if (els.pawletImageLightbox.open && els.pawletImageLightbox.contains(event.target)) return;
   if (state.alwaysNotesOpen && !els.alwaysNotesShell.contains(event.target) && !els.contextMenu.contains(event.target)) setAlwaysNotesOpen(false);
   if (state.reportNotePopoverOpen && !els.reportNotePopover.contains(event.target) && !els.quickReportNoteBtn.contains(event.target)) {
     setReportNotePopoverOpen(false);
@@ -4810,6 +4844,11 @@ document.addEventListener("pointerdown", event => {
 });
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
+  if (els.pawletImageLightbox.open) {
+    event.preventDefault();
+    closePawletImageLightbox();
+    return;
+  }
   if (state.reportNotePopoverOpen) setReportNotePopoverOpen(false);
   if (state.alwaysNotesOpen) setAlwaysNotesOpen(false);
 });

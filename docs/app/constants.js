@@ -117,6 +117,7 @@ export const TRACKED_FEATURES = new Set([
   "always_notes.image_embed",
   "always_notes.image_delete",
   "always_notes.image_resize",
+  "always_notes.image_view",
   "always_notes.edit",
   "always_notes.move",
   "always_notes.resize",
