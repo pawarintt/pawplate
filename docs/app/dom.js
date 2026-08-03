@@ -14,6 +14,8 @@ export function collectDom() {
     alwaysNotesStatus: document.getElementById("alwaysNotesStatus"),
     closeAlwaysNotesBtn: document.getElementById("closeAlwaysNotesBtn"),
     newPersonalNoteBtn: document.getElementById("newPersonalNoteBtn"),
+    newPersonalImageBtn: document.getElementById("newPersonalImageBtn"),
+    personalNoteImageInput: document.getElementById("personalNoteImageInput"),
     personalNotesCanvas: document.getElementById("personalNotesCanvas"),
     personalNotesBoard: document.getElementById("personalNotesBoard"),
     builderModeBtn: document.getElementById("builderModeBtn"),

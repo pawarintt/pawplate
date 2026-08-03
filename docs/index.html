@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260801-filled-report-notes">
+  <link rel="stylesheet" href="style.css?v=20260803-pawlet-images">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -40,10 +40,12 @@
             </div>
             <span id="alwaysNotesStatus" class="notes-save-status" aria-live="polite"></span>
             <button id="newPersonalNoteBtn" type="button">New note</button>
+            <button id="newPersonalImageBtn" class="quiet-button" type="button">Image</button>
             <button id="closeAlwaysNotesBtn" class="icon-button" type="button" aria-label="Close notes" title="Close notes">&times;</button>
           </div>
+          <input id="personalNoteImageInput" class="hidden" type="file" accept="image/*" multiple>
           <div id="personalNotesCanvas" class="personal-notes-canvas">
-            <div id="personalNotesBoard" class="personal-notes-board"></div>
+            <div id="personalNotesBoard" class="personal-notes-board" tabindex="0" aria-label="Pawlet notes board"></div>
           </div>
         </section>
       </div>
@@ -393,6 +395,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typo-js@1.3.2/typo.js"></script>
-  <script type="module" src="app/main.js?v=20260801-modular-app"></script>
+  <script type="module" src="app/main.js?v=20260803-pawlet-images"></script>
 </body>
 </html>

@@ -37,9 +37,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js";
-import { collectDom } from "./dom.js";
-import { createInitialState } from "./state.js";
+} from "./constants.js?v=20260803-pawlet-images";
+import { collectDom } from "./dom.js?v=20260803-pawlet-images";
+import { createInitialState } from "./state.js?v=20260803-pawlet-images";
 import {
   copyText,
   debounce,
@@ -50,7 +50,7 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js";
+} from "./utils.js?v=20260803-pawlet-images";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1576,6 +1576,7 @@ function logout(message = "") {
   state.personalNotesResizeObserver = null;
   window.clearTimeout(state.personalNotesResizeTrackTimer);
   state.personalNotesResizeTrackTimer = 0;
+  state.personalNoteImageTargetId = "";
   state.alwaysNotesOpen = false;
   els.alwaysNotesPopover.classList.add("hidden");
   els.reportNotePopover.classList.add("hidden");
@@ -1890,7 +1891,26 @@ function removeReportNote(reportId) {
 }
 
 function emptyPersonalNotes() {
-  return { version: 3, notes: [] };
+  return { version: 4, notes: [] };
+}
+
+function normalizePersonalNoteAsset(asset) {
+  const recordId = String(asset?.recordId || "").trim();
+  const filename = String(asset?.filename || "").trim();
+  if (!recordId || !filename) return null;
+  return {
+    recordId,
+    filename,
+    alt: String(asset?.alt || imageAltFromName(filename)).replace(/\s+/g, " ").trim().slice(0, 160) || "Pawlet image"
+  };
+}
+
+function personalNoteAssets(note) {
+  return (Array.isArray(note?.images) ? note.images : []).map(normalizePersonalNoteAsset).filter(Boolean);
+}
+
+function personalNoteImageUrl(asset) {
+  return protectedFileUrl(pbFileUrl("guidelines", asset.recordId, asset.filename));
 }
 
 function titleFromPersonalNoteText(text) {
@@ -1915,12 +1935,16 @@ function normalizePersonalNotes(value) {
       const fallbackX = 26 + (index % 6) * 265;
       const fallbackY = 26 + Math.floor(index / 6) * 215;
       const color = Number(note?.color);
+      const type = note?.type === "image" ? "image" : "note";
+      const images = personalNoteAssets(note).slice(0, 12);
       const width = clampPersonalNoteSize(note?.width, PERSONAL_NOTE_CARD_MIN_WIDTH, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_WIDTH);
       const height = clampPersonalNoteSize(note?.height, PERSONAL_NOTE_CARD_MIN_HEIGHT, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_HEIGHT);
       return {
         id: String(note?.id || ""),
-        title: String(note?.title || titleFromPersonalNoteText(text)).replace(/\s+/g, " ").trim().slice(0, 120) || "Untitled note",
+        type,
+        title: String(note?.title || (type === "image" ? images[0]?.alt : titleFromPersonalNoteText(text)) || "Untitled note").replace(/\s+/g, " ").trim().slice(0, 120) || "Untitled note",
         text,
+        images,
         x: clampPersonalNotePosition(note?.x ?? fallbackX, PERSONAL_NOTE_BOARD_WIDTH - width - 12),
         y: clampPersonalNotePosition(note?.y ?? fallbackY, PERSONAL_NOTE_BOARD_HEIGHT - height - 12),
         width,
@@ -1935,7 +1959,7 @@ function normalizePersonalNotes(value) {
     .filter(note => note.id)
     .sort((left, right) => left.z - right.z)
     .slice(-PERSONAL_NOTES_LIMIT);
-  return { version: 3, notes };
+  return { version: 4, notes };
 }
 
 function setPersonalNotesStatus(message) {
@@ -2077,58 +2101,220 @@ function renderPersonalNotes() {
   els.alwaysNotesCount.textContent = String(notes.length);
   if (!notes.length) {
     state.personalNotesResizeObserver?.disconnect();
-    els.personalNotesBoard.innerHTML = '<div class="personal-notes-empty">Create a note, then arrange your desktop around the way you think.</div>';
+    els.personalNotesBoard.innerHTML = '<div class="personal-notes-empty">Create a note or paste an image, then arrange the board around the way you think.</div>';
     return;
   }
   els.personalNotesBoard.innerHTML = notes.map(note => `
-    <div class="personal-note-card ${note.collapsed ? "is-collapsed" : ""}" data-personal-note-id="${escapeHtml(note.id)}" data-note-color="${note.color}" style="left:${note.x}px;top:${note.y}px;width:${note.width}px;height:${note.collapsed ? 38 : note.height}px;z-index:${note.z}" title="Right-click for actions">
+    <div class="personal-note-card ${note.type === "image" ? "is-image-note" : ""} ${note.collapsed ? "is-collapsed" : ""}" data-personal-note-id="${escapeHtml(note.id)}" data-note-color="${note.color}" style="left:${note.x}px;top:${note.y}px;width:${note.width}px;height:${note.collapsed ? 38 : note.height}px;z-index:${note.z}" title="Right-click for actions">
       <div class="personal-note-head" data-note-drag>
         <span class="personal-note-grip" aria-hidden="true" title="Drag note">::</span>
         <input class="personal-note-title" data-note-title maxlength="120" value="${escapeHtml(note.title)}" aria-label="Note title">
+        <button class="personal-note-add-image" data-note-add-image type="button" aria-label="Add image to note" title="Add image">Image</button>
         <button class="personal-note-collapse" data-note-collapse type="button" aria-label="${note.collapsed ? "Expand" : "Collapse"} note" title="${note.collapsed ? "Expand" : "Collapse"} note">${note.collapsed ? "+" : "&minus;"}</button>
       </div>
-      <textarea class="personal-note-body" data-note-body maxlength="10000" aria-label="Note body">${escapeHtml(note.text)}</textarea>
+      ${note.type === "image" ? `
+        <div class="personal-note-image-body">
+          ${personalNoteImageGallery(note, { showEmpty: true })}
+        </div>
+      ` : `
+        <div class="personal-note-content">
+          <textarea class="personal-note-body" data-note-body maxlength="10000" aria-label="Note body">${escapeHtml(note.text)}</textarea>
+          ${personalNoteImageGallery(note)}
+        </div>
+      `}
       <button class="personal-note-resize" data-note-resize type="button" aria-label="Resize note" title="Resize note"></button>
     </div>
   `).join("");
   observePersonalNoteSizes();
 }
 
+function personalNoteImageGallery(note, { showEmpty = false } = {}) {
+  const images = personalNoteAssets(note);
+  if (!images.length) return showEmpty ? '<div class="personal-note-image-empty">Add or paste an image</div>' : "";
+  return `<div class="personal-note-images ${images.length === 1 ? "is-single" : ""}">${images.map((asset, index) => `
+    <figure class="personal-note-image">
+      <img src="${escapeHtml(personalNoteImageUrl(asset))}" alt="${escapeHtml(asset.alt)}" loading="lazy" data-note-image-record="${escapeHtml(asset.recordId)}" data-note-image-file="${escapeHtml(asset.filename)}">
+      <button type="button" data-note-image-remove="${index}" aria-label="Remove ${escapeHtml(asset.alt)}" title="Remove image">&times;</button>
+    </figure>
+  `).join("")}</div>`;
+}
+
 function topPersonalNoteZ() {
   return Math.max(0, ...state.personalNotes.notes.map(note => Number(note.z) || 0));
 }
 
-function createPersonalNote() {
+function createPersonalNote({ type = "note", title = "", images = [], position = null } = {}) {
+  if (state.personalNotes.notes.length >= PERSONAL_NOTES_LIMIT) {
+    showToast("Pawlet is full", `Delete a note before adding more than ${PERSONAL_NOTES_LIMIT}.`, "info");
+    return null;
+  }
   const now = new Date().toISOString();
   const id = crypto.randomUUID?.() || `note-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const offset = state.personalNotes.notes.length * 26;
-  const x = clampPersonalNotePosition(els.personalNotesCanvas.scrollLeft + 34 + (offset % 520), PERSONAL_NOTE_BOARD_WIDTH - PERSONAL_NOTE_CARD_WIDTH - 12);
-  const y = clampPersonalNotePosition(els.personalNotesCanvas.scrollTop + 34 + (offset % 310), PERSONAL_NOTE_BOARD_HEIGHT - PERSONAL_NOTE_CARD_HEIGHT - 12);
+  const isImage = type === "image";
+  const width = isImage ? 320 : PERSONAL_NOTE_CARD_WIDTH;
+  const height = isImage ? 280 : PERSONAL_NOTE_CARD_HEIGHT;
+  const x = clampPersonalNotePosition(position?.x ?? els.personalNotesCanvas.scrollLeft + 34 + (offset % 520), PERSONAL_NOTE_BOARD_WIDTH - width - 12);
+  const y = clampPersonalNotePosition(position?.y ?? els.personalNotesCanvas.scrollTop + 34 + (offset % 310), PERSONAL_NOTE_BOARD_HEIGHT - height - 12);
   state.personalNotes.notes.push({
     id,
-    title: "New note",
+    type: isImage ? "image" : "note",
+    title: title || (isImage ? "Image" : "New note"),
     text: "",
+    images: personalNoteAssets({ images }),
     x,
     y,
-    width: PERSONAL_NOTE_CARD_WIDTH,
-    height: PERSONAL_NOTE_CARD_HEIGHT,
+    width,
+    height,
     collapsed: false,
     z: topPersonalNoteZ() + 1,
     color: state.personalNotes.notes.length % 6,
     createdAt: now,
     updatedAt: now
   });
-  state.personalNotes.notes = state.personalNotes.notes.slice(-PERSONAL_NOTES_LIMIT);
   state.personalNotesDirty = true;
   renderPersonalNotes();
   schedulePersonalNotesSave(0);
-  trackFeature("always_notes.add");
+  trackFeature(isImage ? "always_notes.image_card" : "always_notes.add");
   window.setTimeout(() => {
     const card = [...els.personalNotesBoard.querySelectorAll("[data-personal-note-id]")].find(item => item.dataset.personalNoteId === id);
     const titleInput = card?.querySelector("[data-note-title]");
-    titleInput?.focus();
-    titleInput?.select();
+    if (!isImage) {
+      titleInput?.focus();
+      titleInput?.select();
+    }
   }, 0);
+  return id;
+}
+
+function pawletImageFiles(source) {
+  return [...(source || [])].filter(file => file?.type?.startsWith("image/"));
+}
+
+function pawletBoardPosition(event = null) {
+  if (!event?.clientX || !event?.clientY) {
+    return {
+      x: els.personalNotesCanvas.scrollLeft + 50,
+      y: els.personalNotesCanvas.scrollTop + 50
+    };
+  }
+  const rect = els.personalNotesBoard.getBoundingClientRect();
+  return { x: event.clientX - rect.left - 150, y: event.clientY - rect.top - 28 };
+}
+
+async function createPawletImageAsset(file) {
+  if (!file?.type?.startsWith("image/")) throw new Error("Choose a PNG, JPG, GIF, WebP, or similar image.");
+  const maxImageMb = 8;
+  if (file.size > maxImageMb * 1024 * 1024) throw new Error(`Choose an image under ${maxImageMb} MB.`);
+  const owner = state.auth?.user?.id || "";
+  if (!owner) throw new AuthSessionError();
+  const title = `Pawlet image: ${imageAltFromName(file.name)}`.slice(0, 120);
+  const created = await pbCreate("guidelines", {
+    title,
+    modality: "",
+    topic: "",
+    bodyPart: "",
+    tags: "pawlet-asset",
+    markdown: "",
+    keywords: "pawlet image asset",
+    owner
+  });
+  try {
+    const updated = await pbUploadFiles("guidelines", created.id, "images", [file]);
+    const filename = [...(updated.images || [])].at(-1);
+    if (!filename) throw new Error("PocketBase did not return an uploaded image filename.");
+    return { recordId: created.id, filename, alt: imageAltFromName(file.name) };
+  } catch (error) {
+    pbDelete("guidelines", created.id).catch(() => {});
+    throw error;
+  }
+}
+
+async function uploadPawletImages(files, { targetNoteId = "", position = null } = {}) {
+  const images = pawletImageFiles(files);
+  if (!images.length) {
+    showToast("Image only", "Choose or paste an image file.", "info");
+    return;
+  }
+  const target = state.personalNotes.notes.find(note => note.id === targetNoteId);
+  const available = target ? Math.max(0, 12 - personalNoteAssets(target).length) : Math.max(0, PERSONAL_NOTES_LIMIT - state.personalNotes.notes.length);
+  if (!available) {
+    showToast(target ? "Note images full" : "Pawlet is full", target ? "Each note can hold up to 12 images." : `Pawlet can hold up to ${PERSONAL_NOTES_LIMIT} cards.`, "info");
+    return;
+  }
+  const selected = images.slice(0, available);
+  let uploaded = 0;
+  let failed = 0;
+  for (const [index, file] of selected.entries()) {
+    try {
+      setPersonalNotesStatus(`Uploading ${index + 1}/${selected.length}`);
+      const asset = await createPawletImageAsset(file);
+      if (target) {
+        target.images = [...personalNoteAssets(target), asset];
+        target.updatedAt = new Date().toISOString();
+      } else {
+        const base = position || pawletBoardPosition();
+        createPersonalNote({
+          type: "image",
+          title: asset.alt,
+          images: [asset],
+          position: { x: base.x + index * 24, y: base.y + index * 24 }
+        });
+      }
+      uploaded += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn("Pawlet image upload failed.", error);
+      showToast("Image upload failed", friendlyErrorMessage(error), "error");
+    }
+  }
+  if (target && uploaded) {
+    state.personalNotesDirty = true;
+    state.personalNotesEditPending = true;
+    trackFeature("always_notes.image_embed");
+  }
+  if (uploaded) {
+    try {
+      await ensureGuidelineFileToken();
+    } catch (error) {
+      console.warn("Pawlet image access token could not be refreshed.", error);
+    }
+    renderPersonalNotes();
+    schedulePersonalNotesSave(0);
+    showToast(uploaded === 1 ? "Image added" : `${uploaded} images added`, target ? target.title : "Pawlet board");
+  } else {
+    setPersonalNotesStatus(failed ? "Not saved" : "");
+  }
+}
+
+function openPawletImagePicker(targetNoteId = "") {
+  state.personalNoteImageTargetId = targetNoteId;
+  els.personalNoteImageInput.value = "";
+  els.personalNoteImageInput.click();
+}
+
+async function deletePawletAssets(assets) {
+  const results = await Promise.allSettled(personalNoteAssets({ images: assets }).map(asset => pbDelete("guidelines", asset.recordId)));
+  if (results.some(result => result.status === "rejected")) {
+    showToast("Image removed", "The note was updated, but an unused file could not be cleaned up.", "info");
+  }
+}
+
+async function removePersonalNoteImage(noteId, imageIndex) {
+  const note = state.personalNotes.notes.find(item => item.id === noteId);
+  const images = personalNoteAssets(note);
+  const asset = images[Number(imageIndex)];
+  if (!note || !asset) return;
+  note.images = images.filter((_, index) => index !== Number(imageIndex));
+  note.updatedAt = new Date().toISOString();
+  if (note.type === "image" && !note.images.length) {
+    state.personalNotes.notes = state.personalNotes.notes.filter(item => item.id !== note.id);
+  }
+  state.personalNotesDirty = true;
+  renderPersonalNotes();
+  schedulePersonalNotesSave(0);
+  trackFeature("always_notes.image_delete");
+  await deletePawletAssets([asset]);
 }
 
 function bringPersonalNoteToFront(id, card) {
@@ -2242,7 +2428,7 @@ function togglePersonalNoteCollapsed(id, card, button) {
   trackFeature("always_notes.collapse");
 }
 
-function deletePersonalNote(id) {
+async function deletePersonalNote(id) {
   const note = state.personalNotes.notes.find(item => item.id === id);
   if (!note || !confirm("Delete this note?")) return;
   state.personalNotes.notes = state.personalNotes.notes.filter(item => item.id !== id);
@@ -2250,6 +2436,7 @@ function deletePersonalNote(id) {
   renderPersonalNotes();
   schedulePersonalNotesSave(0);
   trackFeature("always_notes.delete");
+  await deletePawletAssets(note.images);
 }
 
 function setAlwaysNotesOpen(open) {
@@ -2258,6 +2445,13 @@ function setAlwaysNotesOpen(open) {
   els.alwaysNotesBtn.setAttribute("aria-expanded", String(state.alwaysNotesOpen));
   if (state.alwaysNotesOpen) {
     renderPersonalNotes();
+    if (state.personalNotes.notes.some(note => personalNoteAssets(note).length)) {
+      ensureGuidelineFileToken()
+        .then(() => {
+          if (state.alwaysNotesOpen) renderPersonalNotes();
+        })
+        .catch(error => console.warn("Pawlet image access could not be refreshed.", error));
+    }
     trackFeature("always_notes.open");
   }
 }
@@ -4420,7 +4614,14 @@ els.contextMenu?.addEventListener("click", event => event.stopPropagation());
 document.addEventListener("click", hideContextMenu);
 els.alwaysNotesBtn.addEventListener("click", () => setAlwaysNotesOpen(!state.alwaysNotesOpen));
 els.closeAlwaysNotesBtn.addEventListener("click", () => setAlwaysNotesOpen(false));
-els.newPersonalNoteBtn.addEventListener("click", createPersonalNote);
+els.newPersonalNoteBtn.addEventListener("click", () => createPersonalNote());
+els.newPersonalImageBtn.addEventListener("click", () => openPawletImagePicker());
+els.personalNoteImageInput.addEventListener("change", async () => {
+  const targetNoteId = state.personalNoteImageTargetId;
+  state.personalNoteImageTargetId = "";
+  await uploadPawletImages(els.personalNoteImageInput.files, { targetNoteId });
+  els.personalNoteImageInput.value = "";
+});
 els.personalNotesBoard.addEventListener("input", event => {
   const titleInput = event.target.closest("[data-note-title]");
   const bodyInput = event.target.closest("[data-note-body]");
@@ -4442,11 +4643,63 @@ els.personalNotesBoard.addEventListener("focusout", event => {
   titleInput.dispatchEvent(new Event("input", { bubbles: true }));
 });
 els.personalNotesBoard.addEventListener("click", event => {
+  const addImageButton = event.target.closest("[data-note-add-image]");
+  const removeImageButton = event.target.closest("[data-note-image-remove]");
   const collapseButton = event.target.closest("[data-note-collapse]");
   const card = event.target.closest("[data-personal-note-id]");
-  if (!collapseButton || !card) return;
-  togglePersonalNoteCollapsed(card.dataset.personalNoteId, card, collapseButton);
+  if (!card) return;
+  if (addImageButton) {
+    openPawletImagePicker(card.dataset.personalNoteId);
+    return;
+  }
+  if (removeImageButton) {
+    removePersonalNoteImage(card.dataset.personalNoteId, removeImageButton.dataset.noteImageRemove);
+    return;
+  }
+  if (collapseButton) togglePersonalNoteCollapsed(card.dataset.personalNoteId, card, collapseButton);
 });
+els.alwaysNotesPopover.addEventListener("paste", event => {
+  const files = pawletImageFiles(event.clipboardData?.files);
+  if (!files.length) return;
+  event.preventDefault();
+  const card = event.target.closest("[data-personal-note-id]");
+  uploadPawletImages(files, { targetNoteId: card?.dataset.personalNoteId || "" });
+});
+els.personalNotesBoard.addEventListener("dragover", event => {
+  if (!event.dataTransfer?.types?.includes("Files")) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+  els.personalNotesBoard.classList.add("is-image-dragover");
+});
+els.personalNotesBoard.addEventListener("dragleave", event => {
+  if (!els.personalNotesBoard.contains(event.relatedTarget)) els.personalNotesBoard.classList.remove("is-image-dragover");
+});
+els.personalNotesBoard.addEventListener("drop", event => {
+  const files = pawletImageFiles(event.dataTransfer?.files);
+  els.personalNotesBoard.classList.remove("is-image-dragover");
+  if (!files.length) return;
+  event.preventDefault();
+  const card = event.target.closest("[data-personal-note-id]");
+  uploadPawletImages(files, {
+    targetNoteId: card?.dataset.personalNoteId || "",
+    position: card ? null : pawletBoardPosition(event)
+  });
+});
+els.personalNotesBoard.addEventListener("error", event => {
+  const image = event.target.closest?.("[data-note-image-record]");
+  if (!image || image.dataset.tokenRetry) return;
+  image.dataset.tokenRetry = "true";
+  state.guidelineFileTokenExpiresAt = 0;
+  ensureGuidelineFileToken()
+    .then(() => {
+      image.src = personalNoteImageUrl({
+        recordId: image.dataset.noteImageRecord,
+        filename: image.dataset.noteImageFile,
+        alt: image.alt
+      });
+    })
+    .catch(error => console.warn("Pawlet image could not be reloaded.", error));
+}, true);
 els.personalNotesBoard.addEventListener("pointerdown", event => {
   const card = event.target.closest("[data-personal-note-id]");
   if (!card) return;

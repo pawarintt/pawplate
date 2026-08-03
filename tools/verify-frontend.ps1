@@ -43,7 +43,7 @@ if ($duplicateIds) { throw "Duplicate HTML IDs: $($duplicateIds.Name -join ', ')
 
 foreach ($compatibilityApp in $compatibilityApps) {
   $loader = (Get-Content -Raw -Encoding utf8 -LiteralPath $compatibilityApp).Trim()
-  if ($loader -ne 'import("./app/main.js");') {
+  if ($loader -notmatch '^import\("\./app/main\.js\?v=[^"'']+"\);$') {
     throw "$($compatibilityApp.Name) must remain a compatibility loader for app/main.js."
   }
 }
