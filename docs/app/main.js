@@ -507,7 +507,7 @@ function buildSnippetText() {
     const lesion = joinPhrase([size ? `${size}` : "", descriptor]);
     const location = joinPhrase([values.breast, snippetValue("location") ? `at the ${snippetValue("location")}` : ""], " ");
     const associated = snippetValue("associated");
-    return sentenceCase(joinPhrase([`There is ${size ? "a" : indefiniteArticle(descriptor)}`, lesion, location ? `in the ${location}` : "", associated ? `, with ${associated}` : ""]) + ".");
+    return sentenceCase(joinPhrase([`${size ? "A" : indefiniteArticle(descriptor)}`, lesion, location ? `in the ${location}` : "", associated ? `, with ${associated}` : ""]) + ".");
   }
   if (system === SNIPPET_SCHEMAS.birads && modality.label === "Mammography" && finding.label === "Calcification") {
     const location = joinPhrase([values.breast, snippetValue("location") ? `at the ${snippetValue("location")}` : ""], " ");
