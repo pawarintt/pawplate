@@ -1386,18 +1386,6 @@ body[data-theme="dark"] #worklogModeBtn {
   font-size: .78rem;
 }
 
-.result-count {
-  padding: 4px 10px;
-  font-size: .76rem;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-  background: rgba(255,255,255,.4);
-}
-
-.result-count:empty {
-  display: none;
-}
-
 .result-list.is-updating {
   opacity: .55;
   pointer-events: none;

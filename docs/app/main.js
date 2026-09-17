@@ -3117,12 +3117,6 @@ function clearListLoading(listEl) {
   listEl.classList.remove("is-updating");
 }
 
-function resultCountText(shown, total) {
-  if (!total) return "";
-  if (total > shown) return `Showing ${shown} of ${total} — refine the search to narrow down`;
-  return total === 1 ? "1 match" : `${total} matches`;
-}
-
 function hasOldFilters() {
   return Boolean(
     els.oldSearchInput.value.trim()
@@ -3198,7 +3192,6 @@ async function loadOldReports() {
     });
     if (!isCurrentDataLoad("oldReports", request)) return false;
     state.oldReports = data.items;
-    state.oldReportsTotal = data.totalItems ?? data.items.length;
     state.oldReportsError = "";
     renderOldReports(query);
     if (!state.selectedOldReport && data.items.length) selectOldReport(data.items[0].id);
@@ -3215,7 +3208,6 @@ async function loadOldReports() {
 
 function renderOldReports(query = els.oldSearchInput.value.trim()) {
   if (state.oldReportsError) {
-    els.oldResultCount.textContent = "";
     els.oldReportList.innerHTML = `<div class="list-error" role="alert">
       <strong>Old reports unavailable</strong>
       <span>${escapeHtml(state.oldReportsError)} Check the connection and try again.</span>
@@ -3224,7 +3216,6 @@ function renderOldReports(query = els.oldSearchInput.value.trim()) {
     return;
   }
   if (!state.oldReports.length) {
-    els.oldResultCount.textContent = "";
     els.oldReportList.innerHTML = hasOldFilters()
       ? `<div class="empty">No matches for these filters. Try fewer words or clear the filters.
         <br><button type="button" data-clear-filters="old-reports">Clear filters</button></div>`
@@ -3232,7 +3223,6 @@ function renderOldReports(query = els.oldSearchInput.value.trim()) {
     return;
   }
   const scrollTop = els.oldReportList.scrollTop;
-  els.oldResultCount.textContent = resultCountText(state.oldReports.length, state.oldReportsTotal);
   els.oldReportList.innerHTML = state.oldReports.map((item, index) => `
     <button class="result-item ${state.selectedOldReport?.id === item.id ? "active" : ""}" data-old-id="${item.id}" type="button">
       <span class="result-no">${index + 1}.</span>
@@ -3352,7 +3342,6 @@ async function loadTemplates() {
     });
     if (!isCurrentDataLoad("templates", request)) return false;
     state.templates = sortTemplatesByCustomOrder(data.items);
-    state.templatesTotal = data.totalItems ?? data.items.length;
     state.templatesError = "";
     renderTemplates(query);
     return true;
@@ -3368,7 +3357,6 @@ async function loadTemplates() {
 
 function renderTemplates(query = els.templateSearchInput.value.trim()) {
   if (state.templatesError) {
-    els.templateResultCount.textContent = "";
     els.templateList.innerHTML = `<div class="list-error" role="alert">
       <strong>Templates unavailable</strong>
       <span>${escapeHtml(state.templatesError)} Check the connection and try again.</span>
@@ -3377,7 +3365,6 @@ function renderTemplates(query = els.templateSearchInput.value.trim()) {
     return;
   }
   if (!state.templates.length) {
-    els.templateResultCount.textContent = "";
     els.templateList.innerHTML = hasTemplateFilters()
       ? `<div class="empty">No matches for these filters. Try fewer words or clear the filters.
         <br><button type="button" data-clear-filters="templates">Clear filters</button></div>`
@@ -3385,7 +3372,6 @@ function renderTemplates(query = els.templateSearchInput.value.trim()) {
     return;
   }
   const scrollTop = els.templateList.scrollTop;
-  els.templateResultCount.textContent = resultCountText(state.templates.length, state.templatesTotal);
   els.templateList.innerHTML = state.templates.map((item, index) => `
     <button class="result-item" draggable="true" data-template-id="${item.id}" type="button">
       <span class="result-no">${index + 1}.</span>
