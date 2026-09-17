@@ -22,8 +22,7 @@ export const MODE_ROUTES = {
   builder: "template-builder",
   writer: "report-writer",
   worklog: "work-log",
-  interesting: "interesting-cases",
-  insights: "insights"
+  interesting: "interesting-cases"
 };
 export const ROUTE_MODES = Object.fromEntries(Object.entries(MODE_ROUTES).map(([mode, route]) => [route, mode]));
 export const REFERENCE_ROUTES = {
@@ -76,8 +75,8 @@ export const TEMPLATE_TYPE_FILTERS = [
   { value: "normal", label: "Normal" },
   { value: "disease", label: "Disease" }
 ];
-export const INSIGHT_SETTINGS_KEY = "templateInsights";
 export const FEATURE_USAGE_SETTINGS_KEY = "featureUsageV1";
+export const TEMPLATE_ORDER_SETTINGS_KEY = "templateOrderV1";
 export const REPORT_NOTES_SETTINGS_KEY = "reportNotesV1";
 export const PERSONAL_NOTES_SETTINGS_KEY = "personalNotesV1";
 export const FEATURE_USAGE_DAYS = 90;
@@ -100,7 +99,6 @@ export const TRACKED_FEATURES = new Set([
   "navigation.report_writer",
   "navigation.work_log",
   "navigation.interesting_cases",
-  "navigation.insights",
   "reference.templates",
   "reference.snippets",
   "reference.ai_assist",
@@ -135,9 +133,6 @@ export const TRACKED_FEATURES = new Set([
   "interesting.preview",
   "interesting.edit_report",
   "interesting.toggle",
-  "insight.refresh",
-  "insight.copy_prompt",
-  "insight.dismiss",
   "snippet.add_finding.tirads",
   "snippet.add_finding.birads",
   "snippet.copy.tirads",
@@ -148,8 +143,3 @@ export const TRACKED_FEATURES = new Set([
   "ai.accept.impression",
   "ai.accept.metadata"
 ]);
-
-export const INSIGHT_MIN_REPORTS = 3;
-export const INSIGHT_SIMILARITY_THRESHOLD = 0.44;
-export const INSIGHT_MIN_COHESION = 0.34;
-export const INSIGHT_MAX_EXAMPLES = 5;

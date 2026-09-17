@@ -9,11 +9,6 @@ import {
   DEFAULT_PALETTE,
   FEATURE_USAGE_DAYS,
   FEATURE_USAGE_SETTINGS_KEY,
-  INSIGHT_MAX_EXAMPLES,
-  INSIGHT_MIN_COHESION,
-  INSIGHT_MIN_REPORTS,
-  INSIGHT_SETTINGS_KEY,
-  INSIGHT_SIMILARITY_THRESHOLD,
   MODE_ROUTES,
   MUTATION_TIMEOUT_MS,
   PALETTE_KEY_PREFIX,
@@ -42,6 +37,7 @@ import {
   ROUTE_MODES,
   ROUTE_REFERENCES,
   SPELLCHECK_DICTIONARY_URL,
+  TEMPLATE_ORDER_SETTINGS_KEY,
   TEMPLATE_TYPE_FILTERS,
   TIPTAP_CDN,
   TIPTAP_VERSION,
@@ -1706,16 +1702,10 @@ function logout(message = "") {
   state.guidelines = [];
   state.writerGuidelines = [];
   state.workLogReports = [];
-  state.insightOpportunities = [];
-  state.selectedInsightKey = "";
-  state.insightSelectedReportIds = new Set();
-  state.insightCorpusFingerprint = "";
-  state.insightSettingsId = "";
-  state.dismissedInsightKeys = new Set();
-  state.insightsLoaded = false;
-  state.insightsScanning = false;
   state.selectedOldReport = null;
   state.selectedTemplate = null;
+  state.templateOrder = [];
+  state.templateOrderSettingsId = "";
   state.selectedGuideline = null;
   state.selectedWriterGuideline = null;
   state.aiDraft = null;
@@ -3017,7 +3007,6 @@ async function reloadActiveView() {
     await loadWorkLog();
     return;
   }
-  if (state.mode === "insights") await loadInsights();
 }
 
 function showMode(mode, options = {}) {
@@ -3027,8 +3016,7 @@ function showMode(mode, options = {}) {
     [els.builderModeBtn, "builder"],
     [els.writerModeBtn, "writer"],
     [els.worklogModeBtn, "worklog"],
-    [els.interestingModeBtn, "interesting"],
-    [els.insightsModeBtn, "insights"]
+    [els.interestingModeBtn, "interesting"]
   ].forEach(([link, linkMode]) => {
     const active = mode === linkMode;
     link.classList.toggle("active", active);
@@ -3038,12 +3026,10 @@ function showMode(mode, options = {}) {
   els.builderView.classList.toggle("hidden", mode !== "builder");
   els.writerView.classList.toggle("hidden", mode !== "writer");
   els.worklogView.classList.toggle("hidden", mode !== "worklog" && mode !== "interesting");
-  els.insightsView.classList.toggle("hidden", mode !== "insights");
   els.builderTopbarContext.classList.toggle("hidden", mode !== "builder");
   els.writerTopbarContext.classList.toggle("hidden", mode !== "writer");
   els.worklogTopbarContext.classList.toggle("hidden", mode !== "worklog");
   els.interestingTopbarContext.classList.toggle("hidden", mode !== "interesting");
-  els.insightsTopbarContext.classList.toggle("hidden", mode !== "insights");
   els.worklogSummary.classList.toggle("hidden", mode !== "worklog");
   els.worklogMain.classList.toggle("hidden", mode !== "worklog");
   els.interestingCasesMain.classList.toggle("hidden", mode !== "interesting");
@@ -3053,13 +3039,11 @@ function showMode(mode, options = {}) {
   if ((mode === "worklog" || mode === "interesting") && options.loadData !== false) {
     loadViewData(loadWorkLog(), mode === "interesting" ? "Interesting Cases" : "Work Log");
   }
-  if (mode === "insights" && options.loadData !== false) loadViewData(loadInsights(), "Insights");
   document.title = `PawPlate · ${{
     builder: "Template Builder",
     writer: "Report Writer",
     worklog: "Work Log",
-    interesting: "Interesting Cases",
-    insights: "Insights"
+    interesting: "Interesting Cases"
   }[mode]}`;
   if (options.updateRoute !== false) updateRoute(mode);
 }
@@ -3217,7 +3201,7 @@ async function loadTemplates() {
     fields: "id,title,modality,topic,bodyPart,kind,keywords,report,owner"
   });
   if (!isCurrentDataLoad("templates", request)) return false;
-  state.templates = data.items;
+  state.templates = sortTemplatesByCustomOrder(data.items);
   renderTemplates(query);
   return true;
 }
@@ -3228,7 +3212,7 @@ function renderTemplates(query = els.templateSearchInput.value.trim()) {
     return;
   }
   els.templateList.innerHTML = state.templates.map((item, index) => `
-    <button class="result-item ${state.selectedTemplate?.id === item.id ? "active" : ""}" data-template-id="${item.id}" type="button">
+    <button class="result-item" draggable="true" data-template-id="${item.id}" type="button">
       <span class="result-no">${index + 1}.</span>
       <span>
         <span class="result-title">${highlight(item.title || "Untitled", query)}</span>
@@ -3236,6 +3220,92 @@ function renderTemplates(query = els.templateSearchInput.value.trim()) {
       </span>
     </button>
   `).join("");
+  markSelectedTemplate();
+}
+
+// Personal template order, persisted per user in user_settings so a custom
+// arrangement survives reloads and devices. Templates missing from the order
+// (new ones) keep their server relative order at the end.
+function sortTemplatesByCustomOrder(items) {
+  if (!state.templateOrder.length) return items;
+  const position = new Map(state.templateOrder.map((id, index) => [id, index]));
+  return [...items].sort((left, right) => {
+    const leftPos = position.get(left.id);
+    const rightPos = position.get(right.id);
+    if (leftPos === undefined && rightPos === undefined) return 0;
+    if (leftPos === undefined) return 1;
+    if (rightPos === undefined) return -1;
+    return leftPos - rightPos;
+  });
+}
+
+async function loadTemplateOrder() {
+  state.templateOrderSettingsId = "";
+  state.templateOrder = [];
+  try {
+    const filter = `owner="${state.auth?.user?.id || ""}" && key="${TEMPLATE_ORDER_SETTINGS_KEY}"`;
+    const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+    const record = data.items?.[0];
+    if (record) {
+      state.templateOrderSettingsId = record.id;
+      const order = Array.isArray(record.value?.order) ? record.value.order : [];
+      state.templateOrder = order.map(String).filter(Boolean);
+    }
+  } catch (error) {
+    console.warn("Template order unavailable; using server order.", error);
+  }
+  if (state.templates.length) {
+    state.templates = sortTemplatesByCustomOrder(state.templates);
+    renderTemplates();
+  }
+}
+
+async function saveTemplateOrder() {
+  if (!state.auth?.user?.id) return;
+  const value = { version: 1, order: state.templateOrder };
+  try {
+    if (state.templateOrderSettingsId) {
+      await pbUpdate("user_settings", state.templateOrderSettingsId, { value });
+    } else {
+      const created = await pbCreate("user_settings", {
+        owner: state.auth.user.id,
+        key: TEMPLATE_ORDER_SETTINGS_KEY,
+        value
+      });
+      state.templateOrderSettingsId = created.id;
+    }
+  } catch (error) {
+    console.warn("Template order could not be saved.", error);
+    showToast("Order not saved", "The new arrangement is active for this session only. Check the connection.", "error");
+  }
+}
+
+// Move a template within the loaded list and merge that move into the stored
+// global order, so reordering works the same with or without active filters.
+function moveTemplateInList(draggedId, beforeId) {
+  const items = state.templates;
+  const from = items.findIndex(item => item.id === draggedId);
+  if (from < 0 || (beforeId && draggedId === beforeId)) return false;
+  const [moved] = items.splice(from, 1);
+  const to = beforeId ? items.findIndex(item => item.id === beforeId) : items.length;
+  items.splice(to < 0 ? items.length : to, 0, moved);
+  const order = state.templateOrder.filter(id => id !== draggedId);
+  const orderTo = beforeId ? order.indexOf(beforeId) : order.length;
+  order.splice(orderTo < 0 ? order.length : orderTo, 0, draggedId);
+  for (const item of items) {
+    if (!order.includes(item.id)) order.push(item.id);
+  }
+  state.templateOrder = order;
+  renderTemplates();
+  saveTemplateOrder().catch(error => console.warn("Template order could not be saved.", error));
+  return true;
+}
+
+function markSelectedTemplate() {
+  if (!state.selectedTemplate) return;
+  els.templateList.querySelectorAll("[data-template-id]").forEach(button => {
+    button.classList.toggle("active", button.dataset.templateId === state.selectedTemplate.id);
+  });
 }
 
 function guidelineData() {
@@ -4043,495 +4113,6 @@ function renderInterestingCases() {
   }).join("");
 }
 
-function reportTextWithBreaks(value) {
-  const raw = String(value || "");
-  if (!isHtml(raw)) return raw.replace(/\r/g, "");
-  const container = document.createElement("div");
-  container.innerHTML = raw;
-  container.querySelectorAll("br").forEach(node => node.replaceWith(document.createTextNode("\n")));
-  container.querySelectorAll("p, div, li, h1, h2, h3, h4, h5, h6").forEach(node => node.append("\n"));
-  return (container.textContent || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-function normalizeInsightLabel(value) {
-  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-function normalizeInsightLine(value) {
-  let line = String(value || "").trim();
-  if (!line) return "";
-  if (/pawarin\s+tongpiputn|\bradiologist\b|\b(?:m\.?d\.?|md)\s*$/i.test(line)) return "";
-  const variableHeading = line.match(/^(history|clinical history|clinical indication|indication|comparison)\s*:/i);
-  if (variableHeading) return `${variableHeading[1].toLowerCase()}:`;
-  line = line
-    .replace(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g, "<date>")
-    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "<date>")
-    .replace(/\b\d+(?:\.\d+)?(?:\s*[xX\u00d7]\s*\d+(?:\.\d+)?){1,2}\s*(?:cm|mm)?\b/g, "<measurement>")
-    .replace(/\b\d+(?:\.\d+)?\s*(?:cm|mm)\b/gi, "<measurement>")
-    .replace(/\b\d{1,3}[\s-]*(?:year|yr)s?[\s-]*old\b/gi, "<age>")
-    .replace(/\b\d{6,}\b/g, "<identifier>")
-    .replace(/\b\d+(?:\.\d+)?\b/g, "<number>")
-    .toLowerCase()
-    .replace(/^[\s#*\-\u2022]+/, "")
-    .replace(/[()[\],.;]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return line.length >= 8 ? line : "";
-}
-
-function insightWordShingles(lines) {
-  const tokens = lines.join(" ").match(/[a-z]+|<[^>]+>/g) || [];
-  const shingles = new Set();
-  for (let index = 0; index < tokens.length - 2 && shingles.size < 500; index += 1) {
-    shingles.add(`${tokens[index]} ${tokens[index + 1]} ${tokens[index + 2]}`);
-  }
-  return shingles;
-}
-
-function insightReportFeatures(report) {
-  const rawLines = reportTextWithBreaks(report.report)
-    .split(/\n+/)
-    .map(line => line.trim())
-    .filter(Boolean);
-  const normalizedLines = rawLines.map(normalizeInsightLine).filter(Boolean);
-  const lineSet = new Set(normalizedLines);
-  const headings = new Set(normalizedLines.map(line => {
-    const match = line.match(/^([a-z][a-z /&-]{1,40}):/);
-    return match ? `${match[1]}:` : "";
-  }).filter(Boolean));
-  return {
-    report,
-    normalizedLines,
-    lineSet,
-    headings,
-    shingles: insightWordShingles(normalizedLines)
-  };
-}
-
-function insightSetSimilarity(left, right) {
-  if (!left.size || !right.size) return 0;
-  const smaller = left.size <= right.size ? left : right;
-  const larger = smaller === left ? right : left;
-  let intersection = 0;
-  smaller.forEach(value => {
-    if (larger.has(value)) intersection += 1;
-  });
-  return intersection / (left.size + right.size - intersection);
-}
-
-function insightSimilarity(left, right) {
-  const lineScore = insightSetSimilarity(left.lineSet, right.lineSet);
-  const shingleScore = insightSetSimilarity(left.shingles, right.shingles);
-  const headingScore = insightSetSimilarity(left.headings, right.headings);
-  return (lineScore * 0.48) + (shingleScore * 0.27) + (headingScore * 0.25);
-}
-
-function insightPairKey(left, right) {
-  return left.report.id < right.report.id
-    ? `${left.report.id}|${right.report.id}`
-    : `${right.report.id}|${left.report.id}`;
-}
-
-function clusterInsightBucket(features) {
-  const scores = new Map();
-  const score = (left, right) => {
-    if (left === right) return 1;
-    const key = insightPairKey(left, right);
-    if (!scores.has(key)) scores.set(key, insightSimilarity(left, right));
-    return scores.get(key);
-  };
-  const remaining = new Set(features);
-  const clusters = [];
-
-  while (remaining.size >= INSIGHT_MIN_REPORTS) {
-    let bestSeed = null;
-    let bestMembers = [];
-    let bestScore = 0;
-    remaining.forEach(seed => {
-      const members = [...remaining].filter(candidate => score(seed, candidate) >= INSIGHT_SIMILARITY_THRESHOLD);
-      const total = members.reduce((sum, member) => sum + score(seed, member), 0);
-      if (members.length > bestMembers.length || (members.length === bestMembers.length && total > bestScore)) {
-        bestSeed = seed;
-        bestMembers = members;
-        bestScore = total;
-      }
-    });
-
-    if (!bestSeed || bestMembers.length < INSIGHT_MIN_REPORTS) break;
-    for (let pass = 0; pass < 2 && bestMembers.length >= INSIGHT_MIN_REPORTS; pass += 1) {
-      bestMembers = bestMembers.filter(member => {
-        const others = bestMembers.filter(candidate => candidate !== member);
-        const average = others.reduce((sum, candidate) => sum + score(member, candidate), 0) / Math.max(1, others.length);
-        return average >= INSIGHT_MIN_COHESION;
-      });
-    }
-    if (bestMembers.length < INSIGHT_MIN_REPORTS) {
-      remaining.delete(bestSeed);
-      continue;
-    }
-    clusters.push({ members: bestMembers, score });
-    bestMembers.forEach(member => remaining.delete(member));
-  }
-  return clusters;
-}
-
-function hashInsightValue(value) {
-  let hash = 2166136261;
-  const text = String(value || "");
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-}
-
-function insightCommonLines(features) {
-  const counts = new Map();
-  features.forEach(feature => {
-    feature.lineSet.forEach(line => counts.set(line, (counts.get(line) || 0) + 1));
-  });
-  const minimum = Math.max(2, Math.ceil(features.length * 0.6));
-  const common = new Set([...counts.entries()].filter(([, count]) => count >= minimum).map(([line]) => line));
-  const medoid = features
-    .map(feature => ({
-      feature,
-      score: features.reduce((sum, candidate) => sum + insightSimilarity(feature, candidate), 0)
-    }))
-    .sort((left, right) => right.score - left.score)[0]?.feature;
-  const ordered = [];
-  (medoid?.normalizedLines || []).forEach(line => {
-    if (common.has(line) && !ordered.includes(line)) ordered.push(line);
-  });
-  return ordered.slice(0, 10);
-}
-
-function insightOpportunityTitle(features, modality, topic, bodyPart) {
-  const titles = new Map();
-  features.forEach(({ report }) => {
-    const title = String(report.title || "").trim().replace(/\b\d{6,}\b/g, "").replace(/\s+/g, " ");
-    if (!title || /^untitled report$/i.test(title)) return;
-    const key = title.toLowerCase();
-    const current = titles.get(key) || { title, count: 0 };
-    current.count += 1;
-    titles.set(key, current);
-  });
-  const commonTitle = [...titles.values()].sort((left, right) => right.count - left.count || left.title.length - right.title.length)[0];
-  if (commonTitle?.count >= 2) return commonTitle.title.slice(0, 100);
-  const target = bodyPart || topic;
-  if (target && modality && target.toLowerCase().includes(modality.toLowerCase())) return target;
-  return [modality, target].filter(Boolean).join(" ") || "Recurring report pattern";
-}
-
-function createInsightOpportunity(cluster, metadata) {
-  const features = cluster.members;
-  let pairTotal = 0;
-  let pairCount = 0;
-  features.forEach((feature, index) => {
-    features.slice(index + 1).forEach(candidate => {
-      pairTotal += cluster.score(feature, candidate);
-      pairCount += 1;
-    });
-  });
-  const cohesion = pairCount ? pairTotal / pairCount : 0;
-  const commonLines = insightCommonLines(features);
-  const ranked = features
-    .map(feature => ({
-      report: feature.report,
-      score: features.reduce((sum, candidate) => sum + insightSimilarity(feature, candidate), 0) / features.length
-    }))
-    .sort((left, right) => right.score - left.score);
-  const stableKey = [metadata.key, ...commonLines.slice(0, 12)].join("|");
-  return {
-    key: `opportunity-${hashInsightValue(stableKey)}`,
-    title: insightOpportunityTitle(features, metadata.modality, metadata.topic, metadata.bodyPart),
-    modality: metadata.modality,
-    topic: metadata.topic,
-    bodyPart: metadata.bodyPart,
-    reportIds: features.map(feature => feature.report.id),
-    representativeReportIds: ranked.slice(0, INSIGHT_MAX_EXAMPLES).map(item => item.report.id),
-    reportCount: features.length,
-    cohesion,
-    commonLines,
-    reason: `${features.length} finalized reports repeatedly use the same sections and phrasing. This pattern may be worth turning into a reusable starting template.`
-  };
-}
-
-function detectInsightOpportunities(reports) {
-  const buckets = new Map();
-  reports.forEach(report => {
-    const modality = String(report.modality || "").trim();
-    const topic = String(report.topic || "").trim();
-    const bodyPart = String(report.bodyPart || "").trim();
-    const key = [modality, topic, bodyPart].map(normalizeInsightLabel).join("|");
-    if (!key.replace(/\|/g, "") || !plainText(report.report).trim()) return;
-    const bucket = buckets.get(key) || { key, modality, topic, bodyPart, features: [] };
-    bucket.features.push(insightReportFeatures(report));
-    buckets.set(key, bucket);
-  });
-
-  const opportunities = [];
-  buckets.forEach(bucket => {
-    if (bucket.features.length < INSIGHT_MIN_REPORTS) return;
-    clusterInsightBucket(bucket.features).forEach(cluster => {
-      opportunities.push(createInsightOpportunity(cluster, bucket));
-    });
-  });
-  return opportunities
-    .filter(item => !state.dismissedInsightKeys.has(item.key))
-    .sort((left, right) => right.reportCount - left.reportCount || right.cohesion - left.cohesion);
-}
-
-function insightCorpusFingerprint(reports) {
-  return hashInsightValue(reports
-    .map(report => `${report.id}:${report.updated || report.created || ""}:${String(report.report || "").length}`)
-    .sort()
-    .join("|"));
-}
-
-async function loadInsightSettings() {
-  state.insightSettingsId = "";
-  state.dismissedInsightKeys = new Set();
-  try {
-    const filter = `owner="${state.auth?.user?.id || ""}" && key="${INSIGHT_SETTINGS_KEY}"`;
-    const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
-    const record = data.items?.[0];
-    if (record) {
-      state.insightSettingsId = record.id;
-      const dismissed = Array.isArray(record.value?.dismissed) ? record.value.dismissed : [];
-      state.dismissedInsightKeys = new Set(dismissed.map(String).filter(Boolean));
-    }
-  } catch (error) {
-    console.warn("Insight preferences unavailable; dismissed items will not sync.", error);
-  }
-  state.insightsLoaded = true;
-}
-
-async function saveInsightSettings() {
-  const value = { dismissed: [...state.dismissedInsightKeys].slice(-250) };
-  if (state.insightSettingsId) {
-    await pbUpdate("user_settings", state.insightSettingsId, { value });
-    return;
-  }
-  const created = await pbCreate("user_settings", {
-    owner: state.auth?.user?.id || "",
-    key: INSIGHT_SETTINGS_KEY,
-    value
-  });
-  state.insightSettingsId = created.id;
-}
-
-function selectedInsight() {
-  return state.insightOpportunities.find(item => item.key === state.selectedInsightKey) || null;
-}
-
-function deidentifyInsightReport(report) {
-  const lines = reportTextWithBreaks(report.report).split("\n");
-  const cleaned = lines.map(line => {
-    const trimmed = line.trim();
-    if (/pawarin\s+tongpiputn|\bradiologist\b|\b(?:m\.?d\.?|md)\s*$/i.test(trimmed)) return "";
-    if (/^(history|clinical history|clinical indication|indication)\s*:/i.test(trimmed)) {
-      return `${trimmed.split(":")[0]}: [case-specific history removed]`;
-    }
-    if (/^comparison\s*:/i.test(trimmed)) return "COMPARISON: [case-specific comparison removed]";
-    if (/^(name|patient name|date of birth|dob)\s*:/i.test(trimmed)) {
-      return `${trimmed.split(":")[0]}: [removed]`;
-    }
-    return line
-      .replace(/\b(HN|MRN|accession(?: number)?|patient id)\s*[:#-]?\s*[A-Za-z0-9-]+/gi, "$1: [removed]")
-      .replace(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g, "[date]")
-      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "[date]")
-      .replace(/\b\d{6,}\b/g, "[identifier removed]")
-      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email removed]");
-  });
-  return cleaned.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 14000);
-}
-
-function insightPromptReportTitle(report) {
-  return String(report.title || "Untitled report")
-    .replace(/\b(HN|MRN|accession(?: number)?|patient id)\s*[:#-]?\s*[A-Za-z0-9-]+/gi, "$1 [removed]")
-    .replace(/\b\d{6,}\b/g, "[identifier removed]")
-    .replace(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g, "[date]")
-    .trim() || "Untitled report";
-}
-
-function insightSelectedReports(opportunity = selectedInsight()) {
-  if (!opportunity) return [];
-  const reportsById = new Map(state.workLogReports.map(report => [report.id, report]));
-  return opportunity.representativeReportIds
-    .filter(id => state.insightSelectedReportIds.has(id))
-    .map(id => reportsById.get(id))
-    .filter(Boolean);
-}
-
-function buildInsightPrompt(opportunity = selectedInsight()) {
-  if (!opportunity) return "";
-  const reports = insightSelectedReports(opportunity);
-  if (!reports.length) return "Select at least one representative report.";
-  const metadata = [opportunity.modality, opportunity.topic, opportunity.bodyPart].filter(Boolean).join(" / ");
-  const examples = reports.map((report, index) => [
-    `--- REPORT ${index + 1}: ${insightPromptReportTitle(report)} ---`,
-    deidentifyInsightReport(report)
-  ].join("\n")).join("\n\n");
-  return [
-    "Create one reusable personal radiology reporting template from the representative reports below.",
-    "",
-    `Detected pattern: ${opportunity.title}`,
-    `Metadata: ${metadata || "Not specified"}`,
-    "",
-    "Requirements:",
-    "- Preserve the user's section order, capitalization, raw spacing, and dash-based findings.",
-    "- Extract stable statements shared across the reports instead of copying one case verbatim.",
-    "- Replace measurements, laterality, dates, and case-specific findings with clear editable placeholders.",
-    "- Separate stable normal statements from optional disease-specific or finding-specific insertions.",
-    "- Do not add findings, diagnoses, recommendations, or classifications unsupported by the examples.",
-    "- Do not include patient identifiers, signatures, or case-specific clinical history.",
-    "- Make the result easy to paste into another reporting program as plain text.",
-    "",
-    "Return exactly:",
-    "TEMPLATE TITLE:",
-    "MODALITY:",
-    "TOPIC:",
-    "BODY PART:",
-    "TYPE: Normal or Disease",
-    "",
-    "TEMPLATE:",
-    "[plain-text template]",
-    "",
-    "OPTIONAL INSERTIONS:",
-    "[plain-text optional sections, if supported]",
-    "",
-    "REPRESENTATIVE REPORTS:",
-    examples
-  ].join("\n");
-}
-
-function formatInsightCommonLine(line) {
-  return String(line || "")
-    .replace(/<measurement>/g, "[measurement]")
-    .replace(/<identifier>/g, "[identifier]")
-    .replace(/<number>/g, "[number]")
-    .replace(/<date>/g, "[date]")
-    .replace(/<age>/g, "[age]");
-}
-
-function renderInsightDetail() {
-  const opportunity = selectedInsight();
-  if (!opportunity) {
-    els.insightDetailTitle.textContent = "Select an opportunity";
-    els.insightEmpty.classList.remove("hidden");
-    els.insightDetailContent.classList.add("hidden");
-    els.dismissInsightBtn.disabled = true;
-    els.copyInsightPromptBtn.disabled = true;
-    return;
-  }
-  const reportsById = new Map(state.workLogReports.map(report => [report.id, report]));
-  els.insightDetailTitle.textContent = opportunity.title;
-  els.insightEmpty.classList.add("hidden");
-  els.insightDetailContent.classList.remove("hidden");
-  els.dismissInsightBtn.disabled = false;
-  els.insightDetailMeta.textContent = [
-    `${opportunity.reportCount} matching reports`,
-    opportunity.modality,
-    opportunity.topic,
-    opportunity.bodyPart
-  ].filter(Boolean).join(" / ");
-  els.insightReason.textContent = opportunity.reason;
-  els.insightCommonLines.innerHTML = opportunity.commonLines.length
-    ? opportunity.commonLines.map(line => `<div class="insight-common-line">${escapeHtml(formatInsightCommonLine(line))}</div>`).join("")
-    : '<div class="empty">The reports share an overall structure but no single repeated line passed the display threshold.</div>';
-  els.insightReportChoices.innerHTML = opportunity.representativeReportIds.map(id => {
-    const report = reportsById.get(id);
-    if (!report) return "";
-    const date = savedDate(report);
-    return `
-      <label class="insight-report-choice">
-        <input type="checkbox" data-insight-report-id="${id}" ${state.insightSelectedReportIds.has(id) ? "checked" : ""}>
-        <span>
-          <strong>${escapeHtml(report.title || "Untitled report")}</strong>
-          <span>${escapeHtml([date ? dateKey(date) : "", report.modality, report.topic, report.bodyPart].filter(Boolean).join(" / "))}</span>
-        </span>
-      </label>
-    `;
-  }).join("");
-  const prompt = buildInsightPrompt(opportunity);
-  els.insightPromptText.value = prompt;
-  els.copyInsightPromptBtn.disabled = !insightSelectedReports(opportunity).length;
-}
-
-function renderInsights() {
-  const opportunities = state.insightOpportunities;
-  els.refreshInsightsBtn.disabled = state.insightsScanning;
-  els.refreshInsightsBtn.textContent = state.insightsScanning ? "Scanning..." : "Refresh";
-  els.insightsSummary.textContent = state.insightsScanning
-    ? "Scanning reports"
-    : `${state.workLogReports.length} reports, ${opportunities.length} opportunities`;
-  if (!opportunities.length) {
-    els.insightsList.innerHTML = `<div class="empty">${state.insightsScanning ? "Looking for repeated report structures..." : "No recurring template opportunity found yet."}</div>`;
-    state.selectedInsightKey = "";
-    renderInsightDetail();
-    return;
-  }
-  if (!opportunities.some(item => item.key === state.selectedInsightKey)) {
-    state.selectedInsightKey = opportunities[0].key;
-    state.insightSelectedReportIds = new Set(opportunities[0].representativeReportIds);
-  }
-  els.insightsList.innerHTML = opportunities.map((item, index) => `
-    <button class="result-item ${item.key === state.selectedInsightKey ? "active" : ""}" data-insight-key="${item.key}" type="button">
-      <span class="result-no">${index + 1}.</span>
-      <span>
-        <span class="result-title">${escapeHtml(item.title)}</span>
-        <span class="result-meta">${escapeHtml([item.modality, item.topic, item.bodyPart].filter(Boolean).join(" / "))}</span>
-        <span class="result-snippet">${item.reportCount} matching reports</span>
-      </span>
-    </button>
-  `).join("");
-  renderInsightDetail();
-}
-
-function selectInsight(key) {
-  const opportunity = state.insightOpportunities.find(item => item.key === key);
-  if (!opportunity) return;
-  state.selectedInsightKey = key;
-  state.insightSelectedReportIds = new Set(opportunity.representativeReportIds);
-  renderInsights();
-}
-
-async function loadInsights(options = {}) {
-  if (state.insightsScanning) return;
-  state.insightsScanning = true;
-  renderInsights();
-  try {
-    if (!state.insightsLoaded) await loadInsightSettings();
-    await loadWorkLog();
-    const fingerprint = insightCorpusFingerprint(state.workLogReports);
-    if (options.force || fingerprint !== state.insightCorpusFingerprint) {
-      await new Promise(resolve => window.setTimeout(resolve, 0));
-      state.insightOpportunities = detectInsightOpportunities(state.workLogReports);
-      state.insightCorpusFingerprint = fingerprint;
-    }
-  } finally {
-    state.insightsScanning = false;
-    renderInsights();
-  }
-}
-
-async function dismissSelectedInsight() {
-  const opportunity = selectedInsight();
-  if (!opportunity) return;
-  state.dismissedInsightKeys.add(opportunity.key);
-  try {
-    await saveInsightSettings();
-  } catch (error) {
-    state.dismissedInsightKeys.delete(opportunity.key);
-    throw error;
-  }
-  state.insightOpportunities = state.insightOpportunities.filter(item => item.key !== opportunity.key);
-  state.selectedInsightKey = "";
-  state.insightSelectedReportIds = new Set();
-  renderInsights();
-  showToast("Suggestion dismissed", opportunity.title);
-}
-
 async function openSavedReport(id) {
   const report = state.workLogReports.find(item => item.id === id) || state.selectedWorklogReport;
   if (!report) return;
@@ -4568,8 +4149,7 @@ function handleModeLink(event, mode) {
     builder: "navigation.template_builder",
     writer: "navigation.report_writer",
     worklog: "navigation.work_log",
-    interesting: "navigation.interesting_cases",
-    insights: "navigation.insights"
+    interesting: "navigation.interesting_cases"
   }[mode]);
 }
 
@@ -4602,7 +4182,6 @@ els.builderModeBtn.addEventListener("click", event => handleModeLink(event, "bui
 els.writerModeBtn.addEventListener("click", event => handleModeLink(event, "writer"));
 els.worklogModeBtn.addEventListener("click", event => handleModeLink(event, "worklog"));
 els.interestingModeBtn.addEventListener("click", event => handleModeLink(event, "interesting"));
-els.insightsModeBtn.addEventListener("click", event => handleModeLink(event, "insights"));
 document.querySelectorAll("[data-reference-tab]").forEach(button => {
   button.addEventListener("click", () => {
     const tab = button.dataset.referenceTab;
@@ -4865,6 +4444,31 @@ document.querySelectorAll(".format-toolbar").forEach(toolbar => {
     customizeSwatch(button);
   });
 });
+
+// Thai year converter (พ.ศ. ⇄ ค.ศ., offset 543) next to the highlight colors.
+// Typing in either box converts into the other; focusing a box selects its
+// value for quick copying into the report.
+function syncYearConverter(source) {
+  const beField = els.yearBeInput;
+  const adField = els.yearAdInput;
+  if (!beField || !adField || (source !== beField && source !== adField)) return;
+  const target = source === beField ? adField : beField;
+  const raw = source.value.trim();
+  if (!raw) {
+    target.value = "";
+    return;
+  }
+  if (!/^\d{1,4}$/.test(raw)) return;
+  const year = Number(raw);
+  target.value = String(source === beField ? year - 543 : year + 543);
+}
+
+["yearBeInput", "yearAdInput"].forEach(key => {
+  const field = els[key];
+  if (!field) return;
+  field.addEventListener("input", () => syncYearConverter(field));
+  field.addEventListener("focus", () => field.select());
+});
 [els.templateTextEditor, els.reportTextEditor].forEach(editor => {
   editor.addEventListener("focus", () => clearProofingFallback(editor));
   editor.addEventListener("input", debounce(() => {
@@ -4900,12 +4504,92 @@ els.templateList.addEventListener("contextmenu", event => {
       if (!confirm("Delete this template?")) return;
       await pbDelete("templates", id);
       if (state.selectedTemplate?.id === id) state.selectedTemplate = null;
+      state.templateOrder = state.templateOrder.filter(orderId => orderId !== id);
+      saveTemplateOrder().catch(error => console.warn("Template order could not be saved.", error));
       await loadTemplateFacets();
       await loadTemplates();
       showToast("Template deleted");
     }}
   ]);
 });
+
+// Drag-and-drop reorder of the template list. Browsers fire a click on the
+// drag source right after a drop, so swallow that one click to avoid
+// accidentally loading the moved template into the report.
+let draggedTemplateId = "";
+let suppressTemplateClick = false;
+
+function clearTemplateDropIndicators() {
+  els.templateList.querySelectorAll(".drop-before, .drop-after").forEach(node => node.classList.remove("drop-before", "drop-after"));
+}
+
+function templateDropTarget(event) {
+  const button = event.target?.closest?.("[data-template-id]");
+  if (!button || button.dataset.templateId === draggedTemplateId) return null;
+  const rect = button.getBoundingClientRect();
+  return {
+    id: button.dataset.templateId,
+    before: (event.clientY - rect.top) < rect.height / 2
+  };
+}
+
+function templateIdAfter(id) {
+  const buttons = [...els.templateList.querySelectorAll("[data-template-id]")];
+  const at = buttons.findIndex(node => node.dataset.templateId === id);
+  return at >= 0 && at + 1 < buttons.length ? buttons[at + 1].dataset.templateId : null;
+}
+
+els.templateList.addEventListener("dragstart", event => {
+  const button = event.target?.closest?.("[data-template-id]");
+  if (!button) return;
+  draggedTemplateId = button.dataset.templateId;
+  suppressTemplateClick = true;
+  event.dataTransfer.effectAllowed = "move";
+  try {
+    event.dataTransfer.setData("text/plain", draggedTemplateId);
+  } catch {
+    // Firefox requires setData above; other browsers may restrict it.
+  }
+  button.classList.add("dragging");
+});
+els.templateList.addEventListener("dragover", event => {
+  if (!draggedTemplateId) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  clearTemplateDropIndicators();
+  const target = templateDropTarget(event);
+  if (target) {
+    els.templateList.querySelector(`[data-template-id="${target.id}"]`)?.classList.add(target.before ? "drop-before" : "drop-after");
+  }
+});
+els.templateList.addEventListener("dragleave", event => {
+  if (!els.templateList.contains(event.relatedTarget)) clearTemplateDropIndicators();
+});
+els.templateList.addEventListener("drop", event => {
+  if (!draggedTemplateId) return;
+  event.preventDefault();
+  const target = templateDropTarget(event);
+  clearTemplateDropIndicators();
+  if (target) {
+    moveTemplateInList(draggedTemplateId, target.before ? target.id : templateIdAfter(target.id));
+  } else if (event.target?.closest?.("#templateList")) {
+    moveTemplateInList(draggedTemplateId, null);
+  }
+  draggedTemplateId = "";
+});
+els.templateList.addEventListener("dragend", () => {
+  draggedTemplateId = "";
+  clearTemplateDropIndicators();
+  els.templateList.querySelectorAll(".dragging").forEach(node => node.classList.remove("dragging"));
+  // A cancelled drag (Esc) fires no click; never swallow a later real click.
+  window.setTimeout(() => { suppressTemplateClick = false; }, 0);
+});
+document.addEventListener("click", event => {
+  if (!suppressTemplateClick || !els.templateList.contains(event.target)) return;
+  suppressTemplateClick = false;
+  event.preventDefault();
+  event.stopPropagation();
+}, true);
 els.contextMenu?.addEventListener("click", event => event.stopPropagation());
 document.addEventListener("click", hideContextMenu);
 els.alwaysNotesBtn.addEventListener("click", () => setAlwaysNotesOpen(!state.alwaysNotesOpen));
@@ -5134,39 +4818,6 @@ els.editWorklogReportBtn.addEventListener("click", () => {
   }
 });
 els.closeWorklogPreviewBtn.addEventListener("click", closeWorklogPreview);
-els.insightsList.addEventListener("click", event => {
-  const button = event.target.closest("[data-insight-key]");
-  if (button) selectInsight(button.dataset.insightKey);
-});
-els.insightReportChoices.addEventListener("change", event => {
-  const input = event.target.closest("[data-insight-report-id]");
-  if (!input) return;
-  if (input.checked) state.insightSelectedReportIds.add(input.dataset.insightReportId);
-  else state.insightSelectedReportIds.delete(input.dataset.insightReportId);
-  els.insightPromptText.value = buildInsightPrompt();
-  els.copyInsightPromptBtn.disabled = !insightSelectedReports().length;
-});
-els.refreshInsightsBtn.addEventListener("click", () => {
-  withButtonFeedback(els.refreshInsightsBtn, "Scanning...", async () => {
-    await loadInsights({ force: true });
-    trackFeature("insight.refresh");
-    showToast("Insights refreshed", `${state.insightOpportunities.length} template opportunit${state.insightOpportunities.length === 1 ? "y" : "ies"} found.`);
-  }, "Refreshed");
-});
-els.copyInsightPromptBtn.addEventListener("click", () => {
-  withButtonFeedback(els.copyInsightPromptBtn, "Copying...", async () => {
-    await copyText(els.insightPromptText.value);
-    trackFeature("insight.copy_prompt");
-    showToast("Prompt copied", "Ready to paste into the model you choose.");
-  }, "Copied");
-});
-els.dismissInsightBtn.addEventListener("click", () => {
-  withButtonFeedback(els.dismissInsightBtn, "Dismissing...", async () => {
-    const result = await dismissSelectedInsight();
-    if (result !== false) trackFeature("insight.dismiss");
-    return result;
-  }, "Dismissed");
-});
 els.worklogList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-worklog-id]");
   if (!button) return;
@@ -5280,7 +4931,7 @@ async function loadApp() {
   await initTiptapEditors();
   await loadPersonalDictionary();
   await loadAiSettings();
-  await Promise.all([loadReportNotes(), loadPersonalNotes()]);
+  await Promise.all([loadReportNotes(), loadPersonalNotes(), loadTemplateOrder()]);
   loadFeatureUsage().catch(error => console.warn("Feature usage could not be loaded.", error));
   loadSpellchecker();
   updateTemplateModeBadge();
@@ -5288,7 +4939,6 @@ async function loadApp() {
   showReferenceTab(state.referenceTab, { updateRoute: false });
   blankTemplate();
   await loadInitialWorkspaceData();
-  if (state.mode === "insights") await loadInsights();
 }
 
 async function init() {
