@@ -3,8 +3,11 @@ pb_migrations/
 pb_public/
 pocketbase/
 Report/
-scripts/
 seed/
+scripts/evaluate-ai.mjs
+scripts/secure-pocketbase.mjs
+scripts/seed-pocketbase.mjs
+scripts/style-eval-results.json
 index.html
 *.xlsx
 *.zip

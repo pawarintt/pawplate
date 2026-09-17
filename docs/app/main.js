@@ -289,8 +289,38 @@ function choicesFromSelect(select) {
   return [...(select?.options || [])].map(option => ({ value: option.value, label: option.textContent || option.value }));
 }
 
+// Scroll positions of the writer reference panels, keyed by tab, so switching
+// tabs (or re-rendering a list) never loses the user's place. Filter inputs
+// persist naturally in the DOM; only scroll needs explicit memory.
+const REFERENCE_SCROLLABLES = ["templateList", "snippetFields", "snippetFindingList", "aiDraftResult"];
+
+function saveReferenceScroll(tab) {
+  if (!REFERENCE_ROUTES[tab]) return;
+  const saved = {};
+  REFERENCE_SCROLLABLES.forEach(key => {
+    const node = els[key];
+    if (node && node.scrollTop) saved[key] = node.scrollTop;
+  });
+  if (Object.keys(saved).length) {
+    state.referenceScroll[tab] = saved;
+  } else {
+    delete state.referenceScroll[tab];
+  }
+}
+
+function restoreReferenceScroll(tab) {
+  const saved = state.referenceScroll[tab];
+  if (!saved) return;
+  requestAnimationFrame(() => {
+    Object.entries(saved).forEach(([key, top]) => {
+      if (els[key]) els[key].scrollTop = top;
+    });
+  });
+}
+
 function showReferenceTab(tab, options = {}) {
   if (!REFERENCE_ROUTES[tab]) tab = "templates";
+  if (tab !== state.referenceTab) saveReferenceScroll(state.referenceTab);
   state.referenceTab = tab;
   document.querySelectorAll("[data-reference-tab]").forEach(button => {
     button.classList.toggle("active", button.dataset.referenceTab === tab);
@@ -298,11 +328,22 @@ function showReferenceTab(tab, options = {}) {
   document.querySelectorAll("[data-reference-panel]").forEach(panel => {
     panel.classList.toggle("active", panel.dataset.referencePanel === tab);
   });
+  restoreReferenceScroll(tab);
   if (tab === "ai-draft" && !state.aiSettingsLoaded) {
     loadAiSettings().catch(error => console.warn("AI settings could not be loaded.", error));
   }
   if (tab === "snippets") renderSnippetGenerator();
   if (options.updateRoute !== false && state.mode === "writer") updateRoute("writer", tab);
+}
+
+// Narrow-screen drawer for the writer reference pane (see the 1240px media
+// query). The class is a no-op on wide screens, so callers can toggle it
+// unconditionally.
+function setReferenceDrawer(open) {
+  state.referenceDrawerOpen = open;
+  els.writerReferencePane?.classList.toggle("drawer-open", open);
+  els.drawerBackdrop?.classList.toggle("hidden", !open);
+  els.referenceDrawerBtn?.setAttribute("aria-expanded", String(open));
 }
 
 function aiDraftFields() {
@@ -3011,6 +3052,7 @@ async function reloadActiveView() {
 
 function showMode(mode, options = {}) {
   if (!MODE_ROUTES[mode]) mode = "builder";
+  if (mode !== "writer") setReferenceDrawer(false);
   state.mode = mode;
   [
     [els.builderModeBtn, "builder"],
@@ -3048,6 +3090,77 @@ function showMode(mode, options = {}) {
   if (options.updateRoute !== false) updateRoute(mode);
 }
 
+function skeletonRows(count = 6) {
+  return Array.from({ length: count }, () => '<div class="skeleton-row" aria-hidden="true"></div>').join("");
+}
+
+function setListLoading(listEl, isFirstLoad) {
+  if (!listEl) return;
+  listEl.setAttribute("aria-busy", "true");
+  if (isFirstLoad) {
+    listEl.innerHTML = skeletonRows();
+  } else {
+    listEl.classList.add("is-updating");
+  }
+}
+
+function clearListLoading(listEl) {
+  if (!listEl) return;
+  listEl.removeAttribute("aria-busy");
+  listEl.classList.remove("is-updating");
+}
+
+function resultCountText(shown, total) {
+  if (!total) return "";
+  if (total > shown) return `Showing ${shown} of ${total} — refine the search to narrow down`;
+  return total === 1 ? "1 match" : `${total} matches`;
+}
+
+function hasOldFilters() {
+  return Boolean(
+    els.oldSearchInput.value.trim()
+    || els.oldModalityFilter.value
+    || els.oldTopicFilter.value
+    || els.oldBodyPartFilter.value
+    || els.oldTypeFilter.value
+    || els.oldDateFilter.value.trim()
+    || els.oldInterestingFilter.checked
+  );
+}
+
+function hasTemplateFilters() {
+  return Boolean(
+    els.templateSearchInput.value.trim()
+    || els.templateModalityFilter.value
+    || els.templateTopicFilter.value
+    || els.templateBodyPartFilter.value
+    || els.templateTypeFilter.value
+  );
+}
+
+function clearOldFilters() {
+  els.oldSearchInput.value = "";
+  els.oldModalityFilter.value = "";
+  els.oldTopicFilter.value = "";
+  els.oldBodyPartFilter.value = "";
+  els.oldTypeFilter.value = "";
+  els.oldDateFilter.value = "";
+  els.oldInterestingFilter.checked = false;
+  updateFilterOptions("old");
+  state.selectedOldReport = null;
+  loadViewData(loadOldReports(), "Old Reports");
+}
+
+function clearTemplateFilters() {
+  els.templateSearchInput.value = "";
+  els.templateModalityFilter.value = "";
+  els.templateTopicFilter.value = "";
+  els.templateBodyPartFilter.value = "";
+  els.templateTypeFilter.value = "";
+  updateFilterOptions("template");
+  loadViewData(loadTemplates(), "Templates");
+}
+
 function oldReportFilter() {
   const clauses = [];
   const query = els.oldSearchInput.value.trim();
@@ -3067,25 +3180,52 @@ function oldReportFilter() {
 async function loadOldReports() {
   const request = beginDataLoad("oldReports");
   const query = els.oldSearchInput.value.trim();
-  const data = await pbList("old_reports", {
-    page: 1,
-    perPage: 80,
-    sort: "-created",
-    filter: oldReportFilter(),
-    fields: "id,title,modality,topic,bodyPart,kind,keywords,report,sourceType,sourceDate,note,isInteresting,owner"
-  });
-  if (!isCurrentDataLoad("oldReports", request)) return false;
-  state.oldReports = data.items;
-  renderOldReports(query);
-  if (!state.selectedOldReport && data.items.length) selectOldReport(data.items[0].id);
-  return true;
+  setListLoading(els.oldReportList, !state.oldReports.length && !state.oldReportsError);
+  try {
+    const data = await pbList("old_reports", {
+      page: 1,
+      perPage: 80,
+      sort: "-created",
+      filter: oldReportFilter(),
+      fields: "id,title,modality,topic,bodyPart,kind,keywords,report,sourceType,sourceDate,note,isInteresting,owner"
+    });
+    if (!isCurrentDataLoad("oldReports", request)) return false;
+    state.oldReports = data.items;
+    state.oldReportsTotal = data.totalItems ?? data.items.length;
+    state.oldReportsError = "";
+    renderOldReports(query);
+    if (!state.selectedOldReport && data.items.length) selectOldReport(data.items[0].id);
+    return true;
+  } catch (error) {
+    if (!isCurrentDataLoad("oldReports", request)) return false;
+    state.oldReportsError = friendlyErrorMessage(error);
+    renderOldReports(query);
+    throw error;
+  } finally {
+    clearListLoading(els.oldReportList);
+  }
 }
 
 function renderOldReports(query = els.oldSearchInput.value.trim()) {
-  if (!state.oldReports.length) {
-    els.oldReportList.innerHTML = `<div class="empty">Search old reports from the Excel corpus. Saved full reports will appear here too.</div>`;
+  if (state.oldReportsError) {
+    els.oldResultCount.textContent = "";
+    els.oldReportList.innerHTML = `<div class="list-error" role="alert">
+      <strong>Old reports unavailable</strong>
+      <span>${escapeHtml(state.oldReportsError)} Check the connection and try again.</span>
+      <button type="button" data-retry="old-reports">Retry</button>
+    </div>`;
     return;
   }
+  if (!state.oldReports.length) {
+    els.oldResultCount.textContent = "";
+    els.oldReportList.innerHTML = hasOldFilters()
+      ? `<div class="empty">No matches for these filters. Try fewer words or clear the filters.
+        <br><button type="button" data-clear-filters="old-reports">Clear filters</button></div>`
+      : `<div class="empty">Search old reports from the Excel corpus. Saved full reports will appear here too.</div>`;
+    return;
+  }
+  const scrollTop = els.oldReportList.scrollTop;
+  els.oldResultCount.textContent = resultCountText(state.oldReports.length, state.oldReportsTotal);
   els.oldReportList.innerHTML = state.oldReports.map((item, index) => `
     <button class="result-item ${state.selectedOldReport?.id === item.id ? "active" : ""}" data-old-id="${item.id}" type="button">
       <span class="result-no">${index + 1}.</span>
@@ -3096,6 +3236,7 @@ function renderOldReports(query = els.oldSearchInput.value.trim()) {
       </span>
     </button>
   `).join("");
+  els.oldReportList.scrollTop = scrollTop;
 }
 
 function selectOldReport(id) {
@@ -3193,24 +3334,51 @@ function templateFilter() {
 async function loadTemplates() {
   const request = beginDataLoad("templates");
   const query = els.templateSearchInput.value.trim();
-  const data = await pbList("templates", {
-    page: 1,
-    perPage: 80,
-    sort: "-updated",
-    filter: templateFilter(),
-    fields: "id,title,modality,topic,bodyPart,kind,keywords,report,owner"
-  });
-  if (!isCurrentDataLoad("templates", request)) return false;
-  state.templates = sortTemplatesByCustomOrder(data.items);
-  renderTemplates(query);
-  return true;
+  setListLoading(els.templateList, !state.templates.length && !state.templatesError);
+  try {
+    const data = await pbList("templates", {
+      page: 1,
+      perPage: 80,
+      sort: "-updated",
+      filter: templateFilter(),
+      fields: "id,title,modality,topic,bodyPart,kind,keywords,report,owner"
+    });
+    if (!isCurrentDataLoad("templates", request)) return false;
+    state.templates = sortTemplatesByCustomOrder(data.items);
+    state.templatesTotal = data.totalItems ?? data.items.length;
+    state.templatesError = "";
+    renderTemplates(query);
+    return true;
+  } catch (error) {
+    if (!isCurrentDataLoad("templates", request)) return false;
+    state.templatesError = friendlyErrorMessage(error);
+    renderTemplates(query);
+    throw error;
+  } finally {
+    clearListLoading(els.templateList);
+  }
 }
 
 function renderTemplates(query = els.templateSearchInput.value.trim()) {
-  if (!state.templates.length) {
-    els.templateList.innerHTML = `<div class="empty">No personal templates yet. Build one in Template Builder first.</div>`;
+  if (state.templatesError) {
+    els.templateResultCount.textContent = "";
+    els.templateList.innerHTML = `<div class="list-error" role="alert">
+      <strong>Templates unavailable</strong>
+      <span>${escapeHtml(state.templatesError)} Check the connection and try again.</span>
+      <button type="button" data-retry="templates">Retry</button>
+    </div>`;
     return;
   }
+  if (!state.templates.length) {
+    els.templateResultCount.textContent = "";
+    els.templateList.innerHTML = hasTemplateFilters()
+      ? `<div class="empty">No matches for these filters. Try fewer words or clear the filters.
+        <br><button type="button" data-clear-filters="templates">Clear filters</button></div>`
+      : `<div class="empty">No personal templates yet. Build one in Template Builder first.</div>`;
+    return;
+  }
+  const scrollTop = els.templateList.scrollTop;
+  els.templateResultCount.textContent = resultCountText(state.templates.length, state.templatesTotal);
   els.templateList.innerHTML = state.templates.map((item, index) => `
     <button class="result-item" draggable="true" data-template-id="${item.id}" type="button">
       <span class="result-no">${index + 1}.</span>
@@ -3220,6 +3388,7 @@ function renderTemplates(query = els.templateSearchInput.value.trim()) {
       </span>
     </button>
   `).join("");
+  els.templateList.scrollTop = scrollTop;
   markSelectedTemplate();
 }
 
@@ -3695,6 +3864,7 @@ async function startNewReport() {
 async function selectTemplate(id) {
   const template = state.templates.find(item => item.id === id);
   if (!template) return;
+  setReferenceDrawer(false);
   await useTemplateForReport(template);
 }
 
@@ -4189,6 +4359,11 @@ document.querySelectorAll("[data-reference-tab]").forEach(button => {
     trackFeature({ templates: "reference.templates", snippets: "reference.snippets", "ai-draft": "reference.ai_assist" }[tab]);
   });
 });
+els.referenceDrawerBtn?.addEventListener("click", () => {
+  setReferenceDrawer(!state.referenceDrawerOpen);
+  if (state.referenceDrawerOpen) showReferenceTab(state.referenceTab, { updateRoute: false });
+});
+els.drawerBackdrop?.addEventListener("click", () => setReferenceDrawer(false));
 els.generateAiDraftBtn?.addEventListener("click", () => {
   withButtonFeedback(els.generateAiDraftBtn, "Drafting...", generateAiDraft, "Draft ready");
 });
@@ -4312,6 +4487,7 @@ els.insertSnippetBtn?.addEventListener("click", () => {
   const snippet = combinedSnippetText();
   if (!snippet) return;
   insertReportText(snippet);
+  setReferenceDrawer(false);
   trackFeature(`snippet.insert.${state.snippet.system}`);
   showToast("Snippet inserted", snippet);
 });
@@ -4335,6 +4511,14 @@ els.oldSearchInput.addEventListener("input", debounce(() => {
   loadViewData(loadOldReports(), "Old Reports");
 }));
 els.oldReportList.addEventListener("click", event => {
+  if (event.target.closest('[data-retry="old-reports"]')) {
+    loadViewData(loadOldReports(), "Old Reports");
+    return;
+  }
+  if (event.target.closest('[data-clear-filters="old-reports"]')) {
+    clearOldFilters();
+    return;
+  }
   const button = event.target.closest("[data-old-id]");
   if (button) {
     selectOldReport(button.dataset.oldId);
@@ -4489,6 +4673,14 @@ function syncYearConverter(source) {
   });
 });
 els.templateList.addEventListener("click", event => {
+  if (event.target.closest('[data-retry="templates"]')) {
+    loadViewData(loadTemplates(), "Templates");
+    return;
+  }
+  if (event.target.closest('[data-clear-filters="templates"]')) {
+    clearTemplateFilters();
+    return;
+  }
   const button = event.target.closest("[data-template-id]");
   if (button) selectTemplate(button.dataset.templateId);
 });
@@ -4752,6 +4944,10 @@ document.addEventListener("keydown", event => {
   if (els.pawletImageLightbox.open) {
     event.preventDefault();
     closePawletImageLightbox();
+    return;
+  }
+  if (state.referenceDrawerOpen) {
+    setReferenceDrawer(false);
     return;
   }
   if (state.reportNotePopoverOpen) setReportNotePopoverOpen(false);

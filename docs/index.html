@@ -152,6 +152,7 @@
           <input id="oldDateFilter" placeholder="Date contains, e.g. 2024">
           <label class="check-filter"><input id="oldInterestingFilter" type="checkbox"> Interesting only</label>
         </div>
+        <div id="oldResultCount" class="result-count" aria-live="polite"></div>
         <div id="oldReportList" class="result-list"></div>
         <article class="preview">
           <div class="preview-head">
@@ -209,7 +210,7 @@
         <div id="reportProofing" class="proofing-panel hidden"></div>
       </section>
 
-      <aside class="lookup-pane templates-pane">
+      <aside id="writerReferencePane" class="lookup-pane templates-pane">
         <div class="reference-tabs" role="tablist" aria-label="Report reference panels">
           <button class="active" type="button" data-reference-tab="templates">Templates</button>
           <button type="button" data-reference-tab="snippets">Snippets</button>
@@ -232,6 +233,7 @@
             </select>
             <div id="templateTypeRadios" class="filter-chips" aria-label="Template type"></div>
           </div>
+          <div id="templateResultCount" class="result-count" aria-live="polite"></div>
           <div id="templateList" class="result-list"></div>
         </div>
         <div class="writer-reference snippet-reference reference-panel" data-reference-panel="snippets">
@@ -294,6 +296,8 @@
           </div>
         </div>
       </aside>
+      <button id="referenceDrawerBtn" class="reference-drawer-btn" type="button" aria-expanded="false" aria-controls="writerReferencePane">References</button>
+      <div id="drawerBackdrop" class="drawer-backdrop hidden"></div>
     </section>
 
     <section id="worklogView" class="worklog-view hidden">
