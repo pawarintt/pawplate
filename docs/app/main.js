@@ -2535,6 +2535,7 @@ async function removePersonalNoteImage(noteId, imageIndex) {
   const images = personalNoteAssets(note);
   const asset = images[Number(imageIndex)];
   if (!note || !asset) return;
+  if (!confirm(`Remove this image (${asset.alt || "image"})?`)) return;
   note.images = images.filter((_, index) => index !== Number(imageIndex));
   note.updatedAt = new Date().toISOString();
   if (note.type === "image" && !note.images.length) {
