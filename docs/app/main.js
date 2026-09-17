@@ -525,8 +525,8 @@ function buildSnippetText() {
     const posterior = values.posterior && values.posterior !== "no posterior features" ? ` with ${values.posterior}` : "";
     const vascularity = values.vascularity ? ` and ${values.vascularity}` : "";
     const assessment = biradsUltrasoundAssessment(values);
-    const sentence = sentenceCase(joinPhrase([`${size ? "A" : indefiniteArticle(descriptor)}`, lesion, location ? `in the ${location}` : ""]) + `${posterior}${vascularity}.`);
-    return `${sentence} Suggested BI-RADS ${assessment.category} (${assessment.label}; simplified estimate — please verify).`;
+    const sentence = sentenceCase(joinPhrase([`${size ? "A" : indefiniteArticle(descriptor)}`, lesion, location ? `in the ${location}` : ""]) + `${posterior}${vascularity}`);
+    return `${sentence}; BI-RADS ${assessment.category}.`;
   }
   return "";
 }
