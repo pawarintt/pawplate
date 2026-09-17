@@ -1,4 +1,5 @@
 import {
+  AI_DRAFT_TIMEOUT_MS,
   API,
   AUTH_KEY,
   AUTH_REFRESH_INTERVAL_MS,
@@ -14,6 +15,7 @@ import {
   INSIGHT_SETTINGS_KEY,
   INSIGHT_SIMILARITY_THRESHOLD,
   MODE_ROUTES,
+  MUTATION_TIMEOUT_MS,
   PALETTE_KEY_PREFIX,
   PERSONAL_DICTIONARY_KEY_PREFIX,
   PERSONAL_NOTES_LIMIT,
@@ -30,10 +32,13 @@ import {
   PERSONAL_NOTE_IMAGE_MIN_HEIGHT,
   PERSONAL_NOTE_IMAGE_MIN_WIDTH,
   POCKETBASE_URL,
+  READ_MAX_RETRIES,
+  READ_TIMEOUT_MS,
   REFERENCE_ROUTES,
   REPORT_DRAFT_KEY_PREFIX,
   REPORT_NOTES_LIMIT,
   REPORT_NOTES_SETTINGS_KEY,
+  RETRY_BASE_DELAY_MS,
   ROUTE_MODES,
   ROUTE_REFERENCES,
   SPELLCHECK_DICTIONARY_URL,
@@ -348,6 +353,7 @@ async function generateAiDraft() {
   }
   const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/ai-draft`, {
     method: "POST",
+    timeoutMs: AI_DRAFT_TIMEOUT_MS,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       report,
@@ -801,6 +807,14 @@ async function saveWorkingDraft() {
   state.reportAutosaveDirty = false;
   state.reportAutosaveSaving = true;
   writeLocalWorkingDraft(payload, { cleared: !hasContent });
+  // Definitely offline: don't burn time on a doomed request, just keep the
+  // local backup. It syncs on the next successful save after reconnect.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    state.reportAutosaveDirty = true;
+    state.reportAutosaveSaving = false;
+    setReportAutosaveStatus("offline", "Offline — draft saved locally");
+    return false;
+  }
   setReportAutosaveStatus("saving", "Saving draft...");
 
   try {
@@ -1541,6 +1555,54 @@ function sessionNeedsRefresh(force = false) {
   return Date.now() - state.lastAuthRefreshAt >= AUTH_REFRESH_INTERVAL_MS;
 }
 
+// Marker for failures worth retrying: timeouts and low-level network errors.
+// HTTP error statuses are NOT retryable here (the server answered).
+class NetworkError extends Error {
+  constructor(message = "Network request failed.", options = {}) {
+    super(message, options);
+    this.name = "NetworkError";
+  }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// fetch() with no timeout can hang for minutes on a half-dead connection,
+// which is the main "junky" feeling on unstable internet. Bound every
+// request with an AbortController so failures surface fast instead.
+async function fetchWithTimeout(url, options = {}, timeoutMs = READ_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new NetworkError(`Request timed out after ${Math.round(timeoutMs / 1000)}s. Check your connection and try again.`, { cause: error });
+    }
+    throw new NetworkError("PawPlate could not reach the server. Check your connection and try again.", { cause: error });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Retry idempotent requests (reads, auth refresh) with exponential backoff so
+// single-packet blips self-heal instead of failing the whole view load.
+// Mutations must NOT use this: a retry after an ambiguous failure could
+// create duplicate records.
+async function fetchWithRetry(url, options = {}, { timeoutMs = READ_TIMEOUT_MS, retries = READ_MAX_RETRIES } = {}) {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await fetchWithTimeout(url, options, timeoutMs);
+    } catch (error) {
+      if (!(error instanceof NetworkError) || attempt >= retries) throw error;
+      attempt += 1;
+      await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+    }
+  }
+}
+
 async function refreshAuthSession(options = {}) {
   if (!state.auth?.token) throw new AuthSessionError("Sign in to continue.");
   if (!sessionNeedsRefresh(Boolean(options.force))) return state.auth;
@@ -1549,12 +1611,14 @@ async function refreshAuthSession(options = {}) {
   state.authRefreshPromise = (async () => {
     let response;
     try {
-      response = await fetch(`${API}/users/auth-refresh`, {
+      // Auth refresh is idempotent (old tokens stay valid), so it is safe to retry.
+      response = await fetchWithRetry(`${API}/users/auth-refresh`, {
         method: "POST",
         headers: authHeaders()
       });
     } catch (error) {
-      throw new Error("PawPlate could not reach the server. Your local draft is safe.", { cause: error });
+      if (error instanceof NetworkError) throw error;
+      throw new NetworkError("PawPlate could not reach the server. Your local draft is safe.", { cause: error });
     }
 
     if (response.status === 401 || response.status === 403) {
@@ -1584,30 +1648,48 @@ async function refreshAuthSession(options = {}) {
 
 async function authenticatedFetch(url, options = {}) {
   await refreshAuthSession();
-  const request = async () => {
-    try {
-      return await fetch(url, {
-        ...options,
-        headers: authHeaders(options.headers || {})
+  const { timeoutMs: explicitTimeout, retries: explicitRetries, ...fetchOptions } = options;
+  const method = String(fetchOptions.method || "GET").toUpperCase();
+  // Reads retry with backoff (idempotent); mutations get a timeout only so a
+  // blind retry can never duplicate a create/update/delete.
+  const timeoutMs = explicitTimeout
+    ?? (method === "GET" || method === "HEAD" ? READ_TIMEOUT_MS : MUTATION_TIMEOUT_MS);
+  const send = () => {
+    const sendOptions = { ...fetchOptions, headers: authHeaders(fetchOptions.headers || {}) };
+    if (method === "GET" || method === "HEAD") {
+      return fetchWithRetry(url, sendOptions, {
+        timeoutMs,
+        retries: explicitRetries ?? READ_MAX_RETRIES
       });
-    } catch (error) {
-      throw new Error("PawPlate could not reach the server. Check your connection and try again.", { cause: error });
     }
+    return fetchWithTimeout(url, sendOptions, timeoutMs);
   };
-  let response = await request();
+  let response;
+  try {
+    response = await send();
+  } catch (error) {
+    if (error instanceof NetworkError) throw error;
+    throw new NetworkError("PawPlate could not reach the server. Check your connection and try again.", { cause: error });
+  }
   if (response.status === 401 || response.status === 403) {
     await refreshAuthSession({ force: true });
-    response = await request();
+    response = await send();
   }
   return response;
 }
 
 async function login(identity, password) {
-  const response = await fetch(`${API}/users/auth-with-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identity, password })
-  });
+  let response;
+  try {
+    response = await fetchWithTimeout(`${API}/users/auth-with-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identity, password })
+    }, MUTATION_TIMEOUT_MS);
+  } catch (error) {
+    if (error instanceof NetworkError) throw error;
+    throw new NetworkError("Sign in could not reach the server. Check your connection and try again.", { cause: error });
+  }
   if (!response.ok) throw new Error("Sign in failed. Check the email and password.");
   const auth = await response.json();
   setAuth({ token: auth.token, user: auth.record });
@@ -5168,15 +5250,25 @@ document.addEventListener("visibilitychange", () => {
     return;
   }
   if (!state.auth?.token) return;
+  // Coming back with no connection: skip quietly instead of flashing errors.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   refreshAuthSession()
     .then(reloadActiveView)
     .catch(error => {
       if (error instanceof AuthSessionError) return;
+      // Transient blip: silent, the next request retries on its own.
+      if (error instanceof NetworkError) return;
       showToast("Connection problem", error.message || "PawPlate could not refresh your session.", "error");
     });
 });
+window.addEventListener("offline", () => {
+  if (!state.auth?.token) return;
+  showToast("You're offline", "Work keeps saving locally and syncs when you reconnect.", "info");
+});
 window.addEventListener("online", () => {
   if (!state.auth?.token) return;
+  // Flush any draft that couldn't sync while offline, then reload the view.
+  if (state.reportAutosaveDirty) scheduleReportAutosave(100);
   loadViewData(refreshAuthSession().then(reloadActiveView), "Workspace");
 });
 

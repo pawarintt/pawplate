@@ -9,6 +9,15 @@ export const REPORT_DRAFT_KEY_PREFIX = "pawplate.report-draft.";
 export const AUTH_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 export const AUTH_REFRESH_LEEWAY_MS = 60 * 60 * 1000;
 
+// Network resilience tuning for unstable connections. Reads and the auth
+// refresh are idempotent so they get timeouts plus a couple of retries with
+// backoff; mutations get a timeout only (a blind retry could duplicate them).
+export const READ_TIMEOUT_MS = 15 * 1000;
+export const MUTATION_TIMEOUT_MS = 25 * 1000;
+export const AI_DRAFT_TIMEOUT_MS = 100 * 1000;
+export const READ_MAX_RETRIES = 2;
+export const RETRY_BASE_DELAY_MS = 400;
+
 export const MODE_ROUTES = {
   builder: "template-builder",
   writer: "report-writer",
