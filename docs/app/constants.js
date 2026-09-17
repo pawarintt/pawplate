@@ -77,6 +77,7 @@ export const TEMPLATE_TYPE_FILTERS = [
 ];
 export const FEATURE_USAGE_SETTINGS_KEY = "featureUsageV1";
 export const TEMPLATE_ORDER_SETTINGS_KEY = "templateOrderV1";
+export const SHORTHAND_SETTINGS_KEY = "shorthandV1";
 export const REPORT_NOTES_SETTINGS_KEY = "reportNotesV1";
 export const PERSONAL_NOTES_SETTINGS_KEY = "personalNotesV1";
 export const FEATURE_USAGE_DAYS = 90;
@@ -139,6 +140,10 @@ export const TRACKED_FEATURES = new Set([
   "snippet.copy.birads",
   "snippet.insert.tirads",
   "snippet.insert.birads",
+  "shorthand.open",
+  "shorthand.insert",
+  "shorthand.save",
+  "shorthand.delete",
   "ai.generate",
   "ai.accept.impression",
   "ai.accept.metadata"

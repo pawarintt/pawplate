@@ -36,6 +36,7 @@ import {
   RETRY_BASE_DELAY_MS,
   ROUTE_MODES,
   ROUTE_REFERENCES,
+  SHORTHAND_SETTINGS_KEY,
   SPELLCHECK_DICTIONARY_URL,
   TEMPLATE_ORDER_SETTINGS_KEY,
   TEMPLATE_TYPE_FILTERS,
@@ -1547,10 +1548,14 @@ async function initTiptapEditors() {
           parseOptions: { preserveWhitespace: "full" },
           onUpdate: () => {
             scheduleEditorProofing(element);
+            updateShorthandPalette(element);
             if (element === els.reportTextEditor) scheduleReportAutosave();
           },
           onFocus: () => clearProofingFallback(element),
-          onBlur: () => updateProofing(element)
+          onBlur: () => {
+            closeShorthandPalette();
+            updateProofing(element);
+          }
         });
         element.__pawplateEditor = editor;
       } catch (error) {
@@ -2711,6 +2716,7 @@ async function deletePersonalNote(id) {
 
 function setAlwaysNotesOpen(open) {
   state.alwaysNotesOpen = Boolean(open);
+  if (state.alwaysNotesOpen) setShorthandOpen(false);
   els.alwaysNotesPopover.classList.toggle("hidden", !state.alwaysNotesOpen);
   els.alwaysNotesBtn.setAttribute("aria-expanded", String(state.alwaysNotesOpen));
   if (state.alwaysNotesOpen) {
@@ -3448,6 +3454,306 @@ async function saveTemplateOrder() {
     showToast("Order not saved", "The new arrangement is active for this session only. Check the connection.", "error");
   }
 }
+
+// Personal shorthands: short @codes expanding to reusable report sentences,
+// persisted per user in user_settings so they sync across devices.
+function normalizeShorthands(value) {
+  const items = Array.isArray(value?.items) ? value.items : [];
+  const seen = new Set();
+  return items
+    .filter(item => item && typeof item.code === "string" && typeof item.text === "string")
+    .map(item => ({ code: item.code.trim().toLowerCase(), text: item.text.trim() }))
+    .filter(item => item.code && item.text && !seen.has(item.code) && (seen.add(item.code), true))
+    .slice(0, 500);
+}
+
+function normalizeShorthandCode(raw) {
+  return String(raw || "").trim().toLowerCase().replace(/^@+/, "");
+}
+
+async function loadShorthands() {
+  state.shorthandSettingsId = "";
+  state.shorthands = [];
+  try {
+    const filter = `owner="${state.auth?.user?.id || ""}" && key="${SHORTHAND_SETTINGS_KEY}"`;
+    const data = await pbList("user_settings", { perPage: 1, filter, fields: "id,value" });
+    const record = data.items?.[0];
+    if (record) {
+      state.shorthandSettingsId = record.id;
+      state.shorthands = normalizeShorthands(record.value);
+    }
+  } catch (error) {
+    console.warn("Shorthands unavailable; @ expansion disabled for this session.", error);
+  }
+  state.shorthandLoaded = true;
+  renderShorthands();
+}
+
+async function persistShorthands() {
+  if (!state.auth?.user?.id) return false;
+  const value = { version: 1, items: state.shorthands };
+  try {
+    if (state.shorthandSettingsId) {
+      await pbUpdate("user_settings", state.shorthandSettingsId, { value });
+    } else {
+      const created = await pbCreate("user_settings", {
+        owner: state.auth.user.id,
+        key: SHORTHAND_SETTINGS_KEY,
+        value
+      });
+      state.shorthandSettingsId = created.id;
+    }
+    return true;
+  } catch (error) {
+    console.warn("Shorthands could not be saved.", error);
+    showToast("Shorthand not saved", "Check the connection and try again.", "error");
+    return false;
+  }
+}
+
+// Personal shorthands: type @code in a report/template editor to expand a
+// reusable sentence. Detection runs on Tiptap updates; the fallback editable
+// path has no palette.
+let shorthandPalette = null;
+let editingShorthandCode = "";
+
+function previewShorthand(text) {
+  const flat = String(text || "").replace(/\s+/g, " ").trim();
+  return flat.length > 90 ? `${flat.slice(0, 90)}…` : flat;
+}
+
+function matchShorthands(query) {
+  const q = String(query || "").toLowerCase();
+  const starts = [];
+  const contains = [];
+  state.shorthands.forEach(item => {
+    if (item.code.startsWith(q)) starts.push(item);
+    else if (q && item.code.includes(q)) contains.push(item);
+  });
+  return [...starts, ...contains].slice(0, 8);
+}
+
+function closeShorthandPalette() {
+  shorthandPalette = null;
+  els.shorthandPalette?.classList.add("hidden");
+}
+
+function updateShorthandPalette(hostEl) {
+  const tiptap = hostEl?.__pawplateEditor;
+  if (!tiptap || !state.shorthandLoaded || !state.shorthands.length) {
+    closeShorthandPalette();
+    return;
+  }
+  const { empty, $from } = tiptap.state.selection;
+  if (!empty || !$from) {
+    closeShorthandPalette();
+    return;
+  }
+  const textBefore = $from.parent.textBetween(0, $from.parentOffset, null, "\ufffc");
+  const match = /@([A-Za-z0-9_-]*)$/.exec(textBefore);
+  if (!match) {
+    closeShorthandPalette();
+    return;
+  }
+  const hits = matchShorthands(match[1]);
+  if (!hits.length) {
+    closeShorthandPalette();
+    return;
+  }
+  shorthandPalette = {
+    hostEl,
+    editor: tiptap,
+    from: $from.pos - match[0].length,
+    to: $from.pos,
+    active: 0,
+    hits
+  };
+  renderShorthandPalette();
+}
+
+function renderShorthandPalette() {
+  const palette = els.shorthandPalette;
+  if (!shorthandPalette) {
+    palette.classList.add("hidden");
+    return;
+  }
+  palette.innerHTML = shorthandPalette.hits.map((item, index) => `
+    <button class="${index === shorthandPalette.active ? "active" : ""}" role="option"
+      aria-selected="${index === shorthandPalette.active}" data-shorthand-index="${index}" type="button">
+      <span class="shorthand-palette-code">@${escapeHtml(item.code)}</span>
+      <span class="shorthand-palette-preview">${escapeHtml(previewShorthand(item.text))}</span>
+    </button>`).join("");
+  palette.classList.remove("hidden");
+  const coords = shorthandPalette.editor.view.coordsAtPos(shorthandPalette.from);
+  const width = Math.min(340, window.innerWidth - 16);
+  palette.style.width = `${width}px`;
+  let left = Math.max(8, Math.min(coords.left, window.innerWidth - width - 8));
+  let top = coords.bottom + 6;
+  if (top + palette.offsetHeight > window.innerHeight - 8) {
+    top = Math.max(8, coords.top - palette.offsetHeight - 6);
+  }
+  palette.style.left = `${left}px`;
+  palette.style.top = `${top}px`;
+  palette.querySelector(".active")?.scrollIntoView({ block: "nearest" });
+}
+
+function acceptShorthandPalette() {
+  const active = shorthandPalette;
+  closeShorthandPalette();
+  if (!active) return;
+  const item = active.hits[active.active];
+  if (!item) return;
+  const parts = String(item.text).split(/\n+/).map(part => part.trim()).filter(Boolean);
+  const content = parts.length > 1
+    ? parts.map(part => ({ type: "paragraph", content: [{ type: "text", text: part }] }))
+    : [{ type: "text", text: parts[0] || "" }];
+  active.editor.chain().focus().deleteRange({ from: active.from, to: active.to }).insertContent(content).run();
+  updateProofing(active.hostEl, { fallback: false });
+  if (active.hostEl === els.reportTextEditor) scheduleReportAutosave();
+  trackFeature("shorthand.insert");
+  showToast("Shorthand inserted", `@${item.code}`);
+}
+
+// Capture phase so Enter/Tab/Escape/Arrows reach the palette before Tiptap.
+document.addEventListener("keydown", event => {
+  if (!shorthandPalette) return;
+  if (!["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) return;
+  if (!shorthandPalette.hostEl?.contains(document.activeElement)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.key === "Escape") {
+    closeShorthandPalette();
+    return;
+  }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    const count = shorthandPalette.hits.length;
+    const step = event.key === "ArrowDown" ? 1 : count - 1;
+    shorthandPalette.active = (shorthandPalette.active + step) % count;
+    renderShorthandPalette();
+    return;
+  }
+  acceptShorthandPalette();
+}, true);
+
+els.shorthandPalette.addEventListener("mousedown", event => {
+  const button = event.target.closest("[data-shorthand-index]");
+  if (!button || !shorthandPalette) return;
+  event.preventDefault();
+  shorthandPalette.active = Number(button.dataset.shorthandIndex);
+  acceptShorthandPalette();
+});
+
+function updateShorthandForm() {
+  const editing = Boolean(editingShorthandCode);
+  els.saveShorthandBtn.textContent = editing ? "Save changes" : "Add shorthand";
+  els.cancelShorthandEditBtn.classList.toggle("hidden", !editing);
+}
+
+function renderShorthands() {
+  els.shorthandCount.textContent = String(state.shorthands.length);
+  if (!state.shorthands.length) {
+    els.shorthandList.innerHTML = `<div class="empty">No shorthands yet. Select text in a report, right-click,
+      and choose “Save selection as shorthand” — then type @code to expand it.</div>`;
+    return;
+  }
+  const sorted = [...state.shorthands].sort((left, right) => left.code.localeCompare(right.code));
+  els.shorthandList.innerHTML = sorted.map(item => `
+    <div class="shorthand-row" data-shorthand-code="${escapeHtml(item.code)}">
+      <div class="shorthand-row-text">
+        <strong>@${escapeHtml(item.code)}</strong>
+        <p>${escapeHtml(previewShorthand(item.text))}</p>
+      </div>
+      <div class="shorthand-row-actions">
+        <button type="button" data-shorthand-edit>Edit</button>
+        <button type="button" data-shorthand-delete>Delete</button>
+      </div>
+    </div>`).join("");
+}
+
+function setShorthandOpen(open, prefill = null) {
+  state.shorthandOpen = Boolean(open);
+  els.shorthandPopover.classList.toggle("hidden", !state.shorthandOpen);
+  els.shorthandBtn.setAttribute("aria-expanded", String(state.shorthandOpen));
+  if (!state.shorthandOpen) return;
+  setAlwaysNotesOpen(false);
+  renderShorthands();
+  if (prefill) {
+    editingShorthandCode = "";
+    els.shorthandCodeInput.value = prefill.code || "";
+    els.shorthandTextInput.value = prefill.text || "";
+    updateShorthandForm();
+  }
+  window.setTimeout(() => els.shorthandCodeInput.focus({ preventScroll: true }), 50);
+}
+
+async function saveShorthandForm() {
+  const code = normalizeShorthandCode(els.shorthandCodeInput.value);
+  const text = els.shorthandTextInput.value.trim();
+  if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(code)) {
+    showToast("Invalid code", "Use letters, numbers, - or _ (no spaces).", "error");
+    return;
+  }
+  if (!text) {
+    showToast("Empty expansion", "Write the text this code expands to.", "error");
+    return;
+  }
+  const wasEditing = Boolean(editingShorthandCode);
+  const clash = state.shorthands.find(item => item.code === code);
+  if (clash && clash.code !== editingShorthandCode) {
+    showToast("Code already used", "Edit the existing entry below instead.", "error");
+    return;
+  }
+  if (editingShorthandCode && editingShorthandCode !== code) {
+    state.shorthands = state.shorthands.filter(item => item.code !== editingShorthandCode);
+  }
+  if (clash) clash.text = text;
+  else state.shorthands.push({ code, text });
+  if (!await persistShorthands()) return;
+  editingShorthandCode = "";
+  els.shorthandCodeInput.value = "";
+  els.shorthandTextInput.value = "";
+  updateShorthandForm();
+  renderShorthands();
+  trackFeature("shorthand.save");
+  showToast(wasEditing ? "Shorthand updated" : "Shorthand added", `@${code}`);
+}
+
+els.shorthandBtn.addEventListener("click", () => {
+  setShorthandOpen(!state.shorthandOpen);
+  if (state.shorthandOpen) trackFeature("shorthand.open");
+});
+els.closeShorthandBtn.addEventListener("click", () => setShorthandOpen(false));
+els.saveShorthandBtn.addEventListener("click", saveShorthandForm);
+els.cancelShorthandEditBtn.addEventListener("click", () => {
+  editingShorthandCode = "";
+  els.shorthandCodeInput.value = "";
+  els.shorthandTextInput.value = "";
+  updateShorthandForm();
+});
+els.shorthandList.addEventListener("click", async event => {
+  const row = event.target.closest("[data-shorthand-code]");
+  if (!row) return;
+  const code = row.dataset.shorthandCode;
+  if (event.target.closest("[data-shorthand-delete]")) {
+    if (!confirm(`Delete @${code}?`)) return;
+    state.shorthands = state.shorthands.filter(item => item.code !== code);
+    if (await persistShorthands()) {
+      renderShorthands();
+      trackFeature("shorthand.delete");
+      showToast("Shorthand deleted", `@${code}`);
+    }
+    return;
+  }
+  if (event.target.closest("[data-shorthand-edit]")) {
+    const item = state.shorthands.find(entry => entry.code === code);
+    if (!item) return;
+    editingShorthandCode = code;
+    els.shorthandCodeInput.value = code;
+    els.shorthandTextInput.value = item.text;
+    updateShorthandForm();
+    els.shorthandCodeInput.focus();
+  }
+});
 
 // Move a template within the loaded list and merge that move into the stored
 // global order, so reordering works the same with or without active filters.
@@ -4664,12 +4970,19 @@ function syncYearConverter(source) {
   // plain-text serialization that keeps empty paragraphs.
   editor.addEventListener("copy", handleEditorCopy);
   editor.addEventListener("contextmenu", event => {
+    const actions = [];
+    const selected = editorSelectionText(editor);
+    if (selected && selected.trim()) {
+      const clipped = selected.trim().slice(0, 2000);
+      actions.push({ label: "Save selection as shorthand", run: () => setShorthandOpen(true, { code: "", text: clipped }) });
+    }
     const hit = wordAtPoint(editor, event.clientX, event.clientY);
-    if (!hit || !isSuspiciousWord(hit.word) || isPersonalDictionaryWord(hit.word)) return;
+    if (hit && isSuspiciousWord(hit.word) && !isPersonalDictionaryWord(hit.word)) {
+      actions.push({ label: `Add "${hit.word}" to dictionary`, run: () => addPersonalDictionaryWord(hit.word, editor) });
+    }
+    if (!actions.length) return;
     event.preventDefault();
-    showContextMenu(event.clientX, event.clientY, [
-      { label: `Add "${hit.word}" to dictionary`, run: () => addPersonalDictionaryWord(hit.word, editor) }
-    ]);
+    showContextMenu(event.clientX, event.clientY, actions);
   });
 });
 els.templateList.addEventListener("click", event => {
@@ -4935,6 +5248,7 @@ els.reportPersonalNoteInput.addEventListener("input", () => {
 document.addEventListener("pointerdown", event => {
   if (els.pawletImageLightbox.open && els.pawletImageLightbox.contains(event.target)) return;
   if (state.alwaysNotesOpen && !els.alwaysNotesShell.contains(event.target) && !els.contextMenu.contains(event.target)) setAlwaysNotesOpen(false);
+  if (state.shorthandOpen && !els.shorthandShell.contains(event.target) && !els.contextMenu.contains(event.target)) setShorthandOpen(false);
   if (state.reportNotePopoverOpen && !els.reportNotePopover.contains(event.target) && !els.quickReportNoteBtn.contains(event.target)) {
     setReportNotePopoverOpen(false);
   }
@@ -4951,6 +5265,10 @@ document.addEventListener("keydown", event => {
     return;
   }
   if (state.reportNotePopoverOpen) setReportNotePopoverOpen(false);
+  if (state.shorthandOpen) {
+    setShorthandOpen(false);
+    return;
+  }
   if (state.alwaysNotesOpen) setAlwaysNotesOpen(false);
 });
 els.newReportBtn.addEventListener("click", () => startNewReport());
@@ -5127,7 +5445,7 @@ async function loadApp() {
   await initTiptapEditors();
   await loadPersonalDictionary();
   await loadAiSettings();
-  await Promise.all([loadReportNotes(), loadPersonalNotes(), loadTemplateOrder()]);
+  await Promise.all([loadReportNotes(), loadPersonalNotes(), loadTemplateOrder(), loadShorthands()]);
   loadFeatureUsage().catch(error => console.warn("Feature usage could not be loaded.", error));
   loadSpellchecker();
   updateTemplateModeBadge();

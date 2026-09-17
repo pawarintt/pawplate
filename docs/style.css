@@ -1457,6 +1457,192 @@ body[data-theme="dark"] #worklogModeBtn {
   }
 }
 
+/* Personal shorthands: @code expansion in editors, managed from the
+   topbar popover next to Pawlet. */
+.shorthand-shell {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.shorthand-trigger {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-color: var(--blue-line);
+  background: var(--blue-soft);
+  color: var(--ink);
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.shorthand-trigger > span:first-child {
+  font-weight: 900;
+  color: var(--blue);
+}
+
+.shorthand-count {
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 9px;
+  padding: 0 4px;
+  background: rgba(255, 253, 248, .8);
+  color: var(--muted);
+  font-size: .68rem;
+}
+
+.shorthand-popover {
+  position: fixed;
+  top: 52px;
+  left: 12px;
+  z-index: 70;
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(640px, calc(100vh - 64px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--blue-line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  box-shadow: 0 18px 46px rgba(82, 55, 45, .2);
+}
+
+.shorthand-popover.hidden {
+  display: none;
+}
+
+.shorthand-popover .notes-popover-head > div {
+  margin-right: auto;
+  display: grid;
+  gap: 0;
+}
+
+.shorthand-popover .notes-popover-head > div span {
+  color: var(--muted);
+  font-size: .66rem;
+  font-weight: 650;
+}
+
+.shorthand-form {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.shorthand-form input,
+.shorthand-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: rgba(255,255,255,.7);
+  color: var(--ink);
+  font-size: .82rem;
+}
+
+.shorthand-form textarea {
+  resize: vertical;
+  min-height: 54px;
+  line-height: 1.4;
+}
+
+.shorthand-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.shorthand-list {
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.shorthand-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(217, 213, 204, .5);
+}
+
+.shorthand-row-text strong {
+  font-size: .83rem;
+  color: var(--blue);
+}
+
+.shorthand-row-text p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: .76rem;
+  line-height: 1.35;
+}
+
+.shorthand-row-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+
+.shorthand-row-actions button {
+  min-height: 28px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: .74rem;
+}
+
+.shorthand-palette {
+  position: fixed;
+  z-index: 90;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--blue-line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  box-shadow: 0 14px 36px rgba(30, 25, 22, .25);
+  padding: 4px;
+}
+
+.shorthand-palette.hidden {
+  display: none;
+}
+
+.shorthand-palette button {
+  width: 100%;
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.shorthand-palette button.active {
+  background: var(--blue-soft);
+}
+
+.shorthand-palette-code {
+  font-size: .82rem;
+  font-weight: 800;
+  color: var(--blue);
+}
+
+.shorthand-palette-preview {
+  font-size: .74rem;
+  color: var(--muted);
+  line-height: 1.3;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .result-snippet {
   margin-top: 6px;
   font-size: .82rem;
