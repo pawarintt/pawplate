@@ -2400,6 +2400,7 @@ mark {
   min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
@@ -2437,6 +2438,8 @@ mark {
 .summary-card:nth-child(2) { background: var(--mint); }
 .summary-card:nth-child(3) { background: var(--sky); }
 .summary-card:nth-child(4) { background: var(--lilac); }
+.summary-card:nth-child(5) { background: var(--rose); }
+.summary-card:nth-child(6) { background: var(--yellow); }
 
 @media (max-width: 1480px) {
   .worklog-topbar-context .summary-card span {

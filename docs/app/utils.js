@@ -25,16 +25,28 @@ export function plainText(value) {
   if (!isHtml(raw)) return raw;
   const div = document.createElement("div");
   div.innerHTML = raw;
-  return div.textContent || "";
+  // Preserve line breaks: <br> becomes \n and block ends become \n,
+  // so empty paragraphs survive as blank lines instead of vanishing.
+  div.querySelectorAll("br").forEach(node => node.replaceWith(document.createTextNode("\n")));
+  div.querySelectorAll("p, div, li, h1, h2, h3, h4, h5, h6").forEach(node => node.append(document.createTextNode("\n")));
+  return (div.textContent || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n");
 }
 
 export function reportHtml(value) {
   const raw = String(value || "");
   if (isHtml(raw)) return raw;
-  return escapeHtml(raw)
+  // Build real paragraphs so blank lines become empty <p> blocks.
+  // Single newlines stay as <br> inside a paragraph; blank lines split paragraphs.
+  // This keeps empty lines visible in the editor AND intact on native copy-paste.
+  const escapeLine = line => escapeHtml(line)
     .replace(/\t/g, "&#9;")
-    .replace(/ {2,}/g, spaces => "&nbsp;".repeat(spaces.length))
-    .replace(/\n/g, "<br>");
+    .replace(/ {2,}/g, spaces => "&nbsp;".repeat(spaces.length));
+  const blocks = raw.replace(/\r/g, "").split(/\n{2,}/);
+  const html = blocks.map(block => {
+    const lines = block.split("\n").map(escapeLine).join("<br>");
+    return `<p>${lines || "<br>"}</p>`;
+  }).join("");
+  return html || "<p><br></p>";
 }
 
 export function friendlyErrorMessage(error) {

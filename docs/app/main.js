@@ -143,9 +143,7 @@ const SNIPPET_SCHEMAS = {
             label: "Mass",
             fields: [
               { key: "breast", label: "Breast", type: "select", options: ["right breast", "left breast"] },
-              { key: "clock", label: "Clock", type: "text", placeholder: "10 o'clock" },
-              { key: "distance", label: "Distance", type: "text", placeholder: "3 cm from the nipple" },
-              { key: "depth", label: "Depth", type: "select", options: ["anterior depth", "middle depth", "posterior depth", "subareolar region"] },
+              { key: "clock", label: "Clock", type: "text", placeholder: "10 (auto → 10 o'clock)" },
               { key: "size", label: "Size", type: "text", placeholder: "0.8 x 0.5 x 0.4 cm" },
               { key: "shape", label: "Shape", type: "select", options: ["oval", "round", "irregular"] },
               { key: "orientation", label: "Orientation", type: "select", options: ["parallel", "not parallel"] },
@@ -437,6 +435,62 @@ function tiradsScore(values) {
   return { total, category };
 }
 
+function formatClockFace(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  // Already has o'clock in any spelling: normalize spacing.
+  if (/o\s*'?clock/i.test(text)) {
+    return text
+      .replace(/\s*o\s*'?clock/ig, " o'clock")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  // Bare numbers like "10", "3", "10-11", "2 - 4": append o'clock.
+  const range = text.match(/^(\d{1,2})(?:\s*[-\u2013\u2014]\s*(\d{1,2}))?$/);
+  if (range) {
+    return range[2] ? `${range[1]}-${range[2]} o'clock` : `${range[1]} o'clock`;
+  }
+  return text;
+}
+
+// Simplified suggested BI-RADS from the US mass lexicon (ACR BI-RADS
+// Ultrasound, 5th ed. descriptors). Transparent estimate only — the
+// radiologist must verify; not a substitute for full assessment.
+function biradsUltrasoundAssessment(values) {
+  const shapeScore = { oval: 0, round: 1, irregular: 2 };
+  const orientationScore = { parallel: 0, "not parallel": 2 };
+  const marginScore = { circumscribed: 0, indistinct: 1, microlobulated: 2, angular: 2, spiculated: 3 };
+  const echoScore = { anechoic: 0, hyperechoic: 0, isoechoic: 0, hypoechoic: 1, heterogeneous: 1, "complex cystic and solid": 1 };
+  const posteriorScore = { "no posterior features": 0, "posterior enhancement": 0, "posterior shadowing": 2, "combined posterior pattern": 2 };
+  const vascularityScore = { "no internal vascularity": 0, "peripheral vascularity": 1, "internal vascularity": 1 };
+  const total = (shapeScore[values.shape] ?? 0)
+    + (orientationScore[values.orientation] ?? 0)
+    + (marginScore[values.margin] ?? 0)
+    + (echoScore[values.echo] ?? 0)
+    + (posteriorScore[values.posterior] ?? 0)
+    + (vascularityScore[values.vascularity] ?? 0);
+  const flags = [];
+  if (values.shape === "irregular") flags.push("irregular shape");
+  if (values.shape === "round") flags.push("round shape");
+  if (values.orientation === "not parallel") flags.push("not parallel orientation");
+  if (values.margin && values.margin !== "circumscribed") flags.push(`${values.margin} margin`);
+  if (values.echo === "hypoechoic" || values.echo === "heterogeneous" || values.echo === "complex cystic and solid") flags.push(`${values.echo} echo`);
+  if (values.posterior === "posterior shadowing" || values.posterior === "combined posterior pattern") flags.push(values.posterior);
+  if (values.vascularity === "internal vascularity") flags.push("internal vascularity");
+  // Classic simple cyst pattern reads as benign.
+  const isSimpleCyst = values.echo === "anechoic"
+    && values.margin === "circumscribed"
+    && (values.shape === "oval" || values.shape === "round")
+    && values.orientation === "parallel"
+    && (values.posterior === "posterior enhancement" || values.posterior === "no posterior features");
+  if (isSimpleCyst) return { category: "2", total, flags, label: "benign (simple-cyst pattern)" };
+  if (total <= 0) return { category: "3", total, flags, label: "probably benign" };
+  if (total <= 2) return { category: "4A", total, flags, label: "low suspicion" };
+  if (total <= 4) return { category: "4B", total, flags, label: "moderate suspicion" };
+  if (total <= 6) return { category: "4C", total, flags, label: "high suspicion" };
+  return { category: "5", total, flags, label: "highly suggestive of malignancy" };
+}
+
 function buildSnippetText() {
   const { system, modality, finding } = currentSnippetSchema();
   const values = state.snippet.values;
@@ -460,18 +514,19 @@ function buildSnippetText() {
     return sentenceCase(joinPhrase([values.distribution, values.morphology, "calcifications are seen", location ? `in the ${location}` : ""]) + ".");
   }
   if (system === SNIPPET_SCHEMAS.birads && modality.label === "Ultrasound" && finding.label === "Mass") {
+    const clock = formatClockFace(snippetValue("clock"));
     const location = joinPhrase([
       values.breast,
-      snippetValue("clock") ? `at ${snippetValue("clock")}` : "",
-      snippetValue("distance"),
-      values.depth
+      clock ? `at ${clock}` : ""
     ], ", ");
     const descriptor = joinPhrase([values.shape, values.orientation, values.margin, values.echo, "mass"]);
     const size = snippetValue("size");
     const lesion = joinPhrase([size ? `${size}` : "", descriptor]);
     const posterior = values.posterior && values.posterior !== "no posterior features" ? ` with ${values.posterior}` : "";
     const vascularity = values.vascularity ? ` and ${values.vascularity}` : "";
-    return sentenceCase(joinPhrase([`There is ${size ? "a" : indefiniteArticle(descriptor)}`, lesion, location ? `in the ${location}` : ""]) + `${posterior}${vascularity}.`);
+    const assessment = biradsUltrasoundAssessment(values);
+    const sentence = sentenceCase(joinPhrase([`${size ? "A" : indefiniteArticle(descriptor)}`, lesion, location ? `in the ${location}` : ""]) + `${posterior}${vascularity}.`);
+    return `${sentence} Suggested BI-RADS ${assessment.category} (${assessment.label}; simplified estimate — please verify).`;
   }
   return "";
 }
@@ -567,13 +622,47 @@ function insertReportText(text) {
   const editor = els.reportTextEditor;
   const tiptap = editor.__pawplateEditor;
   if (tiptap) {
-    tiptap.chain().focus().insertContent(`${escapeHtml(value)}<p></p>`).run();
+    // Use reportHtml so blank lines become empty paragraphs instead of
+    // collapsing into a single block.
+    tiptap.chain().focus().insertContent(`${reportHtml(value)}<p></p>`).run();
     updateProofing(editor, { fallback: false });
     return;
   }
   editor.focus();
   document.execCommand("insertText", false, `${value}\n`);
   updateProofing(editor);
+}
+
+// Serialize the current selection inside a report/template editor to plain
+// text WITHOUT dropping blank lines (native serialization collapses empty
+// paragraphs and <br><br> runs when pasting into plain-text targets).
+function editorSelectionText(editor) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  const range = selection.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return null;
+  const holder = document.createElement("div");
+  holder.appendChild(range.cloneContents());
+  holder.querySelectorAll("br").forEach(node => node.replaceWith(document.createTextNode("\n")));
+  holder.querySelectorAll("p, div, li, h1, h2, h3, h4, h5, h6").forEach(node => node.append(document.createTextNode("\n")));
+  return (holder.textContent || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n");
+}
+
+function handleEditorCopy(event) {
+  const editor = event.currentTarget;
+  const text = editorSelectionText(editor);
+  if (text === null || !event.clipboardData) return;
+  event.preventDefault();
+  event.clipboardData.setData("text/plain", text);
+  try {
+    // Keep rich-target pastes scoped to the actual selection, not the whole report.
+    const selection = window.getSelection();
+    const htmlHolder = document.createElement("div");
+    htmlHolder.appendChild(selection.getRangeAt(0).cloneContents());
+    if (htmlHolder.innerHTML) event.clipboardData.setData("text/html", htmlHolder.innerHTML);
+  } catch {
+    // Plain text alone is enough for the paste targets.
+  }
 }
 
 function updateReportModeBadge() {
@@ -1622,11 +1711,20 @@ function highlight(value, query) {
 function snippet(text, query) {
   const clean = plainText(text).replace(/\s+/g, " ").trim();
   if (!clean) return "";
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return clean.slice(0, 210);
-  const index = clean.toLowerCase().indexOf(q);
+  const terms = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return clean.slice(0, 210);
+  const lowered = clean.toLowerCase();
+  let index = -1;
+  let matchedLength = 0;
+  for (const term of terms) {
+    const at = lowered.indexOf(term);
+    if (at >= 0 && (index < 0 || at < index)) {
+      index = at;
+      matchedLength = term.length;
+    }
+  }
   const start = Math.max(0, index < 0 ? 0 : index - 80);
-  const end = Math.min(clean.length, (index < 0 ? 0 : index) + q.length + 150);
+  const end = Math.min(clean.length, (index < 0 ? 0 : index) + matchedLength + 150);
   return `${start ? "... " : ""}${clean.slice(start, end)}${end < clean.length ? " ..." : ""}`;
 }
 
@@ -3631,6 +3729,28 @@ function worklogDateCounts() {
   return counts;
 }
 
+// Normalize free-text modality entries into the five work-log buckets:
+// CT, US, CR (plain film / X-ray), MR (MRI), Flu (fluoroscopy). Returns "" when unknown.
+function classifyWorklogModality(modality) {
+  const raw = String(modality || "").toLowerCase();
+  if (!raw.trim()) return "";
+  if (/(mri|\bmr\b|magnetic resonance)/.test(raw)) return "MR";
+  if (/\bct\b|ct angi|cta\b|mdct|ncct|computed tomo/.test(raw)) return "CT";
+  if (/ultrasound|\bus\b|sonogr|\bsono\b/.test(raw)) return "US";
+  if (/fluoro|\bflu\b|\brf\b/.test(raw)) return "Flu";
+  if (/\bcr\b|\bdx\b|\bdr\b|film|x-?ray|\bxr\b|\bcxr\b|radiograph|plain film/.test(raw)) return "CR";
+  return "";
+}
+
+function worklogModalityCounts(reports = state.workLogReports) {
+  const counts = { CT: 0, US: 0, CR: 0, MR: 0, Flu: 0 };
+  for (const report of reports) {
+    const bucket = classifyWorklogModality(report.modality);
+    if (bucket && counts[bucket] !== undefined) counts[bucket] += 1;
+  }
+  return counts;
+}
+
 async function loadWorkLog() {
   const request = beginDataLoad("workLog");
   await loadReportNotes();
@@ -3661,12 +3781,15 @@ function renderWorkLog() {
   const todayCount = counts.get(dateKey(today)) || 0;
   const interestingCount = state.workLogReports.filter(report => report.isInteresting).length;
   const activeDays = counts.size;
+  const modalityCounts = worklogModalityCounts();
   els.worklogSummary.innerHTML = [
-    ["Total reports", state.workLogReports.length],
-    ["Saved today", todayCount],
-    ["Active days", activeDays],
-    ["Interesting", interestingCount]
-  ].map(([label, value]) => `<div class="summary-card"><strong>${value}</strong><span>${label}</span></div>`).join("");
+    ["Total reports", state.workLogReports.length, `${todayCount} saved today · ${activeDays} active days · ${interestingCount} interesting`],
+    ["CT", modalityCounts.CT, "Computed tomography"],
+    ["US", modalityCounts.US, "Ultrasound"],
+    ["CR", modalityCounts.CR, "Plain film / X-ray"],
+    ["MR", modalityCounts.MR, "MRI"],
+    ["Flu", modalityCounts.Flu, "Fluoroscopy"]
+  ].map(([label, value, title]) => `<div class="summary-card" title="${escapeHtml(title || label)}"><strong>${value}</strong><span>${label}</span></div>`).join("");
 
   renderWorklogCalendar(counts, today);
 
@@ -3677,6 +3800,7 @@ function renderWorkLog() {
   els.worklogList.innerHTML = reports.map((report, index) => {
     const date = savedDate(report);
     const personalNote = reportNoteText(report.id);
+    const reportExcerpt = report.report ? snippet(report.report, query) : "";
     return `
       <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-worklog-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
@@ -3685,6 +3809,7 @@ function renderWorkLog() {
           <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
           ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
           ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
+          ${reportExcerpt ? `<span class="result-snippet result-report-snippet">${highlight(reportExcerpt, query)}</span>` : ""}
           ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, query), query)}</span>` : ""}
         </span>
       </button>
@@ -3819,6 +3944,7 @@ function renderInterestingCases() {
   }
   els.interestingList.innerHTML = reports.map((report, index) => {
     const personalNote = reportNoteText(report.id);
+    const reportExcerpt = report.report ? snippet(report.report, query) : "";
     return `
       <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-interesting-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
@@ -3827,6 +3953,7 @@ function renderInterestingCases() {
           <span class="result-meta">${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
           ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
           ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
+          ${reportExcerpt ? `<span class="result-snippet result-report-snippet">${highlight(reportExcerpt, query)}</span>` : ""}
           ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, query), query)}</span>` : ""}
         </span>
       </button>
@@ -4484,7 +4611,16 @@ els.snippetFields?.addEventListener("input", event => {
 els.snippetFields?.addEventListener("change", event => {
   const field = event.target.closest("[data-snippet-field]");
   if (!field) return;
-  state.snippet.values[field.dataset.snippetField] = field.value;
+  let value = field.value;
+  // Autofill "o'clock": typing "10" becomes "10 o'clock" on blur/enter.
+  if (field.dataset.snippetField === "clock") {
+    const formatted = formatClockFace(value);
+    if (formatted && formatted !== value) {
+      value = formatted;
+      field.value = formatted;
+    }
+  }
+  state.snippet.values[field.dataset.snippetField] = value;
   els.snippetPreviewText.textContent = buildSnippetText();
 });
 els.snippetFields?.addEventListener("click", event => {
@@ -4654,6 +4790,9 @@ document.querySelectorAll(".format-toolbar").forEach(toolbar => {
     if (editor === els.reportTextEditor) scheduleReportAutosave();
   }, 120));
   editor.addEventListener("blur", () => updateProofing(editor));
+  // Native select-all + copy collapses blank lines; serve our own
+  // plain-text serialization that keeps empty paragraphs.
+  editor.addEventListener("copy", handleEditorCopy);
   editor.addEventListener("contextmenu", event => {
     const hit = wordAtPoint(editor, event.clientX, event.clientY);
     if (!hit || !isSuspiciousWord(hit.word) || isPersonalDictionaryWord(hit.word)) return;
