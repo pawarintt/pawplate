@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-ref-tab";
-import { collectDom } from "./dom.js?v=20260929-ref-tab";
-import { createInitialState } from "./state.js?v=20260929-ref-tab";
+} from "./constants.js?v=20260929-worklog-modality-filter";
+import { collectDom } from "./dom.js?v=20260929-worklog-modality-filter";
+import { createInitialState } from "./state.js?v=20260929-worklog-modality-filter";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-ref-tab";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-ref-tab";
+} from "./utils.js?v=20260929-worklog-modality-filter";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-modality-filter";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4491,7 +4491,8 @@ function filteredWorklogReports() {
   const query = els.worklogSearchInput.value.trim();
   return state.workLogReports
     .filter(report => reportMatchesQuery(report, query))
-    .filter(report => !state.worklogSelectedDate || dateKey(savedDate(report) || new Date(0)) === state.worklogSelectedDate);
+    .filter(report => !state.worklogSelectedDate || dateKey(savedDate(report) || new Date(0)) === state.worklogSelectedDate)
+    .filter(report => !state.worklogModality || (classifyWorklogModality(report.modality) || "Other") === state.worklogModality);
 }
 
 const WORKLOG_MODALITIES = ["CT", "US", "CR", "MR", "Flu"];
@@ -4605,13 +4606,19 @@ function renderWorkLog() {
     ["MR", modalityCounts.MR, "MRI"],
     ["Flu", modalityCounts.Flu, "Fluoroscopy"],
     ["Other", modalityCounts.Other, "Other or unrecognized modality"]
-  ].map(([label, value, title], index) => `<div class="summary-card${index ? ` mod-${label.toLowerCase()}` : ""}" title="${escapeHtml(title || label)}"><strong>${value}</strong><span>${label}</span></div>`).join("");
+  ].map(([label, value, title], index) => {
+    const modality = index ? label : "";
+    const active = modality && state.worklogModality === modality;
+    const hint = modality ? (active ? "Click to show all modalities" : `Click to show only ${label}`) : "Click to show all modalities";
+    return `<button type="button" class="summary-card${modality ? ` mod-${label.toLowerCase()}` : ""}${active ? " active" : ""}" data-worklog-modality="${modality}" aria-pressed="${active ? "true" : "false"}" title="${escapeHtml(`${title || label}. ${hint}`)}"><strong>${value}</strong><span>${label}</span></button>`;
+  }).join("");
+  els.worklogSummary.classList.toggle("filtering", Boolean(state.worklogModality));
 
   if (state.worklogPanel === "trends") renderWorklogTrends(today);
   else renderWorklogCalendar(counts, today);
 
   if (!reports.length) {
-    els.worklogList.innerHTML = `<div class="empty">${state.worklogSelectedDate ? `No saved reports on ${escapeHtml(state.worklogSelectedDate)}.` : "Saved reports will build your personal work log here."}</div>`;
+    els.worklogList.innerHTML = `<div class="empty">${state.worklogModality || state.worklogSelectedDate ? `No saved ${state.worklogModality ? `${escapeHtml(state.worklogModality)} ` : ""}reports${state.worklogSelectedDate ? ` on ${escapeHtml(state.worklogSelectedDate)}` : ""}.` : "Saved reports will build your personal work log here."}</div>`;
     return;
   }
   els.worklogList.innerHTML = reports.map((report, index) => {
@@ -5618,6 +5625,14 @@ els.saveReportBtn.addEventListener("click", () => {
 });
 els.worklogSearchInput.addEventListener("input", debounce(renderWorkLog));
 els.interestingSearchInput.addEventListener("input", debounce(renderInterestingCases));
+els.worklogSummary.addEventListener("click", event => {
+  const card = event.target.closest("[data-worklog-modality]");
+  if (!card) return;
+  const modality = card.dataset.worklogModality;
+  state.worklogModality = modality && state.worklogModality !== modality ? modality : "";
+  if (state.worklogModality) trackFeature("work_log.modality_filter");
+  renderWorkLog();
+});
 els.worklogHeatmap.addEventListener("click", event => {
   const actionButton = event.target.closest("[data-calendar-action]");
   if (actionButton) {

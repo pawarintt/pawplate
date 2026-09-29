@@ -2589,6 +2589,23 @@ mark {
   gap: 3px 4px;
 }
 
+button.summary-card {
+  min-height: 0;
+  padding: 3px 7px;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+.worklog-summary.filtering .summary-card:not(.active) {
+  opacity: .5;
+}
+
+.worklog-summary .summary-card.active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--coffee);
+}
+
 .worklog-summary .summary-card:first-child {
   grid-row: span 2;
   align-self: stretch;

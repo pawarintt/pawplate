@@ -42,6 +42,8 @@ export function createInitialState(snippetDefaults) {
     referenceDrawerOpen: false,
     worklogMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     worklogSelectedDate: "",
+    // Modality bucket (CT/US/CR/MR/Flu/Other) the Work Log list is filtered to.
+    worklogModality: "",
     workLogReports: [],
     // Lightweight rows (modality + dates) for every saved report, used for
     // calendar counts and monthly trends beyond the 500 reports the list loads.
