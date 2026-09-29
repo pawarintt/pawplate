@@ -2719,14 +2719,14 @@ mark {
 }
 
 .calendar-mods {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px 2px;
   min-width: 0;
 }
 
 .calendar-mod {
-  min-width: 13px;
+  min-width: 0;
   border-radius: 3px;
   padding: 0 2px;
   text-align: center;

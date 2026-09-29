@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-old-reports-compact";
-import { collectDom } from "./dom.js?v=20260929-old-reports-compact";
-import { createInitialState } from "./state.js?v=20260929-old-reports-compact";
+} from "./constants.js?v=20260929-worklog-zeros";
+import { collectDom } from "./dom.js?v=20260929-worklog-zeros";
+import { createInitialState } from "./state.js?v=20260929-worklog-zeros";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-old-reports-compact";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-old-reports-compact";
+} from "./utils.js?v=20260929-worklog-zeros";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-zeros";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4494,10 +4494,9 @@ function classifyWorklogModality(modality) {
 }
 
 function worklogModalityCounts(reports = worklogStatRecords()) {
-  const counts = { CT: 0, US: 0, CR: 0, MR: 0, Flu: 0 };
+  const counts = { CT: 0, US: 0, CR: 0, MR: 0, Flu: 0, Other: 0 };
   for (const report of reports) {
-    const bucket = classifyWorklogModality(report.modality);
-    if (bucket && counts[bucket] !== undefined) counts[bucket] += 1;
+    counts[classifyWorklogModality(report.modality) || "Other"] += 1;
   }
   return counts;
 }
@@ -4563,12 +4562,13 @@ function renderWorkLog() {
   const activeDays = counts.size;
   const modalityCounts = worklogModalityCounts();
   els.worklogSummary.innerHTML = [
-    ["Total reports", worklogStatRecords().length, `${todayCount} saved today · ${activeDays} active days · ${interestingCount} interesting`],
+    ["Total", worklogStatRecords().length, `${todayCount} saved today · ${activeDays} active days · ${interestingCount} interesting`],
     ["CT", modalityCounts.CT, "Computed tomography"],
     ["US", modalityCounts.US, "Ultrasound"],
     ["CR", modalityCounts.CR, "Plain film / X-ray"],
     ["MR", modalityCounts.MR, "MRI"],
-    ["Flu", modalityCounts.Flu, "Fluoroscopy"]
+    ["Flu", modalityCounts.Flu, "Fluoroscopy"],
+    ["Other", modalityCounts.Other, "Other or unrecognized modality"]
   ].map(([label, value, title], index) => `<div class="summary-card${index ? ` mod-${label.toLowerCase()}` : ""}" title="${escapeHtml(title || label)}"><strong>${value}</strong><span>${label}</span></div>`).join("");
 
   if (state.worklogPanel === "trends") renderWorklogTrends(today);
@@ -4685,7 +4685,7 @@ function renderWorklogCalendar(counts, today) {
     const count = dayCounts?.total || 0;
     const level = count >= 4 ? 4 : count;
     const parts = dayCounts
-      ? WORKLOG_MODALITIES.filter(name => dayCounts[name]).map(name => [name, dayCounts[name]])
+      ? [...WORKLOG_MODALITIES, "Other"].map(name => [name, dayCounts[name]])
       : [];
     const classes = [
       "calendar-day",
@@ -4694,7 +4694,7 @@ function renderWorklogCalendar(counts, today) {
       key === state.worklogSelectedDate ? "selected" : ""
     ].filter(Boolean).join(" ");
     cells.push(`
-      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}${parts.map(([name, value]) => `\n${name}: ${value}`).join("")}${dayCounts?.Other ? `\nOther: ${dayCounts.Other}` : ""}">
+      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}${parts.map(([name, value]) => `\n${name}: ${value}`).join("")}">
         <span class="calendar-day-head">
           <span class="calendar-number">${day}</span>
           ${count ? `<span class="calendar-count" title="Total">${count}</span>` : ""}
