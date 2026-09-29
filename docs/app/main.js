@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-worklog-colors";
-import { collectDom } from "./dom.js?v=20260929-worklog-colors";
-import { createInitialState } from "./state.js?v=20260929-worklog-colors";
+} from "./constants.js?v=20260929-old-reports-compact";
+import { collectDom } from "./dom.js?v=20260929-old-reports-compact";
+import { createInitialState } from "./state.js?v=20260929-old-reports-compact";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-worklog-colors";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-colors";
+} from "./utils.js?v=20260929-old-reports-compact";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-old-reports-compact";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -3149,21 +3149,17 @@ function selectOldReport(id) {
 // Report Writer "Old Reports" tab: a quick look at how others worded similar
 // cases while writing. Every search word must match somewhere, so
 // "CT appendicitis perforated" narrows instead of matching the literal phrase.
-const WRITER_OLD_SOURCES = [
-  { value: "old-report", label: "Others' reports" },
-  { value: "", label: "Include mine" }
-];
-
 function renderWriterOldChips() {
   const modalities = valuesFrom(state.oldFacetRecords, "modality");
   if (state.writerOld.modality && !modalities.includes(state.writerOld.modality)) state.writerOld.modality = "";
-  renderChoiceChips(
-    els.writerOldModalityRadios,
-    [{ value: "", label: "All" }, ...modalities.map(value => ({ value, label: value }))],
-    state.writerOld.modality,
-    "writer-old-modality"
-  );
-  renderChoiceChips(els.writerOldSourceRadios, WRITER_OLD_SOURCES, state.writerOld.source, "writer-old-source");
+  setSelectOptions(els.writerOldModalitySelect, modalities, "All modalities", state.writerOld.modality);
+  els.writerOldSourceSelect.value = state.writerOld.source;
+}
+
+function setWriterOldExpanded(expanded) {
+  els.writerOldList.closest(".writer-old-reference").classList.toggle("expanded", expanded);
+  els.expandWriterOldBtn.textContent = expanded ? "Show list" : "Expand";
+  els.expandWriterOldBtn.setAttribute("aria-pressed", String(expanded));
 }
 
 function writerOldQuery() {
@@ -3228,7 +3224,6 @@ function renderWriterOldReports() {
         <span>
           <span class="result-title">${highlight(item.title || "Untitled", query)}${item.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
           <span class="result-meta">${escapeHtml(item.modality || "Modality")} / ${escapeHtml(item.bodyPart || item.topic || "Body part")}${item.sourceDate ? ` / ${escapeHtml(item.sourceDate)}` : ""}</span>
-          <span class="result-snippet">${highlight(snippet(item.report, query), query)}</span>
         </span>
       </button>
     `).join("");
@@ -5128,19 +5123,16 @@ els.useOldReportBtn.addEventListener("click", useOldReportAsTemplate);
 els.writerOldSearchInput.addEventListener("input", debounce(() => {
   loadViewData(loadWriterOldReports(), "Old Reports");
 }));
-els.writerOldModalityRadios.addEventListener("click", event => {
-  const button = event.target.closest("[data-choice-value]");
-  if (!button) return;
-  state.writerOld.modality = button.dataset.choiceValue;
-  renderWriterOldChips();
+els.writerOldModalitySelect.addEventListener("change", () => {
+  state.writerOld.modality = els.writerOldModalitySelect.value;
   loadViewData(loadWriterOldReports(), "Old Reports");
 });
-els.writerOldSourceRadios.addEventListener("click", event => {
-  const button = event.target.closest("[data-choice-value]");
-  if (!button) return;
-  state.writerOld.source = button.dataset.choiceValue;
-  renderWriterOldChips();
+els.writerOldSourceSelect.addEventListener("change", () => {
+  state.writerOld.source = els.writerOldSourceSelect.value;
   loadViewData(loadWriterOldReports(), "Old Reports");
+});
+els.expandWriterOldBtn.addEventListener("click", () => {
+  setWriterOldExpanded(els.expandWriterOldBtn.getAttribute("aria-pressed") !== "true");
 });
 els.writerOldMatchBtn.addEventListener("click", () => {
   if (!matchWriterOldToReport()) {
