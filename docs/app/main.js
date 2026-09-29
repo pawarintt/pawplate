@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-old-reports-popup";
-import { collectDom } from "./dom.js?v=20260929-old-reports-popup";
-import { createInitialState } from "./state.js?v=20260929-old-reports-popup";
+} from "./constants.js?v=20260929-worklog-header";
+import { collectDom } from "./dom.js?v=20260929-worklog-header";
+import { createInitialState } from "./state.js?v=20260929-worklog-header";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-old-reports-popup";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-old-reports-popup";
+} from "./utils.js?v=20260929-worklog-header";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-header";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },

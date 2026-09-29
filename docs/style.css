@@ -2579,13 +2579,20 @@ mark {
   background: linear-gradient(180deg, rgba(255, 241, 244, .72), rgba(255,253,248,.86) 180px), var(--paper);
 }
 
+/* Total, then CT/US/CR over MR/Flu/Other, matching the calendar day grid. */
 .worklog-summary {
   flex: 0 1 auto;
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto repeat(3, auto);
   align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
+  gap: 3px 4px;
+}
+
+.worklog-summary .summary-card:first-child {
+  grid-row: span 2;
+  align-self: stretch;
+  align-items: center;
 }
 
 .worklog-summary.hidden {
