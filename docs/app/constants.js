@@ -46,11 +46,6 @@ export const DEFAULT_PALETTE = {
   highlight: ["#fff0a8", "#ffd4dc", "#dcefc8", "#efe2c3", "#d9edf0"]
 };
 
-export const TEMPLATE_TYPE_FILTERS = [
-  { value: "", label: "All types" },
-  { value: "normal", label: "Normal" },
-  { value: "disease", label: "Disease" }
-];
 export const FEATURE_USAGE_SETTINGS_KEY = "featureUsageV1";
 export const TEMPLATE_ORDER_SETTINGS_KEY = "templateOrderV1";
 export const SHORTHAND_SETTINGS_KEY = "shorthandV1";

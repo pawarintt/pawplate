@@ -37,13 +37,12 @@ import {
   SHORTHAND_SETTINGS_KEY,
   SPELLCHECK_DICTIONARY_URL,
   TEMPLATE_ORDER_SETTINGS_KEY,
-  TEMPLATE_TYPE_FILTERS,
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-worklog-modality-filter";
-import { collectDom } from "./dom.js?v=20260929-worklog-modality-filter";
-import { createInitialState } from "./state.js?v=20260929-worklog-modality-filter";
+} from "./constants.js?v=20260929-no-template-kind";
+import { collectDom } from "./dom.js?v=20260929-no-template-kind";
+import { createInitialState } from "./state.js?v=20260929-no-template-kind";
 import {
   copyText,
   debounce,
@@ -54,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-worklog-modality-filter";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-modality-filter";
+} from "./utils.js?v=20260929-no-template-kind";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-no-template-kind";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1264,7 +1263,6 @@ function updateFilterOptions(scope, changed = "") {
   setSelectOptions(bodyFilter, valuesFrom(bodyRecords, "bodyPart"), "All body parts", bodyFilter.value);
   if (scope === "template") {
     renderChoiceChips(els.templateModalityRadios, choicesFromSelect(modalityFilter), modalityFilter.value, "template-modality");
-    renderChoiceChips(els.templateTypeRadios, TEMPLATE_TYPE_FILTERS, els.templateTypeFilter.value, "template-type");
   }
 }
 
@@ -3039,7 +3037,6 @@ function hasTemplateFilters() {
     || els.templateModalityFilter.value
     || els.templateTopicFilter.value
     || els.templateBodyPartFilter.value
-    || els.templateTypeFilter.value
   );
 }
 
@@ -3061,7 +3058,6 @@ function clearTemplateFilters() {
   els.templateModalityFilter.value = "";
   els.templateTopicFilter.value = "";
   els.templateBodyPartFilter.value = "";
-  els.templateTypeFilter.value = "";
   updateFilterOptions("template");
   loadViewData(loadTemplates(), "Templates");
 }
@@ -3313,14 +3309,15 @@ function blankTemplate() {
   setEditorHtml(els.templateTextEditor, "");
 }
 
+// Normal/Disease is no longer shown; keep a template's stored kind unchanged on save.
+let templateKind = "normal";
+
 function setTemplateKind(kind) {
-  els.templateKindRadios.forEach(radio => {
-    radio.checked = radio.value === kind;
-  });
+  templateKind = kind || "normal";
 }
 
 function getTemplateKind() {
-  return els.templateKindRadios.find(radio => radio.checked)?.value || "normal";
+  return templateKind;
 }
 
 function useOldReportAsTemplate() {
@@ -3345,7 +3342,7 @@ function templateData() {
     bodyPart: els.templateBodyPartInput.value.trim(),
     kind: getTemplateKind(),
     report: getEditorHtml(els.templateTextEditor),
-    keywords: `${els.templateTitleInput.value} ${els.templateTopicInput.value} ${els.templateBodyPartInput.value} ${getTemplateKind()}`,
+    keywords: `${els.templateTitleInput.value} ${els.templateTopicInput.value} ${els.templateBodyPartInput.value}`,
     sourceType: "personal-template",
     owner: state.auth?.user?.id || ""
   };
@@ -3382,7 +3379,6 @@ function templateFilter() {
   if (els.templateModalityFilter.value) clauses.push(`modality="${escapeFilter(els.templateModalityFilter.value)}"`);
   if (els.templateTopicFilter.value) clauses.push(`topic="${escapeFilter(els.templateTopicFilter.value)}"`);
   if (els.templateBodyPartFilter.value) clauses.push(`bodyPart="${escapeFilter(els.templateBodyPartFilter.value)}"`);
-  if (els.templateTypeFilter.value) clauses.push(`kind="${escapeFilter(els.templateTypeFilter.value)}"`);
   return clauses.join(" && ");
 }
 
@@ -3435,7 +3431,7 @@ function renderTemplates(query = els.templateSearchInput.value.trim()) {
       <span class="result-no">${index + 1}.</span>
       <span>
         <span class="result-title">${highlight(item.title || "Untitled", query)}</span>
-        <span class="result-meta">${escapeHtml(item.modality || "Modality")} / ${escapeHtml(item.topic || "Topic")} / ${escapeHtml(item.bodyPart || "Body part")} / ${escapeHtml(item.kind || "template")}</span>
+        <span class="result-meta">${escapeHtml(item.modality || "Modality")} / ${escapeHtml(item.topic || "Topic")} / ${escapeHtml(item.bodyPart || "Body part")}</span>
       </span>
     </button>
   `).join("");
@@ -4177,7 +4173,7 @@ async function useTemplateForReport(template = null) {
   els.reportModalityInput.value = source.modality || "";
   els.reportTopicInput.value = source.topic || "";
   els.reportBodyPartInput.value = source.bodyPart || "";
-  els.reportKeywordInput.value = source.kind || "";
+  els.reportKeywordInput.value = "";
   els.reportNoteInput.value = "";
   els.reportInterestingInput.checked = false;
   setEditorHtml(els.reportTextEditor, source.report || "");
@@ -4992,13 +4988,6 @@ els.templateModalityRadios?.addEventListener("click", event => {
   updateFilterOptions("template", "modality");
   loadViewData(loadTemplates(), "Templates");
 });
-els.templateTypeRadios?.addEventListener("click", event => {
-  const button = event.target.closest("[data-choice-value]");
-  if (!button) return;
-  els.templateTypeFilter.value = button.dataset.choiceValue;
-  renderChoiceChips(els.templateTypeRadios, TEMPLATE_TYPE_FILTERS, els.templateTypeFilter.value, "template-type");
-  loadViewData(loadTemplates(), "Templates");
-});
 els.snippetSystemSelect?.addEventListener("change", () => {
   state.snippet.system = els.snippetSystemSelect.value;
   const system = SNIPPET_SCHEMAS[state.snippet.system];
@@ -5227,8 +5216,7 @@ els.templateSearchInput.addEventListener("input", debounce(() => loadViewData(lo
 [
   els.templateModalityFilter,
   els.templateTopicFilter,
-  els.templateBodyPartFilter,
-  els.templateTypeFilter
+  els.templateBodyPartFilter
 ].forEach(element => element.addEventListener("input", debounce(() => {
   if (element === els.templateModalityFilter) updateFilterOptions("template", "modality");
   if (element === els.templateTopicFilter) updateFilterOptions("template", "topic");
