@@ -1824,17 +1824,8 @@ body[data-theme="dark"] #worklogModeBtn {
 }
 
 .writer-old-reference {
-  grid-template-rows: auto minmax(64px, 1fr) minmax(0, 3.2fr);
+  grid-template-rows: auto minmax(0, 1fr);
   border-bottom: 0;
-}
-
-.writer-old-reference.expanded {
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.writer-old-reference.expanded > .writer-old-controls,
-.writer-old-reference.expanded > .writer-old-list {
-  display: none;
 }
 
 .writer-old-controls {
@@ -1858,52 +1849,59 @@ body[data-theme="dark"] #worklogModeBtn {
   min-width: 0;
 }
 
-.writer-old-list .result-item {
-  grid-template-columns: 26px 1fr;
-  gap: 4px;
-  padding: 4px 8px 4px 4px;
-}
-
-.writer-old-list .result-title {
-  margin-bottom: 0;
-  white-space: nowrap;
+.writer-old-popover {
+  position: fixed;
+  top: 52px;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 65;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
-  text-overflow: ellipsis;
+  border: 1px solid var(--peach-line);
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 18px 46px rgba(82, 55, 45, .2);
 }
 
-.writer-old-list .result-title .interesting-badge {
+body[data-theme="dark"] .writer-old-popover {
+  background: #161616;
+  border-color: var(--line);
+}
+
+.writer-old-popover.hidden {
   display: none;
 }
 
-.writer-old-preview {
-  border-top: 1px solid var(--line);
+.writer-old-popover .notes-popover-head {
+  border-bottom-color: var(--peach-line);
+  background: linear-gradient(90deg, rgba(248, 226, 210, .72), rgba(255, 253, 248, .78));
 }
 
-.writer-old-preview .preview-head {
-  padding: 4px 8px;
-}
-
-.writer-old-preview .preview-head h3 {
-  flex: 1;
+.writer-old-popover .notes-popover-head > div {
+  margin-right: auto;
   min-width: 0;
-  font-size: .8rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: grid;
 }
 
-.writer-old-preview .preview-head button {
-  min-height: 28px;
-  padding: 2px 10px;
-  font-size: .78rem;
+.writer-old-popover .notes-popover-head > div span {
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 650;
+}
+
+.writer-old-popover .notes-popover-head button:not(.icon-button) {
+  min-height: 29px;
 }
 
 #writerOldPreviewText {
   overflow: auto;
   margin: 0;
-  padding: 10px 12px 16px;
-  font-size: .95rem;
-  line-height: 1.5;
+  padding: 16px 22px 28px;
+  font-size: 1rem;
+  line-height: 1.6;
+  user-select: text;
   background: linear-gradient(180deg, rgba(255, 253, 248, .72), rgba(255, 247, 240, .56));
 }
 

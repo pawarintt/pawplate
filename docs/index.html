@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260929-worklog-zeros">
+  <link rel="stylesheet" href="style.css?v=20260929-old-reports-popup">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -301,14 +301,6 @@
             </select>
           </div>
           <div id="writerOldList" class="result-list writer-old-list"></div>
-          <article class="preview writer-old-preview">
-            <div class="preview-head">
-              <h3 id="writerOldPreviewTitle">Select an old report</h3>
-              <button id="expandWriterOldBtn" class="quiet-button" type="button" aria-pressed="false" title="Hide the list to read the report">Expand</button>
-              <button id="copyWriterOldBtn" type="button">Copy</button>
-            </div>
-            <pre id="writerOldPreviewText"></pre>
-          </article>
         </div>
       </aside>
       <button id="referenceDrawerBtn" class="reference-drawer-btn" type="button" aria-expanded="false" aria-controls="writerReferencePane">References</button>
@@ -372,6 +364,17 @@
     </div>
   </dialog>
 
+  <section id="writerOldPopover" class="writer-old-popover hidden" role="dialog" aria-labelledby="writerOldPreviewTitle">
+    <div class="notes-popover-head">
+      <div>
+        <strong id="writerOldPreviewTitle">Old report</strong>
+        <span id="writerOldPreviewMeta"></span>
+      </div>
+      <button id="copyWriterOldBtn" class="quiet-button" type="button">Copy all</button>
+      <button id="closeWriterOldBtn" class="icon-button" type="button" aria-label="Close old report" title="Close (Esc)">&times;</button>
+    </div>
+    <pre id="writerOldPreviewText"></pre>
+  </section>
   <dialog id="pawletImageLightbox" class="pawlet-image-lightbox" aria-label="Full-screen Pawlet image">
     <div class="pawlet-image-lightbox-frame">
       <div class="pawlet-image-lightbox-head">
@@ -389,6 +392,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typo-js@1.3.2/typo.js"></script>
-  <script type="module" src="app/main.js?v=20260929-worklog-zeros"></script>
+  <script type="module" src="app/main.js?v=20260929-old-reports-popup"></script>
 </body>
 </html>

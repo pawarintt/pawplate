@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-worklog-zeros";
-import { collectDom } from "./dom.js?v=20260929-worklog-zeros";
-import { createInitialState } from "./state.js?v=20260929-worklog-zeros";
+} from "./constants.js?v=20260929-old-reports-popup";
+import { collectDom } from "./dom.js?v=20260929-old-reports-popup";
+import { createInitialState } from "./state.js?v=20260929-old-reports-popup";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-worklog-zeros";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-zeros";
+} from "./utils.js?v=20260929-old-reports-popup";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-old-reports-popup";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -292,7 +292,7 @@ function choicesFromSelect(select) {
 // Scroll positions of the writer reference panels, keyed by tab, so switching
 // tabs (or re-rendering a list) never loses the user's place. Filter inputs
 // persist naturally in the DOM; only scroll needs explicit memory.
-const REFERENCE_SCROLLABLES = ["templateList", "snippetFields", "snippetFindingList", "writerOldList", "writerOldPreviewText"];
+const REFERENCE_SCROLLABLES = ["templateList", "snippetFields", "snippetFindingList", "writerOldList"];
 
 function saveReferenceScroll(tab) {
   if (!REFERENCE_ROUTES[tab]) return;
@@ -330,6 +330,7 @@ function showReferenceTab(tab, options = {}) {
   });
   restoreReferenceScroll(tab);
   if (tab === "old-reports") openWriterOldReports();
+  else closeWriterOldReport();
   if (tab === "snippets") renderSnippetGenerator();
   if (options.updateRoute !== false && state.mode === "writer") updateRoute("writer", tab);
 }
@@ -1701,6 +1702,7 @@ function logout(message = "") {
   state.selectedGuideline = null;
   state.selectedWriterGuideline = null;
   state.writerOld = { ...state.writerOld, reports: [], error: "", selectedId: "", loaded: false };
+  closeWriterOldReport();
   state.loadedSettingKeys = new Set();
   state.startupPending = false;
   window.clearTimeout(state.startupRetryTimer);
@@ -2959,6 +2961,7 @@ async function reloadActiveView() {
 }
 
 function showMode(mode, options = {}) {
+  closeWriterOldReport();
   if (!MODE_ROUTES[mode]) mode = "builder";
   if (mode !== "writer") setReferenceDrawer(false);
   state.mode = mode;
@@ -3156,12 +3159,6 @@ function renderWriterOldChips() {
   els.writerOldSourceSelect.value = state.writerOld.source;
 }
 
-function setWriterOldExpanded(expanded) {
-  els.writerOldList.closest(".writer-old-reference").classList.toggle("expanded", expanded);
-  els.expandWriterOldBtn.textContent = expanded ? "Show list" : "Expand";
-  els.expandWriterOldBtn.setAttribute("aria-pressed", String(expanded));
-}
-
 function writerOldQuery() {
   return els.writerOldSearchInput.value.trim();
 }
@@ -3191,7 +3188,6 @@ async function loadWriterOldReports() {
     state.writerOld.reports = data.items;
     state.writerOld.error = "";
     state.writerOld.loaded = true;
-    if (!data.items.some(item => item.id === state.writerOld.selectedId)) state.writerOld.selectedId = data.items[0]?.id || "";
     renderWriterOldReports();
     return true;
   } catch (error) {
@@ -3223,25 +3219,65 @@ function renderWriterOldReports() {
         <span class="result-no">${index + 1}.</span>
         <span>
           <span class="result-title">${highlight(item.title || "Untitled", query)}${item.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
-          <span class="result-meta">${escapeHtml(item.modality || "Modality")} / ${escapeHtml(item.bodyPart || item.topic || "Body part")}${item.sourceDate ? ` / ${escapeHtml(item.sourceDate)}` : ""}</span>
+          <span class="result-meta">${escapeHtml(writerOldMeta(item))}</span>
+          <span class="result-snippet">${highlight(snippet(item.report, query), query)}</span>
         </span>
       </button>
     `).join("");
     els.writerOldList.scrollTop = scrollTop;
   }
-  const selected = state.writerOld.reports.find(item => item.id === state.writerOld.selectedId);
-  els.writerOldPreviewTitle.textContent = selected ? selected.title || "Untitled" : "Select an old report";
-  els.writerOldPreviewText.innerHTML = selected ? reportHtml(selected.report) : "";
-  els.copyWriterOldBtn.disabled = !selected;
 }
 
-function selectWriterOldReport(id) {
-  if (!state.writerOld.reports.some(item => item.id === id)) return;
-  const changed = state.writerOld.selectedId !== id;
+function writerOldMeta(item) {
+  return [item.modality || "Modality", item.bodyPart || item.topic || "Body part", item.sourceDate].filter(Boolean).join(" / ");
+}
+
+// Wrap search words in <mark> inside the rendered report so the sentence
+// being looked for stands out; text nodes only, so markup stays intact.
+function markTerms(container, query) {
+  const terms = String(query || "").trim().split(/\s+/).filter(term => term.length > 1).map(escapeRegex);
+  if (!terms.length) return;
+  const pattern = new RegExp(`(${terms.join("|")})`, "gi");
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(node => {
+    if (!pattern.test(node.nodeValue)) return;
+    pattern.lastIndex = 0;
+    const holder = document.createElement("span");
+    holder.innerHTML = escapeHtml(node.nodeValue).replace(pattern, "<mark>$1</mark>");
+    node.replaceWith(...holder.childNodes);
+  });
+}
+
+// The popup sits over the editor and leaves the Old Reports list visible,
+// so other results can be opened without closing it.
+function positionWriterOldPopover() {
+  const pane = els.writerReferencePane.getBoundingClientRect();
+  const right = window.innerWidth - pane.left + 8;
+  const roomy = pane.width > 0 && pane.left - 20 >= 480 && !state.referenceDrawerOpen;
+  els.writerOldPopover.style.right = roomy ? `${right}px` : "";
+  els.writerOldPopover.classList.toggle("full-width", !roomy);
+}
+
+function openWriterOldReport(id) {
+  const report = state.writerOld.reports.find(item => item.id === id);
+  if (!report) return;
   state.writerOld.selectedId = id;
   renderWriterOldReports();
-  if (changed) els.writerOldPreviewText.scrollTop = 0;
+  els.writerOldPreviewTitle.textContent = report.title || "Untitled";
+  els.writerOldPreviewMeta.textContent = writerOldMeta(report);
+  els.writerOldPreviewText.innerHTML = reportHtml(report.report);
+  markTerms(els.writerOldPreviewText, writerOldQuery());
+  positionWriterOldPopover();
+  els.writerOldPopover.classList.remove("hidden");
+  els.writerOldPreviewText.scrollTop = 0;
+  els.writerOldPreviewText.querySelector("mark")?.scrollIntoView({ block: "center" });
   trackFeature("writer_old_report.preview");
+}
+
+function closeWriterOldReport() {
+  els.writerOldPopover.classList.add("hidden");
 }
 
 // Fill the search from the report being written: its keywords (or title)
@@ -5131,9 +5167,7 @@ els.writerOldSourceSelect.addEventListener("change", () => {
   state.writerOld.source = els.writerOldSourceSelect.value;
   loadViewData(loadWriterOldReports(), "Old Reports");
 });
-els.expandWriterOldBtn.addEventListener("click", () => {
-  setWriterOldExpanded(els.expandWriterOldBtn.getAttribute("aria-pressed") !== "true");
-});
+els.closeWriterOldBtn.addEventListener("click", closeWriterOldReport);
 els.writerOldMatchBtn.addEventListener("click", () => {
   if (!matchWriterOldToReport()) {
     showToast("Nothing to match", "Add keywords, a title, or a modality to the report first.", "info");
@@ -5148,7 +5182,7 @@ els.writerOldList.addEventListener("click", event => {
     return;
   }
   const button = event.target.closest("[data-writer-old-id]");
-  if (button) selectWriterOldReport(button.dataset.writerOldId);
+  if (button) openWriterOldReport(button.dataset.writerOldId);
 });
 els.copyWriterOldBtn.addEventListener("click", async () => {
   const report = state.writerOld.reports.find(item => item.id === state.writerOld.selectedId);
@@ -5540,6 +5574,9 @@ els.reportPersonalNoteInput.addEventListener("input", () => {
 });
 document.addEventListener("pointerdown", event => {
   if (els.pawletImageLightbox.open && els.pawletImageLightbox.contains(event.target)) return;
+  if (!els.writerOldPopover.classList.contains("hidden")
+    && !els.writerOldPopover.contains(event.target)
+    && !els.writerOldList.contains(event.target)) closeWriterOldReport();
   if (state.alwaysNotesOpen && !els.alwaysNotesShell.contains(event.target) && !els.contextMenu.contains(event.target)) setAlwaysNotesOpen(false);
   if (state.shorthandOpen && !els.shorthandShell.contains(event.target) && !els.contextMenu.contains(event.target)) setShorthandOpen(false);
   if (state.reportNotePopoverOpen && !els.reportNotePopover.contains(event.target) && !els.quickReportNoteBtn.contains(event.target)) {
@@ -5551,6 +5588,10 @@ document.addEventListener("keydown", event => {
   if (els.pawletImageLightbox.open) {
     event.preventDefault();
     closePawletImageLightbox();
+    return;
+  }
+  if (!els.writerOldPopover.classList.contains("hidden")) {
+    closeWriterOldReport();
     return;
   }
   if (state.referenceDrawerOpen) {
