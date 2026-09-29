@@ -2666,10 +2666,12 @@ mark {
 }
 
 .calendar-mod {
+  min-width: 13px;
   border-radius: 3px;
   padding: 0 2px;
-  background: color-mix(in srgb, var(--mod) 38%, #fffdf8);
-  color: #4a3a33;
+  text-align: center;
+  background: color-mix(in srgb, var(--mod) 65%, #fffdf8);
+  color: #3f322c;
   font-size: .54rem;
   font-weight: 800;
   line-height: 1.35;
@@ -2683,13 +2685,24 @@ mark {
 .mod-flu { --mod: #e2c15f; }
 .mod-other { --mod: #cdb8ad; }
 
+.worklog-summary .summary-card[class*="mod-"],
+body[data-theme="dark"] .worklog-summary .summary-card[class*="mod-"] {
+  background: color-mix(in srgb, var(--mod) 65%, #fffdf8);
+  border-color: var(--mod);
+}
+
+body[data-theme="dark"] .worklog-summary .summary-card[class*="mod-"] {
+  background: color-mix(in srgb, var(--mod) 30%, #161616);
+  border-color: color-mix(in srgb, var(--mod) 55%, #161616);
+}
+
 .calendar-panel-toggle {
   font-weight: 800;
 }
 
 .trend-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   margin-bottom: 6px;
 }
@@ -2736,8 +2749,6 @@ mark {
 .trend-hit { fill: transparent; }
 .trend-seg { fill: var(--mod); }
 .trend-axis { stroke: var(--line-strong); stroke-width: 1; }
-.trend-line { fill: none; stroke: var(--coffee); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.trend-dot { fill: var(--paper-strong); stroke: var(--coffee); stroke-width: 2; }
 
 .trend-value,
 .trend-label {
@@ -2772,10 +2783,10 @@ mark {
   border-color: transparent;
 }
 
-.calendar-day.level-1 { background: #f8e2d2; border-color: var(--peach-line); }
-.calendar-day.level-2 { background: #f9d7da; border-color: var(--rose-line); }
-.calendar-day.level-3 { background: #dcefc8; border-color: var(--sage-line); }
-.calendar-day.level-4 { background: #a9c7cf; border-color: var(--blue-line); }
+.calendar-day.level-1,
+.calendar-day.level-2,
+.calendar-day.level-3,
+.calendar-day.level-4 { background: #fffdf8; border-color: var(--line-strong); }
 
 .calendar-day.today {
   box-shadow: inset 0 0 0 2px var(--coffee);

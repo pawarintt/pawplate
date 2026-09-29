@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-merge-regions";
-import { collectDom } from "./dom.js?v=20260929-merge-regions";
-import { createInitialState } from "./state.js?v=20260929-merge-regions";
+} from "./constants.js?v=20260929-worklog-colors";
+import { collectDom } from "./dom.js?v=20260929-worklog-colors";
+import { createInitialState } from "./state.js?v=20260929-worklog-colors";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-merge-regions";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-merge-regions";
+} from "./utils.js?v=20260929-worklog-colors";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-colors";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4574,7 +4574,7 @@ function renderWorkLog() {
     ["CR", modalityCounts.CR, "Plain film / X-ray"],
     ["MR", modalityCounts.MR, "MRI"],
     ["Flu", modalityCounts.Flu, "Fluoroscopy"]
-  ].map(([label, value, title]) => `<div class="summary-card" title="${escapeHtml(title || label)}"><strong>${value}</strong><span>${label}</span></div>`).join("");
+  ].map(([label, value, title], index) => `<div class="summary-card${index ? ` mod-${label.toLowerCase()}` : ""}" title="${escapeHtml(title || label)}"><strong>${value}</strong><span>${label}</span></div>`).join("");
 
   if (state.worklogPanel === "trends") renderWorklogTrends(today);
   else renderWorklogCalendar(counts, today);
@@ -4690,7 +4690,7 @@ function renderWorklogCalendar(counts, today) {
     const count = dayCounts?.total || 0;
     const level = count >= 4 ? 4 : count;
     const parts = dayCounts
-      ? [...WORKLOG_MODALITIES, "Other"].filter(name => dayCounts[name]).map(name => [name, dayCounts[name]])
+      ? WORKLOG_MODALITIES.filter(name => dayCounts[name]).map(name => [name, dayCounts[name]])
       : [];
     const classes = [
       "calendar-day",
@@ -4699,12 +4699,12 @@ function renderWorklogCalendar(counts, today) {
       key === state.worklogSelectedDate ? "selected" : ""
     ].filter(Boolean).join(" ");
     cells.push(`
-      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}${parts.map(([name, value]) => `\n${name}: ${value}`).join("")}">
+      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}${parts.map(([name, value]) => `\n${name}: ${value}`).join("")}${dayCounts?.Other ? `\nOther: ${dayCounts.Other}` : ""}">
         <span class="calendar-day-head">
           <span class="calendar-number">${day}</span>
           ${count ? `<span class="calendar-count" title="Total">${count}</span>` : ""}
         </span>
-        ${parts.length ? `<span class="calendar-mods">${parts.map(([name, value]) => `<span class="calendar-mod mod-${name.toLowerCase()}">${name}&nbsp;${value}</span>`).join("")}</span>` : ""}
+        ${parts.length ? `<span class="calendar-mods">${parts.map(([name, value]) => `<span class="calendar-mod mod-${name.toLowerCase()}" aria-label="${name} ${value}">${value}</span>`).join("")}</span>` : ""}
       </button>
     `);
   }
@@ -4727,26 +4727,6 @@ function renderWorklogCalendar(counts, today) {
   `;
 }
 
-// PocketBase timestamps use a space ("2026-09-29 10:00:00.000Z"); some
-// browsers only parse the ISO "T" form.
-function parseTimestamp(value) {
-  if (!value) return null;
-  const date = new Date(String(value).replace(" ", "T"));
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function median(values) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
-// Reading time is not recorded, so pace is estimated from the minutes
-// between consecutive saves on the same day. Gaps longer than this count
-// as breaks; reports whose date was edited to another day are skipped.
-const WORKLOG_BREAK_MINUTES = 45;
-
 function worklogMonthlyStats(endMonth, monthCount = 12) {
   const months = [];
   for (let offset = monthCount - 1; offset >= 0; offset -= 1) {
@@ -4757,8 +4737,7 @@ function worklogMonthlyStats(endMonth, monthCount = 12) {
       label: start.toLocaleDateString(undefined, { month: "short" }),
       total: 0,
       counts: { CT: 0, US: 0, CR: 0, MR: 0, Flu: 0, Other: 0 },
-      days: new Set(),
-      savesByDay: new Map()
+      days: new Set()
     });
   }
   const byKey = new Map(months.map(month => [month.key, month]));
@@ -4771,34 +4750,16 @@ function worklogMonthlyStats(endMonth, monthCount = 12) {
     month.total += 1;
     month.counts[classifyWorklogModality(report.modality) || "Other"] += 1;
     month.days.add(day);
-    const created = parseTimestamp(report.created);
-    if (created && dateKey(created) === day) {
-      if (!month.savesByDay.has(day)) month.savesByDay.set(day, []);
-      month.savesByDay.get(day).push(created.getTime());
-    }
   }
-  return months.map(month => {
-    const gaps = [];
-    for (const times of month.savesByDay.values()) {
-      times.sort((a, b) => a - b);
-      for (let i = 1; i < times.length; i += 1) {
-        const minutes = (times[i] - times[i - 1]) / 60000;
-        if (minutes > 0.25 && minutes <= WORKLOG_BREAK_MINUTES) gaps.push(minutes);
-      }
-    }
-    const minutesPerCase = gaps.length >= 3 ? median(gaps) : null;
-    return {
-      key: month.key,
-      start: month.start,
-      label: month.label,
-      total: month.total,
-      counts: month.counts,
-      activeDays: month.days.size,
-      perDay: month.days.size ? month.total / month.days.size : null,
-      minutesPerCase,
-      perHour: minutesPerCase ? 60 / minutesPerCase : null
-    };
-  });
+  return months.map(month => ({
+    key: month.key,
+    start: month.start,
+    label: month.label,
+    total: month.total,
+    counts: month.counts,
+    activeDays: month.days.size,
+    perDay: month.days.size ? month.total / month.days.size : null
+  }));
 }
 
 function formatStat(value, digits = 1) {
@@ -4843,49 +4804,6 @@ function worklogVolumeChart(months) {
   `;
 }
 
-function worklogPaceChart(months) {
-  const width = 360;
-  const height = 120;
-  const top = 16;
-  const bottom = 18;
-  const left = 4;
-  const plotHeight = height - top - bottom;
-  const slot = (width - left * 2) / months.length;
-  const values = months.map(month => month.perHour);
-  const max = Math.max(1, ...values.filter(value => value !== null)) * 1.1;
-  const points = months.map((month, index) => ({
-    month,
-    x: left + slot * index + slot / 2,
-    y: month.perHour === null ? null : top + plotHeight - (month.perHour / max) * plotHeight
-  }));
-  // Break the line across months with no pace estimate.
-  let path = "";
-  let pen = false;
-  for (const point of points) {
-    if (point.y === null) { pen = false; continue; }
-    path += `${pen ? "L" : "M"}${point.x.toFixed(1)} ${point.y.toFixed(1)} `;
-    pen = true;
-  }
-  const marks = points.map(point => {
-    const { month } = point;
-    const tip = `${monthKey(month.start)}\n${month.perHour === null ? "Not enough same-day saves to estimate pace" : `~${formatStat(month.perHour)} cases/hour (median ${formatStat(month.minutesPerCase)} min between saves)`}\n${month.activeDays} active day${month.activeDays === 1 ? "" : "s"} · ${formatStat(month.perDay)} cases/day`;
-    return `
-      <g><title>${escapeHtml(tip)}</title>
-        <rect class="trend-hit" x="${(point.x - slot / 2).toFixed(1)}" y="${top}" width="${slot.toFixed(1)}" height="${plotHeight}"></rect>
-        ${point.y === null ? "" : `<circle class="trend-dot" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3"></circle>
-        <text class="trend-value" x="${point.x.toFixed(1)}" y="${(point.y - 6).toFixed(1)}">${formatStat(month.perHour)}</text>`}
-        <text class="trend-label" x="${point.x.toFixed(1)}" y="${height - 5}">${escapeHtml(month.label)}</text>
-      </g>`;
-  }).join("");
-  return `
-    <svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Estimated cases per hour by month">
-      <line class="trend-axis" x1="${left}" x2="${width - left}" y1="${top + plotHeight}" y2="${top + plotHeight}"></line>
-      ${path ? `<path class="trend-line" d="${path.trim()}"></path>` : ""}
-      ${marks}
-    </svg>
-  `;
-}
-
 function trendDelta(current, previous, unit) {
   if (current === null || previous === null || !previous) return "";
   const change = ((current - previous) / previous) * 100;
@@ -4913,13 +4831,10 @@ function renderWorklogTrends(today) {
       <div><strong>${current.total}</strong><span>cases</span>${trendDelta(current.total, previous.total, "")}</div>
       <div><strong>${current.activeDays}</strong><span>active days</span></div>
       <div><strong>${formatStat(current.perDay)}</strong><span>cases / day</span>${trendDelta(current.perDay, previous.perDay, "")}</div>
-      <div><strong>${current.perHour === null ? "–" : `~${formatStat(current.perHour)}`}</strong><span>cases / hour</span>${trendDelta(current.perHour, previous.perHour, "")}</div>
     </div>
     <h4 class="trend-title">Reports per month</h4>
     ${worklogVolumeChart(months)}
-    <h4 class="trend-title">Pace: estimated cases per hour</h4>
-    ${worklogPaceChart(months)}
-    <div class="calendar-filter">Pace is estimated from the time between saves on the same day (gaps over ${WORKLOG_BREAK_MINUTES} min count as breaks). Hover a month for details.</div>
+    <div class="calendar-filter">Hover a month for its modality breakdown.</div>
   `;
 }
 
