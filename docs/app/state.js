@@ -43,6 +43,11 @@ export function createInitialState(snippetDefaults) {
     worklogMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     worklogSelectedDate: "",
     workLogReports: [],
+    // Lightweight rows (modality + dates) for every saved report, used for
+    // calendar counts and monthly trends beyond the 500 reports the list loads.
+    worklogStats: [],
+    worklogStatsLoaded: false,
+    worklogPanel: "calendar",
     dictionary: null,
     dictionaryReady: false,
     personalDictionary: new Set(),

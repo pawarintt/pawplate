@@ -2585,6 +2585,8 @@ mark {
 
 .heatmap {
   display: block;
+  max-height: 64vh;
+  overflow: auto;
   padding: 6px 9px;
   border-bottom: 1px solid var(--line);
 }
@@ -2636,16 +2638,133 @@ mark {
 }
 
 .calendar-day {
-  aspect-ratio: 2.1;
   border: 1px solid var(--line);
   border-radius: 5px;
   background: #fffaf3;
   color: var(--ink);
-  padding: 2px 5px;
+  padding: 2px 4px 3px;
   text-align: left;
   display: grid;
-  align-content: space-between;
-  min-height: 24px;
+  align-content: start;
+  gap: 2px;
+  min-height: 46px;
+  min-width: 0;
+}
+
+.calendar-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.calendar-mods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 2px;
+  min-width: 0;
+}
+
+.calendar-mod {
+  border-radius: 3px;
+  padding: 0 2px;
+  background: color-mix(in srgb, var(--mod) 38%, #fffdf8);
+  color: #4a3a33;
+  font-size: .54rem;
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.mod-ct { --mod: #9fbfa0; }
+.mod-us { --mod: #8fb8c4; }
+.mod-cr { --mod: #c3a6c6; }
+.mod-mr { --mod: #e8a3ad; }
+.mod-flu { --mod: #e2c15f; }
+.mod-other { --mod: #cdb8ad; }
+
+.calendar-panel-toggle {
+  font-weight: 800;
+}
+
+.trend-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.trend-stats > div {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 6px;
+  background: rgba(255, 253, 248, .62);
+  min-width: 0;
+}
+
+.trend-stats strong {
+  font-size: .98rem;
+  line-height: 1.15;
+}
+
+.trend-stats span {
+  color: var(--muted);
+  font-size: .64rem;
+  font-weight: 700;
+}
+
+.trend-stats .trend-delta.up { color: #4f7a4f; }
+.trend-stats .trend-delta.down { color: var(--danger); }
+
+.trend-title {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.trend-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.trend-hit { fill: transparent; }
+.trend-seg { fill: var(--mod); }
+.trend-axis { stroke: var(--line-strong); stroke-width: 1; }
+.trend-line { fill: none; stroke: var(--coffee); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.trend-dot { fill: var(--paper-strong); stroke: var(--coffee); stroke-width: 2; }
+
+.trend-value,
+.trend-label {
+  text-anchor: middle;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.trend-value { fill: var(--ink); }
+.trend-label { fill: var(--muted); }
+
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--muted);
+  font-size: .66rem;
+  font-weight: 700;
+}
+
+.trend-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  border-radius: 2px;
+  background: var(--mod);
 }
 
 .calendar-day.empty-day {
@@ -2773,6 +2892,17 @@ body[data-theme="dark"] .calendar-day.level-1 { background: rgba(255, 199, 153, 
 body[data-theme="dark"] .calendar-day.level-2 { background: rgba(255, 199, 153, .18); }
 body[data-theme="dark"] .calendar-day.level-3 { background: rgba(153, 255, 228, .16); }
 body[data-theme="dark"] .calendar-day.level-4 { background: rgba(153, 255, 228, .24); }
+
+body[data-theme="dark"] .calendar-mod {
+  background: color-mix(in srgb, var(--mod) 30%, #161616);
+  color: var(--ink);
+}
+
+body[data-theme="dark"] .trend-stats > div {
+  background: rgba(255, 248, 242, .05);
+}
+
+body[data-theme="dark"] .trend-stats .trend-delta.up { color: #99ffe4; }
 
 body[data-theme="dark"] .calendar-count {
   background: rgba(255, 248, 242, .11);

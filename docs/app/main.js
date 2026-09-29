@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-writer-old-reports";
-import { collectDom } from "./dom.js?v=20260929-writer-old-reports";
-import { createInitialState } from "./state.js?v=20260929-writer-old-reports";
+} from "./constants.js?v=20260929-worklog-trends";
+import { collectDom } from "./dom.js?v=20260929-worklog-trends";
+import { createInitialState } from "./state.js?v=20260929-worklog-trends";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-writer-old-reports";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-writer-old-reports";
+} from "./utils.js?v=20260929-worklog-trends";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-trends";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1692,6 +1692,8 @@ function logout(message = "") {
   state.guidelines = [];
   state.writerGuidelines = [];
   state.workLogReports = [];
+  state.worklogStats = [];
+  state.worklogStatsLoaded = false;
   state.selectedOldReport = null;
   state.selectedTemplate = null;
   state.templateOrder = [];
@@ -4460,13 +4462,24 @@ function filteredWorklogReports() {
     .filter(report => !state.worklogSelectedDate || dateKey(savedDate(report) || new Date(0)) === state.worklogSelectedDate);
 }
 
-function worklogDateCounts() {
+const WORKLOG_MODALITIES = ["CT", "US", "CR", "MR", "Flu"];
+
+// Every saved report once stats have loaded, otherwise the (capped) list.
+function worklogStatRecords() {
+  return state.worklogStatsLoaded ? state.worklogStats : state.workLogReports;
+}
+
+// Per-date counts: { total, CT, US, CR, MR, Flu, Other } keyed by YYYY-MM-DD.
+function worklogDateCounts(records = worklogStatRecords()) {
   const counts = new Map();
-  for (const report of state.workLogReports) {
+  for (const report of records) {
     const date = savedDate(report);
     if (!date) continue;
     const key = dateKey(date);
-    counts.set(key, (counts.get(key) || 0) + 1);
+    const day = counts.get(key) || { total: 0, CT: 0, US: 0, CR: 0, MR: 0, Flu: 0, Other: 0 };
+    day.total += 1;
+    day[classifyWorklogModality(report.modality) || "Other"] += 1;
+    counts.set(key, day);
   }
   return counts;
 }
@@ -4484,7 +4497,7 @@ function classifyWorklogModality(modality) {
   return "";
 }
 
-function worklogModalityCounts(reports = state.workLogReports) {
+function worklogModalityCounts(reports = worklogStatRecords()) {
   const counts = { CT: 0, US: 0, CR: 0, MR: 0, Flu: 0 };
   for (const report of reports) {
     const bucket = classifyWorklogModality(report.modality);
@@ -4505,6 +4518,7 @@ async function loadWorkLog() {
   });
   if (!isCurrentDataLoad("workLog", request)) return false;
   state.workLogReports = data.items;
+  loadWorklogStats();
   if (state.selectedWorklogReport) {
     state.selectedWorklogReport = state.workLogReports.find(item => item.id === state.selectedWorklogReport.id) || null;
   }
@@ -4514,18 +4528,46 @@ async function loadWorkLog() {
   return true;
 }
 
+// Loads modality and dates for every saved report (500 per page). Failures
+// leave the calendar on the capped list rather than blocking the Work Log.
+async function loadWorklogStats() {
+  const request = beginDataLoad("worklogStats");
+  const records = [];
+  try {
+    for (let page = 1; page < 80; page += 1) {
+      const data = await pbList("old_reports", {
+        page,
+        perPage: 500,
+        sort: "created",
+        filter: 'sourceType="final-report"',
+        fields: "id,modality,sourceDate,created"
+      });
+      records.push(...data.items);
+      if (page >= data.totalPages) break;
+    }
+  } catch (error) {
+    console.warn("Work Log stats could not load", error);
+    return false;
+  }
+  if (!isCurrentDataLoad("worklogStats", request)) return false;
+  state.worklogStats = records;
+  state.worklogStatsLoaded = true;
+  renderWorkLog();
+  return true;
+}
+
 function renderWorkLog() {
   const query = els.worklogSearchInput.value.trim();
   const reports = filteredWorklogReports();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const counts = worklogDateCounts();
-  const todayCount = counts.get(dateKey(today)) || 0;
+  const todayCount = counts.get(dateKey(today))?.total || 0;
   const interestingCount = state.workLogReports.filter(report => report.isInteresting).length;
   const activeDays = counts.size;
   const modalityCounts = worklogModalityCounts();
   els.worklogSummary.innerHTML = [
-    ["Total reports", state.workLogReports.length, `${todayCount} saved today · ${activeDays} active days · ${interestingCount} interesting`],
+    ["Total reports", worklogStatRecords().length, `${todayCount} saved today · ${activeDays} active days · ${interestingCount} interesting`],
     ["CT", modalityCounts.CT, "Computed tomography"],
     ["US", modalityCounts.US, "Ultrasound"],
     ["CR", modalityCounts.CR, "Plain film / X-ray"],
@@ -4533,7 +4575,8 @@ function renderWorkLog() {
     ["Flu", modalityCounts.Flu, "Fluoroscopy"]
   ].map(([label, value, title]) => `<div class="summary-card" title="${escapeHtml(title || label)}"><strong>${value}</strong><span>${label}</span></div>`).join("");
 
-  renderWorklogCalendar(counts, today);
+  if (state.worklogPanel === "trends") renderWorklogTrends(today);
+  else renderWorklogCalendar(counts, today);
 
   if (!reports.length) {
     els.worklogList.innerHTML = `<div class="empty">${state.worklogSelectedDate ? `No saved reports on ${escapeHtml(state.worklogSelectedDate)}.` : "Saved reports will build your personal work log here."}</div>`;
@@ -4642,8 +4685,12 @@ function renderWorklogCalendar(counts, today) {
   for (let day = 1; day <= lastDay.getDate(); day += 1) {
     const date = new Date(month.getFullYear(), month.getMonth(), day);
     const key = dateKey(date);
-    const count = counts.get(key) || 0;
+    const dayCounts = counts.get(key);
+    const count = dayCounts?.total || 0;
     const level = count >= 4 ? 4 : count;
+    const parts = dayCounts
+      ? [...WORKLOG_MODALITIES, "Other"].filter(name => dayCounts[name]).map(name => [name, dayCounts[name]])
+      : [];
     const classes = [
       "calendar-day",
       `level-${level}`,
@@ -4651,9 +4698,12 @@ function renderWorklogCalendar(counts, today) {
       key === state.worklogSelectedDate ? "selected" : ""
     ].filter(Boolean).join(" ");
     cells.push(`
-      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}">
-        <span class="calendar-number">${day}</span>
-        ${count ? `<span class="calendar-count" title="Reports">${count}</span>` : ""}
+      <button class="${classes}" type="button" data-worklog-date="${key}" title="${key}: ${count} report${count === 1 ? "" : "s"}${parts.map(([name, value]) => `\n${name}: ${value}`).join("")}">
+        <span class="calendar-day-head">
+          <span class="calendar-number">${day}</span>
+          ${count ? `<span class="calendar-count" title="Total">${count}</span>` : ""}
+        </span>
+        ${parts.length ? `<span class="calendar-mods">${parts.map(([name, value]) => `<span class="calendar-mod mod-${name.toLowerCase()}">${name}&nbsp;${value}</span>`).join("")}</span>` : ""}
       </button>
     `);
   }
@@ -4665,6 +4715,7 @@ function renderWorklogCalendar(counts, today) {
         ${state.worklogSelectedDate ? `<button type="button" data-calendar-action="clear">Clear</button>` : ""}
         ${sameMonth(month, today) ? "" : `<button type="button" data-calendar-action="today">Today</button>`}
         <button type="button" data-calendar-action="next" aria-label="Next month">&gt;</button>
+        <button type="button" class="calendar-panel-toggle" data-calendar-action="trends">Trends</button>
       </div>
     </div>
     <div class="calendar-weekdays">
@@ -4672,6 +4723,202 @@ function renderWorklogCalendar(counts, today) {
     </div>
     <div class="calendar-grid">${cells.join("")}</div>
     <div class="calendar-filter">${state.worklogSelectedDate ? `Filtered to ${escapeHtml(state.worklogSelectedDate)}` : "Click a date to filter saved reports."}</div>
+  `;
+}
+
+// PocketBase timestamps use a space ("2026-09-29 10:00:00.000Z"); some
+// browsers only parse the ISO "T" form.
+function parseTimestamp(value) {
+  if (!value) return null;
+  const date = new Date(String(value).replace(" ", "T"));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+// Reading time is not recorded, so pace is estimated from the minutes
+// between consecutive saves on the same day. Gaps longer than this count
+// as breaks; reports whose date was edited to another day are skipped.
+const WORKLOG_BREAK_MINUTES = 45;
+
+function worklogMonthlyStats(endMonth, monthCount = 12) {
+  const months = [];
+  for (let offset = monthCount - 1; offset >= 0; offset -= 1) {
+    const start = new Date(endMonth.getFullYear(), endMonth.getMonth() - offset, 1);
+    months.push({
+      key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
+      start,
+      label: start.toLocaleDateString(undefined, { month: "short" }),
+      total: 0,
+      counts: { CT: 0, US: 0, CR: 0, MR: 0, Flu: 0, Other: 0 },
+      days: new Set(),
+      savesByDay: new Map()
+    });
+  }
+  const byKey = new Map(months.map(month => [month.key, month]));
+  for (const report of worklogStatRecords()) {
+    const date = savedDate(report);
+    if (!date) continue;
+    const day = dateKey(date);
+    const month = byKey.get(day.slice(0, 7));
+    if (!month) continue;
+    month.total += 1;
+    month.counts[classifyWorklogModality(report.modality) || "Other"] += 1;
+    month.days.add(day);
+    const created = parseTimestamp(report.created);
+    if (created && dateKey(created) === day) {
+      if (!month.savesByDay.has(day)) month.savesByDay.set(day, []);
+      month.savesByDay.get(day).push(created.getTime());
+    }
+  }
+  return months.map(month => {
+    const gaps = [];
+    for (const times of month.savesByDay.values()) {
+      times.sort((a, b) => a - b);
+      for (let i = 1; i < times.length; i += 1) {
+        const minutes = (times[i] - times[i - 1]) / 60000;
+        if (minutes > 0.25 && minutes <= WORKLOG_BREAK_MINUTES) gaps.push(minutes);
+      }
+    }
+    const minutesPerCase = gaps.length >= 3 ? median(gaps) : null;
+    return {
+      key: month.key,
+      start: month.start,
+      label: month.label,
+      total: month.total,
+      counts: month.counts,
+      activeDays: month.days.size,
+      perDay: month.days.size ? month.total / month.days.size : null,
+      minutesPerCase,
+      perHour: minutesPerCase ? 60 / minutesPerCase : null
+    };
+  });
+}
+
+function formatStat(value, digits = 1) {
+  return value === null || value === undefined ? "–" : value.toFixed(digits).replace(/\.0$/, "");
+}
+
+function worklogVolumeChart(months) {
+  const width = 360;
+  const height = 150;
+  const top = 16;
+  const bottom = 18;
+  const left = 4;
+  const plotHeight = height - top - bottom;
+  const max = Math.max(1, ...months.map(month => month.total));
+  const slot = (width - left * 2) / months.length;
+  const barWidth = Math.min(22, slot * 0.64);
+  const series = [...WORKLOG_MODALITIES, "Other"];
+  const bars = months.map((month, index) => {
+    const x = left + slot * index + (slot - barWidth) / 2;
+    let y = top + plotHeight;
+    const segments = series.filter(name => month.counts[name]).map(name => {
+      const h = (month.counts[name] / max) * plotHeight;
+      y -= h;
+      return `<rect class="trend-seg mod-${name.toLowerCase()}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(h, 0).toFixed(1)}"></rect>`;
+    }).join("");
+    const tip = [`${monthKey(month.start)}: ${month.total} report${month.total === 1 ? "" : "s"}`,
+      ...series.filter(name => month.counts[name]).map(name => `${name}: ${month.counts[name]}`)].join("\n");
+    return `
+      <g><title>${escapeHtml(tip)}</title>
+        <rect class="trend-hit" x="${(left + slot * index).toFixed(1)}" y="${top}" width="${slot.toFixed(1)}" height="${plotHeight}"></rect>
+        ${segments}
+        ${month.total ? `<text class="trend-value" x="${(x + barWidth / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}">${month.total}</text>` : ""}
+        <text class="trend-label" x="${(x + barWidth / 2).toFixed(1)}" y="${height - 5}">${escapeHtml(month.label)}</text>
+      </g>`;
+  }).join("");
+  return `
+    <svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Reports per month by modality">
+      <line class="trend-axis" x1="${left}" x2="${width - left}" y1="${top + plotHeight}" y2="${top + plotHeight}"></line>
+      ${bars}
+    </svg>
+    <div class="trend-legend">${series.map(name => `<span><i class="mod-${name.toLowerCase()}"></i>${name}</span>`).join("")}</div>
+  `;
+}
+
+function worklogPaceChart(months) {
+  const width = 360;
+  const height = 120;
+  const top = 16;
+  const bottom = 18;
+  const left = 4;
+  const plotHeight = height - top - bottom;
+  const slot = (width - left * 2) / months.length;
+  const values = months.map(month => month.perHour);
+  const max = Math.max(1, ...values.filter(value => value !== null)) * 1.1;
+  const points = months.map((month, index) => ({
+    month,
+    x: left + slot * index + slot / 2,
+    y: month.perHour === null ? null : top + plotHeight - (month.perHour / max) * plotHeight
+  }));
+  // Break the line across months with no pace estimate.
+  let path = "";
+  let pen = false;
+  for (const point of points) {
+    if (point.y === null) { pen = false; continue; }
+    path += `${pen ? "L" : "M"}${point.x.toFixed(1)} ${point.y.toFixed(1)} `;
+    pen = true;
+  }
+  const marks = points.map(point => {
+    const { month } = point;
+    const tip = `${monthKey(month.start)}\n${month.perHour === null ? "Not enough same-day saves to estimate pace" : `~${formatStat(month.perHour)} cases/hour (median ${formatStat(month.minutesPerCase)} min between saves)`}\n${month.activeDays} active day${month.activeDays === 1 ? "" : "s"} · ${formatStat(month.perDay)} cases/day`;
+    return `
+      <g><title>${escapeHtml(tip)}</title>
+        <rect class="trend-hit" x="${(point.x - slot / 2).toFixed(1)}" y="${top}" width="${slot.toFixed(1)}" height="${plotHeight}"></rect>
+        ${point.y === null ? "" : `<circle class="trend-dot" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3"></circle>
+        <text class="trend-value" x="${point.x.toFixed(1)}" y="${(point.y - 6).toFixed(1)}">${formatStat(month.perHour)}</text>`}
+        <text class="trend-label" x="${point.x.toFixed(1)}" y="${height - 5}">${escapeHtml(month.label)}</text>
+      </g>`;
+  }).join("");
+  return `
+    <svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Estimated cases per hour by month">
+      <line class="trend-axis" x1="${left}" x2="${width - left}" y1="${top + plotHeight}" y2="${top + plotHeight}"></line>
+      ${path ? `<path class="trend-line" d="${path.trim()}"></path>` : ""}
+      ${marks}
+    </svg>
+  `;
+}
+
+function trendDelta(current, previous, unit) {
+  if (current === null || previous === null || !previous) return "";
+  const change = ((current - previous) / previous) * 100;
+  if (Math.abs(change) < 1) return `<span class="trend-delta">same as last month</span>`;
+  return `<span class="trend-delta ${change > 0 ? "up" : "down"}">${change > 0 ? "↑" : "↓"} ${Math.abs(change).toFixed(0)}% ${unit}</span>`;
+}
+
+function renderWorklogTrends(today) {
+  const endMonth = state.worklogMonth;
+  const months = worklogMonthlyStats(endMonth);
+  const current = months[months.length - 1];
+  const previous = months[months.length - 2];
+  els.worklogHeatmap.innerHTML = `
+    <div class="calendar-head">
+      <button type="button" data-calendar-action="prev" aria-label="Previous month">&lt;</button>
+      <strong>12 months to ${escapeHtml(monthKey(endMonth))}</strong>
+      <div>
+        ${state.worklogSelectedDate ? `<button type="button" data-calendar-action="clear">Clear</button>` : ""}
+        ${sameMonth(endMonth, today) ? "" : `<button type="button" data-calendar-action="today">Today</button>`}
+        <button type="button" data-calendar-action="next" aria-label="Next month">&gt;</button>
+        <button type="button" class="calendar-panel-toggle active" data-calendar-action="calendar">Calendar</button>
+      </div>
+    </div>
+    <div class="trend-stats">
+      <div><strong>${current.total}</strong><span>cases</span>${trendDelta(current.total, previous.total, "")}</div>
+      <div><strong>${current.activeDays}</strong><span>active days</span></div>
+      <div><strong>${formatStat(current.perDay)}</strong><span>cases / day</span>${trendDelta(current.perDay, previous.perDay, "")}</div>
+      <div><strong>${current.perHour === null ? "–" : `~${formatStat(current.perHour)}`}</strong><span>cases / hour</span>${trendDelta(current.perHour, previous.perHour, "")}</div>
+    </div>
+    <h4 class="trend-title">Reports per month</h4>
+    ${worklogVolumeChart(months)}
+    <h4 class="trend-title">Pace: estimated cases per hour</h4>
+    ${worklogPaceChart(months)}
+    <div class="calendar-filter">Pace is estimated from the time between saves on the same day (gaps over ${WORKLOG_BREAK_MINUTES} min count as breaks). Hover a month for details.</div>
   `;
 }
 
@@ -5440,6 +5687,11 @@ els.worklogHeatmap.addEventListener("click", event => {
       state.worklogSelectedDate = dateKey(today);
     }
     if (action === "clear") state.worklogSelectedDate = "";
+    if (action === "trends") {
+      state.worklogPanel = "trends";
+      trackFeature("work_log.trends");
+    }
+    if (action === "calendar") state.worklogPanel = "calendar";
     renderWorkLog();
     return;
   }

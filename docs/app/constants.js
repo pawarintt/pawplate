@@ -98,6 +98,7 @@ export const TRACKED_FEATURES = new Set([
   "work_log.preview",
   "work_log.edit_report",
   "work_log.calendar_filter",
+  "work_log.trends",
   "report_note.open",
   "report_note.save",
   "always_notes.open",
