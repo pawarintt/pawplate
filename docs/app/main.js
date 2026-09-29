@@ -43,9 +43,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260803-pawlet-lightbox";
-import { collectDom } from "./dom.js?v=20260803-pawlet-lightbox";
-import { createInitialState } from "./state.js?v=20260803-pawlet-lightbox";
+} from "./constants.js?v=20260929-template-combine";
+import { collectDom } from "./dom.js?v=20260929-template-combine";
+import { createInitialState } from "./state.js?v=20260929-template-combine";
 import {
   copyText,
   debounce,
@@ -56,7 +56,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260803-pawlet-lightbox";
+} from "./utils.js?v=20260929-template-combine";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-template-combine";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4189,6 +4190,91 @@ async function useTemplateForReport(template = null) {
   return true;
 }
 
+// Add a template to the report that is open instead of replacing it: "append"
+// stacks it at the end, "merge" files each section under the matching heading.
+// The toast offers Undo and, after a merge, the plain append instead, so both
+// can be compared on real cases (tracked as template.add_end / template.merge*).
+async function combineTemplateIntoReport(id, mode, { track = true } = {}) {
+  const template = state.templates.find(item => item.id === id);
+  if (!template) return;
+  setReferenceDrawer(false);
+  const before = reportCombineSnapshot();
+  const result = combineTemplateHtml(before.html, template.report || "", mode);
+  applyCombinedTemplate(template, before, result.html);
+  showMode("writer");
+  const after = getEditorHtml(els.reportTextEditor);
+  const undo = { label: "Undo", run: () => undoCombinedTemplate(before, after) };
+  if (result.empty) {
+    if (track) trackFeature(mode === "merge" ? "template.merge" : "template.add_end");
+    showToast(`Added ${template.title || "template"}`, "The report was empty, so the template was added as is.", "success", { duration: 8000, actions: [undo] });
+  } else if (result.mode === "merge") {
+    trackFeature("template.merge");
+    const parts = [
+      result.merged.length ? `Merged into ${result.merged.map(sectionLabel).join(", ")}.` : "",
+      result.added.length ? `Added ${result.added.map(sectionLabel).join(", ")}.` : ""
+    ].filter(Boolean).join(" ");
+    showToast(`Merged ${template.title || "template"}`, parts, "success", {
+      duration: 8000,
+      actions: [undo, { label: "Add at end instead", run: () => {
+        if (!undoCombinedTemplate(before, after, { track: false })) return;
+        trackFeature("template.merge.switch_to_end");
+        combineTemplateIntoReport(id, "append", { track: false });
+      } }]
+    });
+  } else if (result.fallback) {
+    trackFeature("template.merge.fallback");
+    showToast("Headings didn't match", `Added ${template.title || "the template"} at the end instead.`, "info", { duration: 8000, actions: [undo] });
+  } else {
+    if (track) trackFeature("template.add_end");
+    showToast(`Added ${template.title || "template"}`, "Added at the end of the report.", "success", { duration: 8000, actions: [undo] });
+  }
+}
+
+function reportCombineSnapshot() {
+  return {
+    html: getEditorHtml(els.reportTextEditor),
+    title: els.reportTitleInput.value,
+    modality: els.reportModalityInput.value,
+    topic: els.reportTopicInput.value,
+    bodyPart: els.reportBodyPartInput.value
+  };
+}
+
+function applyCombinedTemplate(template, before, html) {
+  const hadReport = Boolean(plainText(before.html).trim());
+  const currentTitle = before.title.trim();
+  const addedTitle = String(template.title || "").trim();
+  if (!hadReport || !currentTitle || currentTitle === "Untitled report") {
+    els.reportTitleInput.value = addedTitle || currentTitle;
+  } else if (addedTitle && !currentTitle.toLowerCase().includes(addedTitle.toLowerCase())) {
+    els.reportTitleInput.value = `${currentTitle} + ${addedTitle}`;
+  }
+  if (!before.modality.trim()) els.reportModalityInput.value = template.modality || "";
+  if (!before.topic.trim()) els.reportTopicInput.value = template.topic || "";
+  if (!before.bodyPart.trim()) els.reportBodyPartInput.value = template.bodyPart || "";
+  setEditorHtml(els.reportTextEditor, html);
+  updateEditorDatalists("report");
+  scheduleReportAutosave(100);
+}
+
+// Restore the report from before the add, unless it was edited since, so an
+// Undo never throws away typing done after the toast appeared.
+function undoCombinedTemplate(before, after, { track = true } = {}) {
+  if (getEditorHtml(els.reportTextEditor) !== after) {
+    showToast("Report changed since", "Use Ctrl+Z in the report to undo instead.", "info");
+    return false;
+  }
+  els.reportTitleInput.value = before.title;
+  els.reportModalityInput.value = before.modality;
+  els.reportTopicInput.value = before.topic;
+  els.reportBodyPartInput.value = before.bodyPart;
+  setEditorHtml(els.reportTextEditor, before.html);
+  updateEditorDatalists("report");
+  scheduleReportAutosave(100);
+  if (track) trackFeature("template.combine.undo");
+  return true;
+}
+
 function blankReport() {
   state.suppressReportAutosave = true;
   resetReportDraft();
@@ -4280,16 +4366,29 @@ function hideContextMenu() {
   els.contextMenu.classList.add("hidden");
 }
 
-function showToast(title, message = "", type = "success") {
+function showToast(title, message = "", type = "success", { actions = [], duration = 2600 } = {}) {
   if (!els.toastStack) return;
   const toast = document.createElement("div");
-  toast.className = `toast ${type}`;
-  toast.innerHTML = `<div><strong>${escapeHtml(title)}</strong>${message ? `<span>${escapeHtml(message)}</span>` : ""}</div>`;
-  els.toastStack.appendChild(toast);
-  window.setTimeout(() => {
+  toast.className = `toast ${type}${actions.length ? " has-actions" : ""}`;
+  const buttons = actions.map((action, index) => (
+    `<button type="button" data-toast-action="${index}">${escapeHtml(action.label)}</button>`
+  )).join("");
+  toast.innerHTML = `<div><strong>${escapeHtml(title)}</strong>${message ? `<span>${escapeHtml(message)}</span>` : ""}${buttons ? `<div class="toast-actions">${buttons}</div>` : ""}</div>`;
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
     toast.classList.add("leaving");
     toast.addEventListener("animationend", () => toast.remove(), { once: true });
-  }, 2600);
+  };
+  toast.addEventListener("click", event => {
+    const button = event.target.closest("[data-toast-action]");
+    if (!button) return;
+    dismiss();
+    actions[Number(button.dataset.toastAction)]?.run();
+  });
+  els.toastStack.appendChild(toast);
+  window.setTimeout(dismiss, duration);
 }
 
 async function withButtonFeedback(button, busyLabel, action, doneLabel = null) {
@@ -5053,6 +5152,8 @@ els.templateList.addEventListener("contextmenu", event => {
   showContextMenu(event.clientX, event.clientY, [
     { label: "Edit template", run: () => editTemplate(id) },
     { label: "Use for report", run: () => selectTemplate(id) },
+    { label: "Add at end", run: () => combineTemplateIntoReport(id, "append") },
+    { label: "Merge by section", run: () => combineTemplateIntoReport(id, "merge") },
     { label: "Delete template", danger: true, run: async () => {
       if (!confirm("Delete this template?")) return;
       await pbDelete("templates", id);
