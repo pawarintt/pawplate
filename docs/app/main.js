@@ -1,11 +1,9 @@
 import {
-  AI_DRAFT_TIMEOUT_MS,
   API,
   AUTH_KEY,
   AUTH_REFRESH_INTERVAL_MS,
   AUTH_REFRESH_LEEWAY_MS,
   AuthSessionError,
-  DEFAULT_AI_PROMPT,
   DEFAULT_PALETTE,
   FEATURE_USAGE_DAYS,
   FEATURE_USAGE_SETTINGS_KEY,
@@ -43,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-template-combine";
-import { collectDom } from "./dom.js?v=20260929-template-combine";
-import { createInitialState } from "./state.js?v=20260929-template-combine";
+} from "./constants.js?v=20260929-writer-old-reports";
+import { collectDom } from "./dom.js?v=20260929-writer-old-reports";
+import { createInitialState } from "./state.js?v=20260929-writer-old-reports";
 import {
   copyText,
   debounce,
@@ -56,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-template-combine";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-template-combine";
+} from "./utils.js?v=20260929-writer-old-reports";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-writer-old-reports";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -294,7 +292,7 @@ function choicesFromSelect(select) {
 // Scroll positions of the writer reference panels, keyed by tab, so switching
 // tabs (or re-rendering a list) never loses the user's place. Filter inputs
 // persist naturally in the DOM; only scroll needs explicit memory.
-const REFERENCE_SCROLLABLES = ["templateList", "snippetFields", "snippetFindingList", "aiDraftResult"];
+const REFERENCE_SCROLLABLES = ["templateList", "snippetFields", "snippetFindingList", "writerOldList", "writerOldPreviewText"];
 
 function saveReferenceScroll(tab) {
   if (!REFERENCE_ROUTES[tab]) return;
@@ -331,9 +329,7 @@ function showReferenceTab(tab, options = {}) {
     panel.classList.toggle("active", panel.dataset.referencePanel === tab);
   });
   restoreReferenceScroll(tab);
-  if (tab === "ai-draft" && !state.aiSettingsLoaded) {
-    loadAiSettings().catch(error => console.warn("AI settings could not be loaded.", error));
-  }
+  if (tab === "old-reports") openWriterOldReports();
   if (tab === "snippets") renderSnippetGenerator();
   if (options.updateRoute !== false && state.mode === "writer") updateRoute("writer", tab);
 }
@@ -346,86 +342,6 @@ function setReferenceDrawer(open) {
   els.writerReferencePane?.classList.toggle("drawer-open", open);
   els.drawerBackdrop?.classList.toggle("hidden", !open);
   els.referenceDrawerBtn?.setAttribute("aria-expanded", String(open));
-}
-
-function aiDraftFields() {
-  if (!state.aiDraft) return [];
-  return [
-    { key: "title", label: "Report title", value: state.aiDraft.title, target: els.reportTitleInput },
-    { key: "modality", label: "Modality", value: state.aiDraft.modality, target: els.reportModalityInput },
-    { key: "topic", label: "Topic", value: state.aiDraft.topic, target: els.reportTopicInput },
-    { key: "bodyPart", label: "Body part", value: state.aiDraft.bodyPart, target: els.reportBodyPartInput },
-    { key: "keywords", label: "Keywords", value: state.aiDraft.keywords, target: els.reportKeywordInput }
-  ].filter(item => item.value && !state.aiDraft.rejected?.includes(item.key));
-}
-
-function renderAiDraft() {
-  if (!els.aiDraftResult) return;
-  const draft = state.aiDraft;
-  if (!draft) {
-    els.aiDraftResult.innerHTML = '<p class="mini-empty">Write findings, then generate a draft.</p>';
-    return;
-  }
-  const metadata = aiDraftFields().map(item => `
-    <article class="ai-suggestion" data-ai-key="${item.key}">
-      <span class="ai-suggestion-label">${escapeHtml(item.label)}</span>
-      <p>${escapeHtml(item.value)}</p>
-      <div><button type="button" data-ai-accept="${item.key}">Accept</button><button type="button" data-ai-reject="${item.key}">Reject</button></div>
-    </article>
-  `).join("");
-  const impression = draft.rejected?.includes("impression") ? "" : `
-    <article class="ai-suggestion ai-impression" data-ai-key="impression">
-      <span class="ai-suggestion-label">Impression draft</span>
-      <p>${escapeHtml(draft.impression || "")}</p>
-      ${draft.uncertainties ? `<small>${escapeHtml(draft.uncertainties)}</small>` : ""}
-      <div><button type="button" data-ai-accept="impression">Insert</button><button type="button" data-ai-reject="impression">Reject</button></div>
-    </article>
-  `;
-  els.aiDraftResult.innerHTML = `${impression}${metadata || '<p class="mini-empty">No additional metadata proposed.</p>'}`;
-}
-
-async function generateAiDraft() {
-  const report = getEditorText(els.reportTextEditor);
-  if (!report.trim()) {
-    showToast("Nothing to draft", "Write the findings first.", "info");
-    return false;
-  }
-  const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/ai-draft`, {
-    method: "POST",
-    timeoutMs: AI_DRAFT_TIMEOUT_MS,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      report,
-      title: els.reportTitleInput.value.trim(),
-      modality: els.reportModalityInput.value.trim(),
-      topic: els.reportTopicInput.value.trim(),
-      bodyPart: els.reportBodyPartInput.value.trim(),
-      keywords: els.reportKeywordInput.value.trim(),
-      aiPrompt: els.aiPromptInput.value.trim() || DEFAULT_AI_PROMPT,
-      aiReasoning: selectedAiReasoning()
-    })
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || "AI draft could not be created.");
-  state.aiDraft = { ...payload, rejected: [] };
-  renderAiDraft();
-  trackFeature("ai.generate");
-  showToast("Draft ready", "Review each proposal before applying it.");
-  return true;
-}
-
-function applyAiDraftSuggestion(key) {
-  const field = aiDraftFields().find(item => item.key === key);
-  if (key === "impression") {
-    insertReportText(`${state.aiDraft.impression || ""}\n`);
-    trackFeature("ai.accept.impression");
-  } else if (field) {
-    field.target.value = field.value;
-    field.target.dispatchEvent(new Event("input", { bubbles: true }));
-    trackFeature("ai.accept.metadata");
-  }
-  state.aiDraft.rejected = [...new Set([...(state.aiDraft.rejected || []), key])];
-  renderAiDraft();
 }
 
 function currentSnippetSchema() {
@@ -1782,9 +1698,7 @@ function logout(message = "") {
   state.templateOrderSettingsId = "";
   state.selectedGuideline = null;
   state.selectedWriterGuideline = null;
-  state.aiDraft = null;
-  state.aiSettingsId = "";
-  state.aiSettingsLoaded = false;
+  state.writerOld = { ...state.writerOld, reports: [], error: "", selectedId: "", loaded: false };
   state.loadedSettingKeys = new Set();
   state.startupPending = false;
   window.clearTimeout(state.startupRetryTimer);
@@ -1843,10 +1757,6 @@ function logout(message = "") {
   state.guidelineFileTokenExpiresAt = 0;
   resetGuidelineDraft();
   resetReportDraft();
-  setAiSettingsForm();
-  els.aiSettingsPanel.classList.add("hidden");
-  els.aiSettingsToggleBtn.classList.remove("active");
-  els.aiSettingsToggleBtn.setAttribute("aria-expanded", "false");
   setReportAutosaveStatus();
   els.loginPasswordInput.value = "";
   els.loginError.textContent = message;
@@ -2883,75 +2793,6 @@ async function savePersonalDictionary() {
   }
 }
 
-function selectedAiReasoning() {
-  return els.aiReasoningInputs.find(input => input.checked)?.value || "medium";
-}
-
-function setAiSettingsForm(value = {}) {
-  const prompt = typeof value.prompt === "string" && value.prompt.trim()
-    ? value.prompt
-    : DEFAULT_AI_PROMPT;
-  const reasoning = ["low", "medium", "high"].includes(value.reasoning) ? value.reasoning : "medium";
-  els.aiPromptInput.value = prompt;
-  els.aiReasoningInputs.forEach(input => {
-    input.checked = input.value === reasoning;
-  });
-}
-
-async function loadAiSettings() {
-  state.aiSettingsId = "";
-  state.aiSettingsLoaded = false;
-  setAiSettingsForm();
-  try {
-    const filter = `owner="${state.auth?.user?.id || ""}" && key="aiDraft"`;
-    const data = await pbList("user_settings", {
-      perPage: 1,
-      filter,
-      fields: "id,value"
-    });
-    const record = data.items?.[0];
-    if (record) {
-      state.aiSettingsId = record.id;
-      setAiSettingsForm(record.value || {});
-    }
-    state.loadedSettingKeys.add("aiDraft");
-    state.aiSettingsLoaded = true;
-  } catch (error) {
-    console.warn("AI settings sync unavailable; using defaults.", error);
-  }
-}
-
-async function saveAiSettings() {
-  const prompt = els.aiPromptInput.value.trim();
-  if (!prompt) {
-    showToast("Prompt required", "Add impression instructions or reset to the default.", "info");
-    return false;
-  }
-  const value = { prompt, reasoning: selectedAiReasoning() };
-  if (state.aiSettingsId) {
-    await pbUpdate("user_settings", state.aiSettingsId, { value });
-  } else {
-    assertSettingLoaded("aiDraft");
-    const created = await pbCreate("user_settings", {
-      owner: state.auth?.user?.id || "",
-      key: "aiDraft",
-      value
-    });
-    state.aiSettingsId = created.id;
-  }
-  state.aiSettingsLoaded = true;
-  showToast("AI settings saved", "The next draft will use these instructions.");
-  return true;
-}
-
-function toggleAiSettings() {
-  const willOpen = els.aiSettingsPanel.classList.contains("hidden");
-  els.aiSettingsPanel.classList.toggle("hidden", !willOpen);
-  els.aiSettingsToggleBtn.setAttribute("aria-expanded", String(willOpen));
-  els.aiSettingsToggleBtn.classList.toggle("active", willOpen);
-  if (willOpen) els.aiPromptInput.focus();
-}
-
 async function addPersonalDictionaryWord(word, editor = document.activeElement) {
   const clean = normalizeDictionaryWord(word);
   if (!clean) return;
@@ -3001,6 +2842,7 @@ async function loadFacets() {
   if (!isCurrentDataLoad("facets", request)) return false;
   state.oldFacetRecords = records;
   updateFilterOptions("old");
+  renderWriterOldChips();
   updateEditorDatalists("report");
   await loadTemplateFacets();
   return true;
@@ -3090,7 +2932,6 @@ async function loadInitialWorkspaceData() {
 async function reloadMissingSettings() {
   const loaders = [
     ["personalDictionary", loadPersonalDictionary],
-    ["aiDraft", loadAiSettings],
     [REPORT_NOTES_SETTINGS_KEY, loadReportNotes],
     [PERSONAL_NOTES_SETTINGS_KEY, loadPersonalNotes],
     [TEMPLATE_ORDER_SETTINGS_KEY, loadTemplateOrder],
@@ -3301,6 +3142,132 @@ function selectOldReport(id) {
   els.oldPreviewTitle.textContent = report.title || "Untitled";
   els.oldPreviewText.innerHTML = reportHtml(report.report);
   renderOldReports();
+}
+
+// Report Writer "Old Reports" tab: a quick look at how others worded similar
+// cases while writing. Every search word must match somewhere, so
+// "CT appendicitis perforated" narrows instead of matching the literal phrase.
+const WRITER_OLD_SOURCES = [
+  { value: "old-report", label: "Others' reports" },
+  { value: "", label: "Include mine" }
+];
+
+function renderWriterOldChips() {
+  const modalities = valuesFrom(state.oldFacetRecords, "modality");
+  if (state.writerOld.modality && !modalities.includes(state.writerOld.modality)) state.writerOld.modality = "";
+  renderChoiceChips(
+    els.writerOldModalityRadios,
+    [{ value: "", label: "All" }, ...modalities.map(value => ({ value, label: value }))],
+    state.writerOld.modality,
+    "writer-old-modality"
+  );
+  renderChoiceChips(els.writerOldSourceRadios, WRITER_OLD_SOURCES, state.writerOld.source, "writer-old-source");
+}
+
+function writerOldQuery() {
+  return els.writerOldSearchInput.value.trim();
+}
+
+function writerOldFilter() {
+  const clauses = writerOldQuery().split(/\s+/).filter(Boolean).slice(0, 8).map(term => {
+    const q = escapeFilter(term);
+    return `(title~"${q}" || report~"${q}" || keywords~"${q}" || bodyPart~"${q}" || topic~"${q}" || modality~"${q}")`;
+  });
+  if (state.writerOld.modality) clauses.push(`modality="${escapeFilter(state.writerOld.modality)}"`);
+  if (state.writerOld.source) clauses.push(`kind="${escapeFilter(state.writerOld.source)}"`);
+  return clauses.join(" && ");
+}
+
+async function loadWriterOldReports() {
+  const request = beginDataLoad("writerOldReports");
+  setListLoading(els.writerOldList, !state.writerOld.reports.length && !state.writerOld.error);
+  try {
+    const data = await pbList("old_reports", {
+      page: 1,
+      perPage: 40,
+      sort: "-created",
+      filter: writerOldFilter(),
+      fields: "id,title,modality,topic,bodyPart,kind,keywords,report,sourceDate,isInteresting"
+    });
+    if (!isCurrentDataLoad("writerOldReports", request)) return false;
+    state.writerOld.reports = data.items;
+    state.writerOld.error = "";
+    state.writerOld.loaded = true;
+    if (!data.items.some(item => item.id === state.writerOld.selectedId)) state.writerOld.selectedId = data.items[0]?.id || "";
+    renderWriterOldReports();
+    return true;
+  } catch (error) {
+    if (!isCurrentDataLoad("writerOldReports", request)) return false;
+    state.writerOld.error = friendlyErrorMessage(error);
+    renderWriterOldReports();
+    throw error;
+  } finally {
+    clearListLoading(els.writerOldList);
+  }
+}
+
+function renderWriterOldReports() {
+  const query = writerOldQuery();
+  if (state.writerOld.error) {
+    els.writerOldList.innerHTML = `<div class="list-error" role="alert">
+      <strong>Old reports unavailable</strong>
+      <span>${escapeHtml(state.writerOld.error)} Check the connection and try again.</span>
+      <button type="button" data-retry="writer-old">Retry</button>
+    </div>`;
+  } else if (!state.writerOld.reports.length) {
+    els.writerOldList.innerHTML = query || state.writerOld.modality
+      ? '<div class="empty">No matches. Try fewer words, another modality, or include your own reports.</div>'
+      : '<div class="empty">Type a diagnosis or finding to see how others reported it.</div>';
+  } else {
+    const scrollTop = els.writerOldList.scrollTop;
+    els.writerOldList.innerHTML = state.writerOld.reports.map((item, index) => `
+      <button class="result-item ${state.writerOld.selectedId === item.id ? "active" : ""}" data-writer-old-id="${item.id}" type="button">
+        <span class="result-no">${index + 1}.</span>
+        <span>
+          <span class="result-title">${highlight(item.title || "Untitled", query)}${item.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}</span>
+          <span class="result-meta">${escapeHtml(item.modality || "Modality")} / ${escapeHtml(item.bodyPart || item.topic || "Body part")}${item.sourceDate ? ` / ${escapeHtml(item.sourceDate)}` : ""}</span>
+          <span class="result-snippet">${highlight(snippet(item.report, query), query)}</span>
+        </span>
+      </button>
+    `).join("");
+    els.writerOldList.scrollTop = scrollTop;
+  }
+  const selected = state.writerOld.reports.find(item => item.id === state.writerOld.selectedId);
+  els.writerOldPreviewTitle.textContent = selected ? selected.title || "Untitled" : "Select an old report";
+  els.writerOldPreviewText.innerHTML = selected ? reportHtml(selected.report) : "";
+  els.copyWriterOldBtn.disabled = !selected;
+}
+
+function selectWriterOldReport(id) {
+  if (!state.writerOld.reports.some(item => item.id === id)) return;
+  const changed = state.writerOld.selectedId !== id;
+  state.writerOld.selectedId = id;
+  renderWriterOldReports();
+  if (changed) els.writerOldPreviewText.scrollTop = 0;
+  trackFeature("writer_old_report.preview");
+}
+
+// Fill the search from the report being written: its keywords (or title)
+// and modality. Returns false when the report has nothing to match on.
+function matchWriterOldToReport() {
+  const words = els.reportKeywordInput.value.trim() || els.reportTitleInput.value.trim();
+  const modality = els.reportModalityInput.value.trim().toLowerCase();
+  if (!words && !modality) return false;
+  els.writerOldSearchInput.value = words.replace(/[,;/]+/g, " ").replace(/\s+/g, " ").trim();
+  state.writerOld.modality = valuesFrom(state.oldFacetRecords, "modality").find(value => value.toLowerCase() === modality) || "";
+  renderWriterOldChips();
+  return true;
+}
+
+function openWriterOldReports() {
+  renderWriterOldChips();
+  if (!writerOldQuery()) matchWriterOldToReport();
+  if (!state.auth?.user?.id) return;
+  if (!state.writerOld.loaded) {
+    loadViewData(loadWriterOldReports(), "Old Reports");
+  } else {
+    renderWriterOldReports();
+  }
 }
 
 function blankTemplate() {
@@ -4809,7 +4776,7 @@ document.querySelectorAll("[data-reference-tab]").forEach(button => {
   button.addEventListener("click", () => {
     const tab = button.dataset.referenceTab;
     showReferenceTab(tab);
-    trackFeature({ templates: "reference.templates", snippets: "reference.snippets", "ai-draft": "reference.ai_assist" }[tab]);
+    trackFeature({ templates: "reference.templates", snippets: "reference.snippets", "old-reports": "reference.old_reports" }[tab]);
   });
 });
 els.referenceDrawerBtn?.addEventListener("click", () => {
@@ -4817,28 +4784,6 @@ els.referenceDrawerBtn?.addEventListener("click", () => {
   if (state.referenceDrawerOpen) showReferenceTab(state.referenceTab, { updateRoute: false });
 });
 els.drawerBackdrop?.addEventListener("click", () => setReferenceDrawer(false));
-els.generateAiDraftBtn?.addEventListener("click", () => {
-  withButtonFeedback(els.generateAiDraftBtn, "Drafting...", generateAiDraft, "Draft ready");
-});
-els.aiSettingsToggleBtn?.addEventListener("click", toggleAiSettings);
-els.resetAiSettingsBtn?.addEventListener("click", () => {
-  setAiSettingsForm();
-  showToast("Default restored", "Save settings to use it for future drafts.", "info");
-});
-els.saveAiSettingsBtn?.addEventListener("click", () => {
-  withButtonFeedback(els.saveAiSettingsBtn, "Saving...", saveAiSettings, "Saved");
-});
-els.aiDraftResult?.addEventListener("click", event => {
-  const accept = event.target.closest("[data-ai-accept]");
-  const reject = event.target.closest("[data-ai-reject]");
-  const key = accept?.dataset.aiAccept || reject?.dataset.aiReject;
-  if (!key || !state.aiDraft) return;
-  if (accept) applyAiDraftSuggestion(key);
-  if (reject) {
-    state.aiDraft.rejected = [...new Set([...(state.aiDraft.rejected || []), key])];
-    renderAiDraft();
-  }
-});
 els.templateModalityRadios?.addEventListener("click", event => {
   const button = event.target.closest("[data-choice-value]");
   if (!button) return;
@@ -5017,6 +4962,50 @@ els.oldReportList.addEventListener("contextmenu", event => {
   showContextMenu(event.clientX, event.clientY, actions);
 });
 els.useOldReportBtn.addEventListener("click", useOldReportAsTemplate);
+els.writerOldSearchInput.addEventListener("input", debounce(() => {
+  loadViewData(loadWriterOldReports(), "Old Reports");
+}));
+els.writerOldModalityRadios.addEventListener("click", event => {
+  const button = event.target.closest("[data-choice-value]");
+  if (!button) return;
+  state.writerOld.modality = button.dataset.choiceValue;
+  renderWriterOldChips();
+  loadViewData(loadWriterOldReports(), "Old Reports");
+});
+els.writerOldSourceRadios.addEventListener("click", event => {
+  const button = event.target.closest("[data-choice-value]");
+  if (!button) return;
+  state.writerOld.source = button.dataset.choiceValue;
+  renderWriterOldChips();
+  loadViewData(loadWriterOldReports(), "Old Reports");
+});
+els.writerOldMatchBtn.addEventListener("click", () => {
+  if (!matchWriterOldToReport()) {
+    showToast("Nothing to match", "Add keywords, a title, or a modality to the report first.", "info");
+    return;
+  }
+  trackFeature("writer_old_report.match");
+  loadViewData(loadWriterOldReports(), "Old Reports");
+});
+els.writerOldList.addEventListener("click", event => {
+  if (event.target.closest('[data-retry="writer-old"]')) {
+    loadViewData(loadWriterOldReports(), "Old Reports");
+    return;
+  }
+  const button = event.target.closest("[data-writer-old-id]");
+  if (button) selectWriterOldReport(button.dataset.writerOldId);
+});
+els.copyWriterOldBtn.addEventListener("click", async () => {
+  const report = state.writerOld.reports.find(item => item.id === state.writerOld.selectedId);
+  if (!report) return;
+  try {
+    await copyText(plainText(report.report));
+    trackFeature("writer_old_report.copy");
+    showToast("Copied", "Old report copied to the clipboard.");
+  } catch (error) {
+    showToast("Copy failed", error.message, "error");
+  }
+});
 els.newTemplateBtn.addEventListener("click", () => {
   blankTemplate();
   trackFeature("template.new");
@@ -5648,7 +5637,6 @@ async function loadApp() {
   // Settings loaders never throw; any that fail are retried by recoverWorkspace().
   await Promise.all([
     loadPersonalDictionary(),
-    loadAiSettings(),
     loadReportNotes(),
     loadPersonalNotes(),
     loadTemplateOrder(),

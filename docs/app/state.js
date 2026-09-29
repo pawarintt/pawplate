@@ -55,8 +55,6 @@ export function createInitialState(snippetDefaults) {
     startupPromise: null,
     startupRetryTimer: 0,
     startupRetryAttempt: 0,
-    aiSettingsId: "",
-    aiSettingsLoaded: false,
     featureUsageSettingsId: "",
     featureUsage: { version: 1, features: {} },
     featureUsageLoaded: false,
@@ -89,7 +87,14 @@ export function createInitialState(snippetDefaults) {
     guidelineFileTokenExpiresAt: 0,
     snippet: structuredClone(snippetDefaults),
     snippetItems: [],
-    aiDraft: null,
+    writerOld: {
+      reports: [],
+      error: "",
+      selectedId: "",
+      modality: "",
+      source: "old-report",
+      loaded: false
+    },
     tiptapReady: false,
     editorUpdateTimers: new WeakMap()
   };
