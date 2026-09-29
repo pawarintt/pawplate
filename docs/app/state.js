@@ -46,6 +46,14 @@ export function createInitialState(snippetDefaults) {
     dictionaryReady: false,
     personalDictionary: new Set(),
     userSettingsId: "",
+    // user_settings keys confirmed from the server this session. Saves may
+    // only create a new record for a key listed here, so a failed load can
+    // never produce a duplicate record that hides the real one.
+    loadedSettingKeys: new Set(),
+    startupPending: false,
+    startupPromise: null,
+    startupRetryTimer: 0,
+    startupRetryAttempt: 0,
     aiSettingsId: "",
     aiSettingsLoaded: false,
     featureUsageSettingsId: "",

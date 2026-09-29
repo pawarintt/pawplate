@@ -1598,7 +1598,10 @@ function sessionNeedsRefresh(force = false) {
 }
 
 // Marker for failures worth retrying: timeouts and low-level network errors.
-// HTTP error statuses are NOT retryable here (the server answered).
+// Most HTTP error statuses are NOT retryable (the server answered); the
+// transient ones proxies return on flaky links are in RETRYABLE_STATUSES.
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
 class NetworkError extends Error {
   constructor(message = "Network request failed.", options = {}) {
     super(message, options);
@@ -1636,7 +1639,10 @@ async function fetchWithRetry(url, options = {}, { timeoutMs = READ_TIMEOUT_MS, 
   let attempt = 0;
   for (;;) {
     try {
-      return await fetchWithTimeout(url, options, timeoutMs);
+      const response = await fetchWithTimeout(url, options, timeoutMs);
+      if (!RETRYABLE_STATUSES.has(response.status) || attempt >= retries) return response;
+      attempt += 1;
+      await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
     } catch (error) {
       if (!(error instanceof NetworkError) || attempt >= retries) throw error;
       attempt += 1;
@@ -1667,6 +1673,9 @@ async function refreshAuthSession(options = {}) {
       const error = new AuthSessionError();
       logout(error.message);
       throw error;
+    }
+    if (RETRYABLE_STATUSES.has(response.status)) {
+      throw new NetworkError("PawPlate could not reach the server. Your local draft is safe.");
     }
     if (!response.ok) throw new Error("PawPlate could not verify your session. Please try again.");
 
@@ -1757,6 +1766,11 @@ function logout(message = "") {
   state.aiDraft = null;
   state.aiSettingsId = "";
   state.aiSettingsLoaded = false;
+  state.loadedSettingKeys = new Set();
+  state.startupPending = false;
+  window.clearTimeout(state.startupRetryTimer);
+  state.startupRetryTimer = 0;
+  state.startupRetryAttempt = 0;
   window.clearTimeout(state.featureUsageSaveTimer);
   state.featureUsageSettingsId = "";
   state.featureUsage = emptyFeatureUsage();
@@ -1862,6 +1876,14 @@ async function pbCreate(collection, data) {
   return response.json();
 }
 
+// Creating a user_settings record before its load succeeded could duplicate
+// an existing record for the same owner/key, so refuse until it has loaded.
+function assertSettingLoaded(key) {
+  if (!state.loadedSettingKeys.has(key)) {
+    throw new Error("Your saved settings have not loaded yet. Check the connection and try again.");
+  }
+}
+
 async function pbUpdate(collection, id, data) {
   const response = await authenticatedFetch(`${API}/${collection}/records/${id}`, {
     method: "PATCH",
@@ -1913,14 +1935,12 @@ async function loadFeatureUsage() {
       const record = data.items?.[0];
       state.featureUsageSettingsId = record?.id || "";
       state.featureUsage = normalizeFeatureUsage(record?.value);
+      state.loadedSettingKeys.add(FEATURE_USAGE_SETTINGS_KEY);
+      state.featureUsageLoaded = true;
     } catch (error) {
-      if (generation === state.authGeneration) state.featureUsage = emptyFeatureUsage();
       console.warn("Feature usage sync unavailable.", error);
     } finally {
-      if (state.featureUsageLoadPromise === loadPromise) {
-        state.featureUsageLoaded = true;
-        state.featureUsageLoadPromise = null;
-      }
+      if (state.featureUsageLoadPromise === loadPromise) state.featureUsageLoadPromise = null;
     }
     return state.featureUsage;
   })();
@@ -1949,6 +1969,7 @@ async function saveFeatureUsage() {
         if (state.featureUsageSettingsId) {
           await pbUpdate("user_settings", state.featureUsageSettingsId, { value });
         } else {
+          assertSettingLoaded(FEATURE_USAGE_SETTINGS_KEY);
           const created = await pbCreate("user_settings", {
             owner,
             key: FEATURE_USAGE_SETTINGS_KEY,
@@ -2028,14 +2049,12 @@ async function loadReportNotes() {
       const record = data.items?.[0];
       state.reportNotesSettingsId = record?.id || "";
       state.reportNotes = normalizeReportNotes(record?.value);
+      state.loadedSettingKeys.add(REPORT_NOTES_SETTINGS_KEY);
+      state.reportNotesLoaded = true;
     } catch (error) {
-      if (generation === state.authGeneration) state.reportNotes = emptyReportNotes();
       console.warn("Report notes sync unavailable.", error);
     } finally {
-      if (state.reportNotesLoadPromise === loadPromise) {
-        state.reportNotesLoaded = true;
-        state.reportNotesLoadPromise = null;
-      }
+      if (state.reportNotesLoadPromise === loadPromise) state.reportNotesLoadPromise = null;
     }
     return state.reportNotes;
   })();
@@ -2068,6 +2087,7 @@ async function saveReportNotes() {
         if (state.reportNotesSettingsId) {
           await pbUpdate("user_settings", state.reportNotesSettingsId, { value });
         } else {
+          assertSettingLoaded(REPORT_NOTES_SETTINGS_KEY);
           const created = await pbCreate("user_settings", {
             owner,
             key: REPORT_NOTES_SETTINGS_KEY,
@@ -2209,14 +2229,12 @@ async function loadPersonalNotes() {
       const record = data.items?.[0];
       state.personalNotesSettingsId = record?.id || "";
       state.personalNotes = normalizePersonalNotes(record?.value);
+      state.loadedSettingKeys.add(PERSONAL_NOTES_SETTINGS_KEY);
+      state.personalNotesLoaded = true;
     } catch (error) {
-      if (generation === state.authGeneration) state.personalNotes = emptyPersonalNotes();
       console.warn("Personal notes sync unavailable.", error);
     } finally {
-      if (state.personalNotesLoadPromise === loadPromise) {
-        state.personalNotesLoaded = true;
-        state.personalNotesLoadPromise = null;
-      }
+      if (state.personalNotesLoadPromise === loadPromise) state.personalNotesLoadPromise = null;
     }
     if (generation === state.authGeneration) renderPersonalNotes();
     return state.personalNotes;
@@ -2250,6 +2268,7 @@ async function savePersonalNotes() {
         if (state.personalNotesSettingsId) {
           await pbUpdate("user_settings", state.personalNotesSettingsId, { value });
         } else {
+          assertSettingLoaded(PERSONAL_NOTES_SETTINGS_KEY);
           const created = await pbCreate("user_settings", {
             owner,
             key: PERSONAL_NOTES_SETTINGS_KEY,
@@ -2813,6 +2832,7 @@ async function loadPersonalDictionary() {
       fields: "id,value"
     });
     const record = data.items?.[0];
+    state.loadedSettingKeys.add("personalDictionary");
     if (!record) return;
     state.userSettingsId = record.id;
     const words = Array.isArray(record.value?.words) ? record.value.words : [];
@@ -2831,6 +2851,7 @@ async function savePersonalDictionary() {
       await pbUpdate("user_settings", state.userSettingsId, { value });
       return;
     }
+    assertSettingLoaded("personalDictionary");
     const created = await pbCreate("user_settings", {
       owner: state.auth?.user?.id || "",
       key: "personalDictionary",
@@ -2873,10 +2894,11 @@ async function loadAiSettings() {
       state.aiSettingsId = record.id;
       setAiSettingsForm(record.value || {});
     }
+    state.loadedSettingKeys.add("aiDraft");
+    state.aiSettingsLoaded = true;
   } catch (error) {
     console.warn("AI settings sync unavailable; using defaults.", error);
   }
-  state.aiSettingsLoaded = true;
 }
 
 async function saveAiSettings() {
@@ -2889,6 +2911,7 @@ async function saveAiSettings() {
   if (state.aiSettingsId) {
     await pbUpdate("user_settings", state.aiSettingsId, { value });
   } else {
+    assertSettingLoaded("aiDraft");
     const created = await pbCreate("user_settings", {
       owner: state.auth?.user?.id || "",
       key: "aiDraft",
@@ -3040,6 +3063,21 @@ async function loadInitialWorkspaceData() {
     );
   }
   return failures.length === 0;
+}
+
+// Re-run any per-user settings load that failed (e.g. on a weak connection)
+// so saves are unblocked and synced data appears once the network recovers.
+async function reloadMissingSettings() {
+  const loaders = [
+    ["personalDictionary", loadPersonalDictionary],
+    ["aiDraft", loadAiSettings],
+    [REPORT_NOTES_SETTINGS_KEY, loadReportNotes],
+    [PERSONAL_NOTES_SETTINGS_KEY, loadPersonalNotes],
+    [TEMPLATE_ORDER_SETTINGS_KEY, loadTemplateOrder],
+    [SHORTHAND_SETTINGS_KEY, loadShorthands],
+    [FEATURE_USAGE_SETTINGS_KEY, loadFeatureUsage]
+  ].filter(([key]) => !state.loadedSettingKeys.has(key));
+  await Promise.all(loaders.map(([, load]) => load()));
 }
 
 async function reloadActiveView() {
@@ -3413,6 +3451,7 @@ async function loadTemplateOrder() {
       const order = Array.isArray(record.value?.order) ? record.value.order : [];
       state.templateOrder = order.map(String).filter(Boolean);
     }
+    state.loadedSettingKeys.add(TEMPLATE_ORDER_SETTINGS_KEY);
   } catch (error) {
     console.warn("Template order unavailable; using server order.", error);
   }
@@ -3429,6 +3468,7 @@ async function saveTemplateOrder() {
     if (state.templateOrderSettingsId) {
       await pbUpdate("user_settings", state.templateOrderSettingsId, { value });
     } else {
+      assertSettingLoaded(TEMPLATE_ORDER_SETTINGS_KEY);
       const created = await pbCreate("user_settings", {
         owner: state.auth.user.id,
         key: TEMPLATE_ORDER_SETTINGS_KEY,
@@ -3469,6 +3509,7 @@ async function loadShorthands() {
       state.shorthandSettingsId = record.id;
       state.shorthands = normalizeShorthands(record.value);
     }
+    state.loadedSettingKeys.add(SHORTHAND_SETTINGS_KEY);
   } catch (error) {
     console.warn("Shorthands unavailable; @ expansion disabled for this session.", error);
   }
@@ -3483,6 +3524,7 @@ async function persistShorthands() {
     if (state.shorthandSettingsId) {
       await pbUpdate("user_settings", state.shorthandSettingsId, { value });
     } else {
+      assertSettingLoaded(SHORTHAND_SETTINGS_KEY);
       const created = await pbCreate("user_settings", {
         owner: state.auth.user.id,
         key: SHORTHAND_SETTINGS_KEY,
@@ -4805,7 +4847,7 @@ els.oldSearchInput.addEventListener("input", debounce(() => {
 }));
 els.oldReportList.addEventListener("click", event => {
   if (event.target.closest('[data-retry="old-reports"]')) {
-    loadViewData(loadOldReports(), "Old Reports");
+    loadViewData(Promise.all([loadOldReports(), reloadMissingSettings()]), "Old Reports");
     return;
   }
   if (event.target.closest('[data-clear-filters="old-reports"]')) {
@@ -4974,7 +5016,7 @@ function syncYearConverter(source) {
 });
 els.templateList.addEventListener("click", event => {
   if (event.target.closest('[data-retry="templates"]')) {
-    loadViewData(loadTemplates(), "Templates");
+    loadViewData(Promise.all([loadTemplates(), reloadMissingSettings()]), "Templates");
     return;
   }
   if (event.target.closest('[data-clear-filters="templates"]')) {
@@ -5404,8 +5446,7 @@ document.addEventListener("visibilitychange", () => {
   if (!state.auth?.token) return;
   // Coming back with no connection: skip quietly instead of flashing errors.
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-  refreshAuthSession()
-    .then(reloadActiveView)
+  recoverWorkspace()
     .catch(error => {
       if (error instanceof AuthSessionError) return;
       // Transient blip: silent, the next request retries on its own.
@@ -5421,8 +5462,59 @@ window.addEventListener("online", () => {
   if (!state.auth?.token) return;
   // Flush any draft that couldn't sync while offline, then reload the view.
   if (state.reportAutosaveDirty) scheduleReportAutosave(100);
-  loadViewData(refreshAuthSession().then(reloadActiveView), "Workspace");
+  loadViewData(recoverWorkspace(), "Workspace");
 });
+
+// Bring the workspace back after a weak-connection failure: finish startup
+// if it never completed, otherwise reload settings that failed and the view.
+async function recoverWorkspace() {
+  if (!state.auth?.token) return;
+  if (state.startupPending) {
+    await startWorkspace();
+    return;
+  }
+  await refreshAuthSession();
+  await Promise.all([reloadMissingSettings(), reloadActiveView()]);
+}
+
+function scheduleStartupRetry() {
+  window.clearTimeout(state.startupRetryTimer);
+  const delay = Math.min(60000, 5000 * 2 ** state.startupRetryAttempt);
+  state.startupRetryAttempt += 1;
+  state.startupRetryTimer = window.setTimeout(() => {
+    state.startupRetryTimer = 0;
+    if (!state.auth?.token || !state.startupPending) return;
+    // Offline: the "online" event will resume startup instead.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    startWorkspace().catch(error => console.warn("Workspace startup retry failed.", error));
+  }, delay);
+}
+
+async function startWorkspace() {
+  if (state.startupPromise) return state.startupPromise;
+  window.clearTimeout(state.startupRetryTimer);
+  state.startupRetryTimer = 0;
+  state.startupPromise = (async () => {
+    try {
+      await refreshAuthSession({ force: true });
+    } catch (error) {
+      if (error instanceof AuthSessionError) return;
+      state.startupPending = true;
+      scheduleStartupRetry();
+      throw error;
+    }
+    const wasPending = state.startupPending;
+    state.startupPending = false;
+    state.startupRetryAttempt = 0;
+    await loadApp();
+    if (wasPending) showToast("Back online", "PawPlate reconnected and loaded your workspace.", "info");
+  })();
+  try {
+    return await state.startupPromise;
+  } finally {
+    state.startupPromise = null;
+  }
+}
 
 async function loadApp() {
   document.body.removeAttribute("data-theme");
@@ -5430,10 +5522,16 @@ async function loadApp() {
   syncRouteFromLocation({ force: true, loadData: false });
   await loadWorkingDraft();
   await initTiptapEditors();
-  await loadPersonalDictionary();
-  await loadAiSettings();
-  await Promise.all([loadReportNotes(), loadPersonalNotes(), loadTemplateOrder(), loadShorthands()]);
-  loadFeatureUsage().catch(error => console.warn("Feature usage could not be loaded.", error));
+  // Settings loaders never throw; any that fail are retried by recoverWorkspace().
+  await Promise.all([
+    loadPersonalDictionary(),
+    loadAiSettings(),
+    loadReportNotes(),
+    loadPersonalNotes(),
+    loadTemplateOrder(),
+    loadShorthands()
+  ]);
+  loadFeatureUsage();
   loadSpellchecker();
   updateTemplateModeBadge();
   updateReportModeBadge();
@@ -5450,11 +5548,10 @@ async function init() {
     return;
   }
   try {
-    await refreshAuthSession({ force: true });
-    await loadApp();
+    await startWorkspace();
   } catch (error) {
     if (error instanceof AuthSessionError) return;
-    showToast("Workspace unavailable", "PawPlate could not reach the server. Try refreshing in a moment.", "error");
+    showToast("Workspace unavailable", "PawPlate could not reach the server. It will keep retrying when the connection returns.", "error");
     console.error(error);
   }
 }
