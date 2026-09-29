@@ -7,7 +7,7 @@
 // document is flattened into lines: one per paragraph, split again on <br>.
 // Lists, headings and other blocks stay whole. Each line remembers whether it
 // was followed by a <br> or a paragraph break so the output keeps its spacing.
-import { reportHtml } from "./utils.js?v=20260929-worklog-trends";
+import { reportHtml } from "./utils.js?v=20260929-merge-regions";
 
 // Headings recognised as sections, grouped by the section they mean.
 const SECTION_ALIASES = {
@@ -81,12 +81,17 @@ function isBlankLine(line) {
   return !line.block && !line.text.trim();
 }
 
+// "FINDINGS:" is a section; "NECK FINDINGS:" is the neck part of it.
 function headingOf(line) {
   if (line.block && !/^<h[1-6]/i.test(line.html)) return null;
   const match = line.text.match(HEADING_PATTERN);
   if (!match) return null;
-  const key = SECTION_BY_ALIAS.get(match[1].trim().replace(/\s+/g, " ").toUpperCase());
-  return key ? { key, rest: line.text.slice(match[0].length).trim() } : null;
+  const label = match[1].trim().replace(/\s+/g, " ").toUpperCase();
+  const rest = line.text.slice(match[0].length).trim();
+  const key = SECTION_BY_ALIAS.get(label);
+  if (key) return { key, region: "", rest };
+  const regional = label.match(/^(.+) FINDINGS?$/);
+  return regional ? { key: "FINDINGS", region: regional[1], rest } : null;
 }
 
 function splitSections(lines) {
@@ -94,8 +99,8 @@ function splitSections(lines) {
   const sections = [];
   lines.forEach(line => {
     const heading = headingOf(line);
-    if (heading && !sections.some(section => section.key === heading.key)) {
-      sections.push({ key: heading.key, heading: line, rest: heading.rest, body: [] });
+    if (heading && !sections.some(section => section.key === heading.key && section.region === heading.region)) {
+      sections.push({ key: heading.key, region: heading.region, heading: line, rest: heading.rest, body: [] });
     } else if (sections.length) {
       sections[sections.length - 1].body.push(line);
     } else {
@@ -214,6 +219,106 @@ function appendHtml(currentHtml, addedHtml) {
   return linesToHtml([...current, blankLine(), ...added]);
 }
 
+function lineWithText(line, text) {
+  const container = document.createElement("template");
+  container.innerHTML = line.html;
+  const walker = document.createTreeWalker(container.content, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  if (!nodes.length) return { ...line, html: text.replace(/&/g, "&amp;").replace(/</g, "&lt;"), text };
+  nodes[0].textContent = text;
+  nodes.slice(1).forEach(node => { node.textContent = ""; });
+  return { ...line, html: container.innerHTML, text };
+}
+
+// "CT SCAN OF CHEST" + "CT SCAN OF NECK WITH CONTRAST" gives
+// "CT SCAN OF CHEST AND NECK WITH CONTRAST", with the regions in the order the
+// templates were opened. The title is null when they ask for different
+// contrast; the whole result is null when the exams don't share a prefix.
+const TITLE_MODIFIER = /\s+((?:WITH|WITHOUT)\b.*|NON[- ]?CONTRAST.*|\(.*\))$/i;
+const REGION_SPLIT = /\s*(?:,|&|\bAND\b)\s*/i;
+
+function combineExamTitles(currentTitle, addedTitle) {
+  const split = title => {
+    const text = title.replace(/\s+/g, " ").trim();
+    const modifier = text.match(TITLE_MODIFIER);
+    return { base: modifier ? text.slice(0, modifier.index) : text, modifier: modifier ? modifier[1].trim() : "" };
+  };
+  const current = split(currentTitle);
+  const added = split(addedTitle);
+  const currentWords = current.base.split(" ");
+  const addedWords = added.base.split(" ");
+  let shared = 0;
+  while (shared < currentWords.length - 1 && shared < addedWords.length - 1
+    && currentWords[shared].toUpperCase() === addedWords[shared].toUpperCase()) shared += 1;
+  if (!shared) return null;
+  const currentRegions = currentWords.slice(shared).join(" ").split(REGION_SPLIT).filter(Boolean);
+  const addedRegions = addedWords.slice(shared).join(" ").split(REGION_SPLIT).filter(Boolean);
+  const regions = [...currentRegions];
+  addedRegions.forEach(region => {
+    if (!regions.some(item => item.toUpperCase() === region.toUpperCase())) regions.push(region);
+  });
+  const and = /[a-z]/.test(current.base) ? "and" : "AND";
+  const list = items => items.length > 1 ? `${items.slice(0, -1).join(", ")} ${and} ${items[items.length - 1]}` : items[0];
+  const modifier = current.modifier || added.modifier;
+  const conflict = current.modifier && added.modifier && current.modifier.toUpperCase() !== added.modifier.toUpperCase();
+  return {
+    title: conflict ? null : `${currentWords.slice(0, shared).join(" ")} ${list(regions)}${modifier ? ` ${modifier}` : ""}`,
+    currentRegions,
+    addedRegion: list(addedRegions)
+  };
+}
+
+function firstContentIndex(lines) {
+  return lines.findIndex(line => !isBlankLine(line));
+}
+
+// Put the region in front of FINDINGS in a heading line, matching its case.
+function regionHeading(line, region) {
+  const container = document.createElement("template");
+  container.innerHTML = line.html;
+  const walker = document.createTreeWalker(container.content, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const match = node.textContent.match(/findings?/i);
+    if (!match) continue;
+    const upper = match[0] === match[0].toUpperCase();
+    const label = upper ? region.toUpperCase() : region.charAt(0).toUpperCase() + region.slice(1).toLowerCase();
+    node.textContent = `${node.textContent.slice(0, match.index)}${label} ${node.textContent.slice(match.index)}`;
+    break;
+  }
+  return { ...line, html: container.innerHTML, text: container.content.textContent || "" };
+}
+
+function trailingBlankCount(lines) {
+  let count = 0;
+  while (count < lines.length && isBlankLine(lines[lines.length - 1 - count])) count += 1;
+  return count;
+}
+
+// Lines both reports end with (the signature) stay once, at the end.
+function commonTailLength(currentLines, addedLines) {
+  const current = currentLines.filter(line => !isBlankLine(line));
+  const added = addedLines.filter(line => !isBlankLine(line));
+  let count = 0;
+  while (count < current.length && count < added.length
+    && current[current.length - 1 - count].text.trim() === added[added.length - 1 - count].text.trim()) count += 1;
+  return count;
+}
+
+// Drop the last `count` non-blank lines (and the blanks around them).
+function withoutTail(lines, count) {
+  if (!count) return { head: lines, tail: [] };
+  let seen = 0;
+  let index = lines.length;
+  while (index > 0 && seen < count) {
+    index -= 1;
+    if (!isBlankLine(lines[index])) seen += 1;
+  }
+  while (index > 0 && isBlankLine(lines[index - 1])) index -= 1;
+  return { head: lines.slice(0, index), tail: lines.slice(index) };
+}
+
 function mergeHtml(currentHtml, addedHtml) {
   const current = splitSections(htmlToLines(currentHtml));
   const added = splitSections(htmlToLines(addedHtml));
@@ -221,13 +326,66 @@ function mergeHtml(currentHtml, addedHtml) {
   if (!shared.length) return null;
   const merged = [];
   const addedSections = [];
+
+  // One exam title line for both, when they are the same kind of exam.
+  const currentPreamble = [...current.preamble];
+  let addedPreamble = [...added.preamble];
+  const currentTitleIndex = firstContentIndex(currentPreamble);
+  const addedTitleIndex = firstContentIndex(addedPreamble);
+  const titles = currentTitleIndex >= 0 && addedTitleIndex >= 0
+    ? combineExamTitles(currentPreamble[currentTitleIndex].text, addedPreamble[addedTitleIndex].text)
+    : null;
+  if (titles?.title) {
+    currentPreamble[currentTitleIndex] = lineWithText(currentPreamble[currentTitleIndex], titles.title);
+    addedPreamble = addedPreamble.filter((line, index) => index !== addedTitleIndex);
+  }
+
+  const lastCurrent = current.sections[current.sections.length - 1];
+  const lastAdded = added.sections[added.sections.length - 1];
+  const tailLength = lastCurrent && lastAdded ? commonTailLength(lastCurrent.body, lastAdded.body) : 0;
+  const currentTail = lastCurrent ? withoutTail(lastCurrent.body, tailLength) : { head: [], tail: [] };
+  if (lastCurrent) lastCurrent.body = currentTail.head;
+  if (lastAdded) lastAdded.body = withoutTail(lastAdded.body, tailLength).head;
+
   added.sections.forEach(section => {
-    const target = current.sections.find(item => item.key === section.key);
     const body = section.rest ? [stripHeadingLabel(section.heading), ...section.body] : section.body;
+    if (!trimBlankLines(body).length && current.sections.some(item => item.key === section.key)) return;
+    const findings = current.sections.filter(item => item.key === "FINDINGS");
+    // Findings of a different region get their own "NECK FINDINGS:" part.
+    if (section.key === "FINDINGS" && !section.region && titles?.addedRegion && findings.length) {
+      const plain = findings.find(item => !item.region);
+      if (plain && findings.length === 1 && titles.currentRegions.length === 1) {
+        plain.region = titles.currentRegions[0].toUpperCase();
+        plain.heading = regionHeading(plain.heading, titles.currentRegions[0]);
+      }
+      if (findings.every(item => item.region)) {
+        const last = findings[findings.length - 1];
+        const blanks = Array.from({ length: trailingBlankCount(last.body) }, blankLine);
+        const content = trimBlankLines(body).map(line => ({ ...line }));
+        if (blanks.length && content.length) content[content.length - 1].sep = "block";
+        const copy = {
+          key: "FINDINGS",
+          region: titles.addedRegion.toUpperCase(),
+          heading: regionHeading(section.heading.text.includes(":") && section.rest ? lineWithText(section.heading, section.heading.text.slice(0, section.heading.text.indexOf(":") + 1)) : section.heading, titles.addedRegion),
+          body: [...content, ...blanks]
+        };
+        if (!blanks.length && last.body.length) last.body[last.body.length - 1].sep = "block";
+        current.sections.splice(current.sections.indexOf(last) + 1, 0, copy);
+        addedSections.push(`${titles.addedRegion} findings`);
+        return;
+      }
+    }
+    const target = current.sections.find(item => item.key === section.key && item.region === section.region)
+      || current.sections.find(item => item.key === section.key);
     if (target) {
-      const lines = section.key === "IMPRESSION" ? continueNumbering(target.body, trimBlankLines(body)) : body;
+      let lines = body;
+      if (section.key === "IMPRESSION") {
+        const existing = new Set(target.body.map(line => line.text.trim()).filter(Boolean));
+        lines = continueNumbering(target.body, trimBlankLines(body).filter(line => !existing.has(line.text.trim())));
+      }
+      if (!trimBlankLines(lines).length) return;
       insertAfterContent(target.body, lines, target.heading);
-      merged.push(section.key);
+      merged.push(target.region ? `${target.region} findings` : section.key);
       return;
     }
     // A section the current report lacks goes in at its usual place.
@@ -237,15 +395,22 @@ function mergeHtml(currentHtml, addedHtml) {
     current.sections.splice(beforeIndex < 0 ? current.sections.length : beforeIndex, 0, copy);
     addedSections.push(section.key);
   });
-  const currentPreamble = [...current.preamble];
+  if (lastCurrent && currentTail.tail.length) {
+    const blanks = trailingBlankCount(currentTail.tail.slice(0, currentTail.tail.findIndex(line => !isBlankLine(line))));
+    const content = trimBlankLines(lastCurrent.body);
+    lastCurrent.body = [...lastCurrent.body.slice(0, lastCurrent.body.length - trailingBlankCount(lastCurrent.body))];
+    if (content.length && !blanks) lastCurrent.body[lastCurrent.body.length - 1].sep = "block";
+    lastCurrent.body.push(...currentTail.tail);
+  }
+
   const hadPreamble = trimBlankLines(currentPreamble).length > 0;
-  insertAfterContent(currentPreamble, added.preamble);
-  if (!hadPreamble && trimBlankLines(added.preamble).length && !current.preamble.length) currentPreamble.push(blankLine());
+  insertAfterContent(currentPreamble, addedPreamble);
+  if (!hadPreamble && trimBlankLines(addedPreamble).length && !current.preamble.length) currentPreamble.push(blankLine());
   const lines = [
     ...currentPreamble,
     ...current.sections.flatMap(section => [section.heading, ...section.body])
   ];
-  return { html: joinContinuedLists(linesToHtml(lines)), merged, added: addedSections };
+  return { html: joinContinuedLists(linesToHtml(lines)), merged, added: addedSections, title: Boolean(titles?.title) };
 }
 
 // Join an <ol> onto the list just before it when it continues that list's

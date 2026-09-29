@@ -41,9 +41,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-worklog-trends";
-import { collectDom } from "./dom.js?v=20260929-worklog-trends";
-import { createInitialState } from "./state.js?v=20260929-worklog-trends";
+} from "./constants.js?v=20260929-merge-regions";
+import { collectDom } from "./dom.js?v=20260929-merge-regions";
+import { createInitialState } from "./state.js?v=20260929-merge-regions";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-worklog-trends";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-worklog-trends";
+} from "./utils.js?v=20260929-merge-regions";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-merge-regions";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4179,6 +4179,7 @@ async function combineTemplateIntoReport(id, mode, { track = true } = {}) {
   } else if (result.mode === "merge") {
     trackFeature("template.merge");
     const parts = [
+      result.title ? "Combined the exam titles." : "",
       result.merged.length ? `Merged into ${result.merged.map(sectionLabel).join(", ")}.` : "",
       result.added.length ? `Added ${result.added.map(sectionLabel).join(", ")}.` : ""
     ].filter(Boolean).join(" ");
