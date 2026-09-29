@@ -30,6 +30,7 @@ export function createInitialState(snippetDefaults) {
     reportDraftId: null,
     reportDraftSourceDate: "",
     workingDraftId: "",
+    workingDraftChecked: false,
     reportAutosaveTimer: 0,
     reportAutosaveDirty: false,
     reportAutosaveSaving: false,

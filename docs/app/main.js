@@ -856,6 +856,7 @@ async function saveWorkingDraft() {
   setReportAutosaveStatus("saving", "Saving draft...");
 
   try {
+    if (!state.workingDraftId && !state.workingDraftChecked) await fetchRemoteWorkingDraft();
     if (!hasContent) {
       if (state.workingDraftId) await pbDelete("report_drafts", state.workingDraftId);
       state.workingDraftId = "";
@@ -968,19 +969,36 @@ async function discardRecoveredDraft() {
   showToast("Draft discarded", "Start with a clean report when you are ready.", "info");
 }
 
+// Look up the user's server draft (newest wins) and remove stale duplicates
+// left behind by earlier failed lookups. Until this succeeds, autosave must
+// not create a draft record, or it would duplicate the existing one.
+async function fetchRemoteWorkingDraft() {
+  const owner = state.auth?.user?.id || "";
+  const data = await pbList("report_drafts", {
+    perPage: 20,
+    sort: "-updated",
+    filter: `owner="${owner}"`,
+    fields: "id,payload,updated"
+  });
+  if (owner !== (state.auth?.user?.id || "")) throw new Error("Signed-in user changed during draft lookup.");
+  const [remote = null, ...stale] = data.items || [];
+  // A concurrent lookup already settled the id (and autosave may have used it).
+  if (state.workingDraftChecked) return remote;
+  state.workingDraftId = remote?.id || "";
+  state.workingDraftChecked = true;
+  stale.forEach(item => {
+    pbDelete("report_drafts", item.id).catch(error => console.warn("Duplicate draft cleanup failed.", error));
+  });
+  return remote;
+}
+
 async function loadWorkingDraft() {
   state.workingDraftId = "";
+  state.workingDraftChecked = false;
   const local = readLocalWorkingDraft();
   let remote = null;
   try {
-    const owner = state.auth?.user?.id || "";
-    const data = await pbList("report_drafts", {
-      perPage: 1,
-      filter: `owner="${owner}"`,
-      fields: "id,payload,updated"
-    });
-    remote = data.items?.[0] || null;
-    state.workingDraftId = remote?.id || "";
+    remote = await fetchRemoteWorkingDraft();
   } catch (error) {
     console.warn("Remote draft recovery unavailable; checking local backup.", error);
   }
@@ -1817,6 +1835,7 @@ function logout(message = "") {
   state.reportAutosaveSaving = false;
   state.reportAutosaveEpoch += 1;
   state.workingDraftId = "";
+  state.workingDraftChecked = false;
   state.pendingWorkingDraft = null;
   if (els.draftRecoveryDialog.open) els.draftRecoveryDialog.close();
   state.guidelineFileToken = "";
@@ -5474,6 +5493,9 @@ async function recoverWorkspace() {
     return;
   }
   await refreshAuthSession();
+  if (!state.workingDraftChecked) {
+    fetchRemoteWorkingDraft().catch(error => console.warn("Remote draft lookup still unavailable.", error));
+  }
   await Promise.all([reloadMissingSettings(), reloadActiveView()]);
 }
 
