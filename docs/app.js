@@ -1,1 +1,1 @@
-import("./app/main.js?v=20260929-no-template-kind");
+import("./app/main.js?v=20260930-worklog-mmg");

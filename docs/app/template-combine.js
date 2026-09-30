@@ -7,7 +7,7 @@
 // document is flattened into lines: one per paragraph, split again on <br>.
 // Lists, headings and other blocks stay whole. Each line remembers whether it
 // was followed by a <br> or a paragraph break so the output keeps its spacing.
-import { reportHtml } from "./utils.js?v=20260929-no-template-kind";
+import { reportHtml } from "./utils.js?v=20260930-worklog-mmg";
 
 // Headings recognised as sections, grouped by the section they mean.
 const SECTION_ALIASES = {

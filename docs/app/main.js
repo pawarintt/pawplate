@@ -40,9 +40,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260929-no-template-kind";
-import { collectDom } from "./dom.js?v=20260929-no-template-kind";
-import { createInitialState } from "./state.js?v=20260929-no-template-kind";
+} from "./constants.js?v=20260930-worklog-mmg";
+import { collectDom } from "./dom.js?v=20260930-worklog-mmg";
+import { createInitialState } from "./state.js?v=20260930-worklog-mmg";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260929-no-template-kind";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260929-no-template-kind";
+} from "./utils.js?v=20260930-worklog-mmg";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-worklog-mmg";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4491,21 +4491,21 @@ function filteredWorklogReports() {
     .filter(report => !state.worklogModality || (classifyWorklogModality(report.modality) || "Other") === state.worklogModality);
 }
 
-const WORKLOG_MODALITIES = ["CT", "US", "CR", "MR", "Flu"];
+const WORKLOG_MODALITIES = ["CT", "US", "CR", "MR", "MMG"];
 
 // Every saved report once stats have loaded, otherwise the (capped) list.
 function worklogStatRecords() {
   return state.worklogStatsLoaded ? state.worklogStats : state.workLogReports;
 }
 
-// Per-date counts: { total, CT, US, CR, MR, Flu, Other } keyed by YYYY-MM-DD.
+// Per-date counts: { total, CT, US, CR, MR, MMG, Other } keyed by YYYY-MM-DD.
 function worklogDateCounts(records = worklogStatRecords()) {
   const counts = new Map();
   for (const report of records) {
     const date = savedDate(report);
     if (!date) continue;
     const key = dateKey(date);
-    const day = counts.get(key) || { total: 0, CT: 0, US: 0, CR: 0, MR: 0, Flu: 0, Other: 0 };
+    const day = counts.get(key) || { total: 0, CT: 0, US: 0, CR: 0, MR: 0, MMG: 0, Other: 0 };
     day.total += 1;
     day[classifyWorklogModality(report.modality) || "Other"] += 1;
     counts.set(key, day);
@@ -4514,20 +4514,21 @@ function worklogDateCounts(records = worklogStatRecords()) {
 }
 
 // Normalize free-text modality entries into the five work-log buckets:
-// CT, US, CR (plain film / X-ray), MR (MRI), Flu (fluoroscopy). Returns "" when unknown.
+// CT, US, CR (plain film / X-ray), MR (MRI), MMG (mammography). Returns "" when
+// unknown; fluoroscopy and everything else count as Other.
 function classifyWorklogModality(modality) {
   const raw = String(modality || "").toLowerCase();
   if (!raw.trim()) return "";
   if (/(mri|\bmr\b|magnetic resonance)/.test(raw)) return "MR";
   if (/\bct\b|ct angi|cta\b|mdct|ncct|computed tomo/.test(raw)) return "CT";
   if (/ultrasound|\bus\b|sonogr|\bsono\b/.test(raw)) return "US";
-  if (/fluoro|\bflu\b|\brf\b/.test(raw)) return "Flu";
+  if (/mammo|\bmmg\b|\bmg\b|tomosynth|\bdbt\b/.test(raw)) return "MMG";
   if (/\bcr\b|\bdx\b|\bdr\b|film|x-?ray|\bxr\b|\bcxr\b|radiograph|plain film/.test(raw)) return "CR";
   return "";
 }
 
 function worklogModalityCounts(reports = worklogStatRecords()) {
-  const counts = { CT: 0, US: 0, CR: 0, MR: 0, Flu: 0, Other: 0 };
+  const counts = { CT: 0, US: 0, CR: 0, MR: 0, MMG: 0, Other: 0 };
   for (const report of reports) {
     counts[classifyWorklogModality(report.modality) || "Other"] += 1;
   }
@@ -4600,8 +4601,8 @@ function renderWorkLog() {
     ["US", modalityCounts.US, "Ultrasound"],
     ["CR", modalityCounts.CR, "Plain film / X-ray"],
     ["MR", modalityCounts.MR, "MRI"],
-    ["Flu", modalityCounts.Flu, "Fluoroscopy"],
-    ["Other", modalityCounts.Other, "Other or unrecognized modality"]
+    ["MMG", modalityCounts.MMG, "Mammography"],
+    ["Other", modalityCounts.Other, "Fluoroscopy and other modalities"]
   ].map(([label, value, title], index) => {
     const modality = index ? label : "";
     const active = modality && state.worklogModality === modality;
@@ -4770,7 +4771,7 @@ function worklogMonthlyStats(endMonth, monthCount = 12) {
       start,
       label: start.toLocaleDateString(undefined, { month: "short" }),
       total: 0,
-      counts: { CT: 0, US: 0, CR: 0, MR: 0, Flu: 0, Other: 0 },
+      counts: { CT: 0, US: 0, CR: 0, MR: 0, MMG: 0, Other: 0 },
       days: new Set()
     });
   }

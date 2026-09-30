@@ -2579,7 +2579,7 @@ mark {
   background: linear-gradient(180deg, rgba(255, 241, 244, .72), rgba(255,253,248,.86) 180px), var(--paper);
 }
 
-/* Total, then CT/US/CR over MR/Flu/Other, matching the calendar day grid. */
+/* Total, then CT/US/CR over MR/MMG/Other, matching the calendar day grid. */
 .worklog-summary {
   flex: 0 1 auto;
   min-width: 0;
@@ -2764,7 +2764,7 @@ button.summary-card {
 .mod-us { --mod: #8fb8c4; }
 .mod-cr { --mod: #c3a6c6; }
 .mod-mr { --mod: #e8a3ad; }
-.mod-flu { --mod: #e2c15f; }
+.mod-mmg { --mod: #e2c15f; }
 .mod-other { --mod: #cdb8ad; }
 
 .worklog-summary .summary-card[class*="mod-"],
