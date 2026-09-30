@@ -37,12 +37,11 @@ import {
   SHORTHAND_SETTINGS_KEY,
   SPELLCHECK_DICTIONARY_URL,
   TEMPLATE_ORDER_SETTINGS_KEY,
-  TIPTAP_CDN,
-  TIPTAP_VERSION,
+  TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-fetch-body-timeout";
-import { collectDom } from "./dom.js?v=20260930-fetch-body-timeout";
-import { createInitialState } from "./state.js?v=20260930-fetch-body-timeout";
+} from "./constants.js?v=20260930-offline-cache";
+import { collectDom } from "./dom.js?v=20260930-offline-cache";
+import { createInitialState } from "./state.js?v=20260930-offline-cache";
 import {
   copyText,
   debounce,
@@ -53,8 +52,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-fetch-body-timeout";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-fetch-body-timeout";
+} from "./utils.js?v=20260930-offline-cache";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-offline-cache";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1376,35 +1375,17 @@ function scheduleEditorProofing(editor) {
 }
 
 async function loadTiptapModules() {
-  const version = TIPTAP_VERSION;
-  const urls = {
-    core: `${TIPTAP_CDN}/@tiptap/core@${version}`,
-    starter: `${TIPTAP_CDN}/@tiptap/starter-kit@${version}`,
-    underline: `${TIPTAP_CDN}/@tiptap/extension-underline@${version}`,
-    textStyle: `${TIPTAP_CDN}/@tiptap/extension-text-style@${version}`,
-    color: `${TIPTAP_CDN}/@tiptap/extension-color@${version}`,
-    highlight: `${TIPTAP_CDN}/@tiptap/extension-highlight@${version}`,
-    placeholder: `${TIPTAP_CDN}/@tiptap/extension-placeholder@${version}`
-  };
-  const [core, starter, underline, textStyle, color, highlight, placeholder] = await Promise.all([
-    import(urls.core),
-    import(urls.starter),
-    import(urls.underline),
-    import(urls.textStyle),
-    import(urls.color),
-    import(urls.highlight),
-    import(urls.placeholder)
-  ]);
-  return {
-    Editor: core.Editor,
-    Extension: core.Extension,
-    StarterKit: starter.default || starter.StarterKit,
-    Underline: underline.default || underline.Underline,
-    TextStyle: textStyle.default || textStyle.TextStyle,
-    Color: color.default || color.Color,
-    Highlight: highlight.default || highlight.Highlight,
-    Placeholder: placeholder.default || placeholder.Placeholder
-  };
+  const {
+    Editor,
+    Extension,
+    StarterKit,
+    Underline,
+    TextStyle,
+    Color,
+    Highlight,
+    Placeholder
+  } = await import(TIPTAP_BUNDLE_URL);
+  return { Editor, Extension, StarterKit, Underline, TextStyle, Color, Highlight, Placeholder };
 }
 
 async function initTiptapEditors() {
@@ -5883,4 +5864,33 @@ async function init() {
   }
 }
 
+// Offline cache (docs/sw.js): the app shell opens from cache when wifi drops.
+// Once it is active, hand it the files this page already loaded plus the
+// lazily loaded editor and dictionary, so the very next visit works offline.
+function registerOfflineCache() {
+  if (!("serviceWorker" in navigator)) return;
+  const register = () => {
+    navigator.serviceWorker.register("sw.js").catch(error => {
+      console.warn("Offline cache unavailable.", error);
+    });
+    navigator.serviceWorker.ready.then(registration => {
+      const urls = new Set([
+        location.href.split("#")[0],
+        TIPTAP_BUNDLE_URL,
+        `${SPELLCHECK_DICTIONARY_URL}/en_US.aff`,
+        `${SPELLCHECK_DICTIONARY_URL}/en_US.dic`,
+        ...performance.getEntriesByType("resource").map(entry => entry.name)
+      ]);
+      registration.active?.postMessage({
+        type: "warm",
+        urls: [...urls].filter(url => new URL(url).origin === location.origin)
+      });
+    });
+  };
+  // Old compatibility loaders import this module after the page has loaded.
+  if (document.readyState === "complete") register();
+  else window.addEventListener("load", register, { once: true });
+}
+
+registerOfflineCache();
 init();

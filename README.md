@@ -11,6 +11,8 @@ Personal radiology reporting workspace (hosted).
 
 - `docs/app/` — frontend modules (`main.js`, `state.js`, `dom.js`, `constants.js`, `utils.js`)
 - `docs/app.js`, `docs/app-20260706.js` — compatibility loaders for old cached URLs (keep)
+- `docs/vendor/` — self-hosted Tiptap bundle and spellcheck dictionary (see its README)
+- `docs/sw.js` — offline cache (service worker); PocketBase requests are never cached
 - `docs/index.html` — module entry is `app/main.js` with a cache-busting `?v=` param
 - `scripts/ensure-*.mjs` — backend maintenance scripts (tracked)
 - `tools/verify-frontend.ps1` / `.cmd` — frontend checks
