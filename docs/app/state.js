@@ -12,6 +12,8 @@ export function createInitialState(snippetDefaults) {
     templateFacetRecords: [],
     templates: [],
     templatesError: "",
+    // Set (to the copy's save time) while the list shows the offline copy.
+    templatesOfflineAt: "",
     guidelines: [],
     writerGuidelines: [],
     selectedOldReport: null,

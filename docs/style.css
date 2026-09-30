@@ -1413,7 +1413,25 @@ body[data-theme="dark"] #worklogModeBtn {
   font-size: .86rem;
 }
 
+.list-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 4px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--yellow-line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  color: var(--ink);
+  font-size: .8rem;
+}
+
+.list-notice span {
+  flex: 1;
+}
+
 .list-error button,
+.list-notice button,
 .empty button {
   min-height: 32px;
   border-radius: 8px;

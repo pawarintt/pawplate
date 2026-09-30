@@ -1,1 +1,1 @@
-import("./app/main.js?v=20260930-offline-cache");
+import("./app/main.js?v=20260930-offline-templates");

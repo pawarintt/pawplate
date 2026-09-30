@@ -36,12 +36,13 @@ import {
   ROUTE_REFERENCES,
   SHORTHAND_SETTINGS_KEY,
   SPELLCHECK_DICTIONARY_URL,
+  TEMPLATE_CACHE_KEY_PREFIX,
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-offline-cache";
-import { collectDom } from "./dom.js?v=20260930-offline-cache";
-import { createInitialState } from "./state.js?v=20260930-offline-cache";
+} from "./constants.js?v=20260930-offline-templates";
+import { collectDom } from "./dom.js?v=20260930-offline-templates";
+import { createInitialState } from "./state.js?v=20260930-offline-templates";
 import {
   copyText,
   debounce,
@@ -52,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-offline-cache";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-offline-cache";
+} from "./utils.js?v=20260930-offline-templates";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-offline-templates";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1680,6 +1681,7 @@ function logout(message = "") {
   state.lastAuthRefreshAt = 0;
   state.oldReports = [];
   state.templates = [];
+  state.templatesOfflineAt = "";
   state.guidelines = [];
   state.writerGuidelines = [];
   state.workLogReports = [];
@@ -2893,6 +2895,7 @@ function loadViewData(promise, label) {
   Promise.resolve(promise).catch(error => {
     if (error instanceof AuthSessionError) return;
     console.error(`${label} could not be loaded.`, error);
+    if (error?.offlineCopyShown) return;
     showToast(`${label} unavailable`, "Check the connection and try again.", "error");
   });
 }
@@ -3374,31 +3377,109 @@ function templateFilter() {
   return clauses.join(" && ");
 }
 
+const TEMPLATE_LIST_LIMIT = 80;
+const TEMPLATE_FIELDS = "id,title,modality,topic,bodyPart,kind,keywords,report,owner";
+
+// Offline copy of the user's templates (no patient data), kept in
+// localStorage so templates stay usable when the connection drops.
+function templateCacheKey() {
+  return `${TEMPLATE_CACHE_KEY_PREFIX}${state.auth?.user?.id || "anonymous"}`;
+}
+
+function readTemplateCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(templateCacheKey()) || "null");
+    return Array.isArray(cached?.items) ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeTemplateCache(items) {
+  try {
+    localStorage.setItem(templateCacheKey(), JSON.stringify({ savedAt: new Date().toISOString(), items }));
+  } catch (error) {
+    console.warn("Offline template copy unavailable.", error);
+  }
+}
+
+// An unfiltered list load already holds every template unless there are more
+// than the list shows; only then is a full fetch needed for the copy, at most
+// every five minutes.
+async function refreshTemplateCache(data) {
+  if (data.totalItems <= data.items.length) {
+    writeTemplateCache(data.items);
+    return;
+  }
+  const cached = readTemplateCache();
+  if (cached && Date.now() - Date.parse(cached.savedAt) < 5 * 60 * 1000) return;
+  try {
+    const all = await pbList("templates", { page: 1, perPage: 500, sort: "-updated", fields: TEMPLATE_FIELDS });
+    writeTemplateCache(all.items);
+  } catch (error) {
+    console.warn("Offline template copy not refreshed.", error);
+  }
+}
+
+// Local version of templateFilter() for searching the offline copy.
+function filterCachedTemplates(items) {
+  const query = els.templateSearchInput.value.trim().toLowerCase();
+  const modality = els.templateModalityFilter.value;
+  const topic = els.templateTopicFilter.value;
+  const bodyPart = els.templateBodyPartFilter.value;
+  return items.filter(item => (
+    (!modality || item.modality === modality)
+    && (!topic || item.topic === topic)
+    && (!bodyPart || item.bodyPart === bodyPart)
+    && (!query || ["title", "report", "keywords", "bodyPart", "topic", "modality"]
+      .some(field => String(item[field] || "").toLowerCase().includes(query)))
+  )).slice(0, TEMPLATE_LIST_LIMIT);
+}
+
 async function loadTemplates() {
   const request = beginDataLoad("templates");
   const query = els.templateSearchInput.value.trim();
   setListLoading(els.templateList, !state.templates.length && !state.templatesError);
   try {
+    const filter = templateFilter();
     const data = await pbList("templates", {
       page: 1,
-      perPage: 80,
+      perPage: TEMPLATE_LIST_LIMIT,
       sort: "-updated",
-      filter: templateFilter(),
-      fields: "id,title,modality,topic,bodyPart,kind,keywords,report,owner"
+      filter,
+      fields: TEMPLATE_FIELDS
     });
     if (!isCurrentDataLoad("templates", request)) return false;
     state.templates = sortTemplatesByCustomOrder(data.items);
     state.templatesError = "";
+    state.templatesOfflineAt = "";
     renderTemplates(query);
+    if (!filter) refreshTemplateCache(data);
     return true;
   } catch (error) {
     if (!isCurrentDataLoad("templates", request)) return false;
-    state.templatesError = friendlyErrorMessage(error);
+    const cached = !(error instanceof AuthSessionError) && readTemplateCache();
+    if (cached) {
+      state.templates = sortTemplatesByCustomOrder(filterCachedTemplates(cached.items));
+      state.templatesError = "";
+      state.templatesOfflineAt = cached.savedAt;
+    } else {
+      state.templatesError = friendlyErrorMessage(error);
+      state.templatesOfflineAt = "";
+    }
     renderTemplates(query);
+    // Still rejects so the usual retry picks templates up once the
+    // connection returns; the list notice replaces the error toast.
+    if (cached) error.offlineCopyShown = true;
     throw error;
   } finally {
     clearListLoading(els.templateList);
   }
+}
+
+function formatOfflineTime(iso) {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "earlier" : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
 function renderTemplates(query = els.templateSearchInput.value.trim()) {
@@ -3410,15 +3491,21 @@ function renderTemplates(query = els.templateSearchInput.value.trim()) {
     </div>`;
     return;
   }
+  const offlineNotice = state.templatesOfflineAt
+    ? `<div class="list-notice" role="status">
+      <span>Offline copy from ${escapeHtml(formatOfflineTime(state.templatesOfflineAt))}</span>
+      <button type="button" data-retry="templates">Retry</button>
+    </div>`
+    : "";
   if (!state.templates.length) {
-    els.templateList.innerHTML = hasTemplateFilters()
+    els.templateList.innerHTML = offlineNotice + (hasTemplateFilters()
       ? `<div class="empty">No matches for these filters. Try fewer words or clear the filters.
         <br><button type="button" data-clear-filters="templates">Clear filters</button></div>`
-      : `<div class="empty">No personal templates yet. Build one in Template Builder first.</div>`;
+      : `<div class="empty">No personal templates yet. Build one in Template Builder first.</div>`);
     return;
   }
   const scrollTop = els.templateList.scrollTop;
-  els.templateList.innerHTML = state.templates.map((item, index) => `
+  els.templateList.innerHTML = offlineNotice + state.templates.map((item, index) => `
     <button class="result-item" draggable="true" data-template-id="${item.id}" type="button">
       <span class="result-no">${index + 1}.</span>
       <span>

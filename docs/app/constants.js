@@ -6,6 +6,7 @@ export const AUTH_KEY = "pawplate.auth";
 export const PALETTE_KEY_PREFIX = "pawplate.palette.";
 export const PERSONAL_DICTIONARY_KEY_PREFIX = "pawplate.dictionary.";
 export const REPORT_DRAFT_KEY_PREFIX = "pawplate.report-draft.";
+export const TEMPLATE_CACHE_KEY_PREFIX = "pawplate.templates.";
 export const AUTH_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 export const AUTH_REFRESH_LEEWAY_MS = 60 * 60 * 1000;
 
