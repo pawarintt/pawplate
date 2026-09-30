@@ -40,9 +40,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-year-table";
-import { collectDom } from "./dom.js?v=20260930-year-table";
-import { createInitialState } from "./state.js?v=20260930-year-table";
+} from "./constants.js?v=20260930-date-popup";
+import { collectDom } from "./dom.js?v=20260930-date-popup";
+import { createInitialState } from "./state.js?v=20260930-date-popup";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-year-table";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-year-table";
+} from "./utils.js?v=20260930-date-popup";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-date-popup";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4761,37 +4761,80 @@ function renderWorklogPreview() {
   updateReportNoteButton();
 }
 
-// Opens the browser's own calendar where the context menu was, so the date is
-// picked by clicking a day. Resolves to "YYYY-MM-DD", or null when cancelled.
-// Browsers without a calendar picker fall back to typing the date.
+// Small calendar that opens where the context menu was, so the date is picked
+// by clicking a day. Resolves to "YYYY-MM-DD", or null when cancelled
+// (Escape or clicking outside). The browser's own date picker could not be
+// placed at the mouse, so this is drawn by the app.
 function pickReportDate(current) {
-  const input = document.createElement("input");
-  input.type = "date";
-  input.value = current;
-  input.className = "report-date-picker";
-  input.setAttribute("aria-label", "Report date");
-  input.style.left = els.contextMenu?.style.left || "50%";
-  input.style.top = els.contextMenu?.style.top || "30%";
-  document.body.append(input);
+  const anchorX = parseFloat(els.contextMenu?.style.left) || window.innerWidth / 2 - 120;
+  const anchorY = parseFloat(els.contextMenu?.style.top) || window.innerHeight / 3;
+  const today = dateKey(new Date());
+  const start = new Date(`${current}T12:00:00`);
+  let view = Number.isNaN(start.getTime()) ? new Date() : start;
+  view = new Date(view.getFullYear(), view.getMonth(), 1);
+  const popup = document.createElement("div");
+  popup.className = "date-popup";
+  popup.setAttribute("role", "dialog");
+  popup.setAttribute("aria-label", "Pick report date");
+  document.body.append(popup);
+
+  const render = () => {
+    const year = view.getFullYear();
+    const month = view.getMonth();
+    const days = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < new Date(year, month, 1).getDay(); i += 1) cells.push("<span></span>");
+    for (let day = 1; day <= days; day += 1) {
+      const key = dateKey(new Date(year, month, day));
+      const classes = [key === current ? "selected" : "", key === today ? "today" : ""].filter(Boolean).join(" ");
+      cells.push(`<button type="button" class="${classes}" data-date="${key}">${day}</button>`);
+    }
+    const title = view.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    popup.innerHTML = `
+      <div class="date-popup-head">
+        <button type="button" data-nav="-1" aria-label="Previous month">&lsaquo;</button>
+        <strong>${escapeHtml(title)} <small>พ.ศ. ${year + 543}</small></strong>
+        <button type="button" data-nav="1" aria-label="Next month">&rsaquo;</button>
+      </div>
+      <div class="date-popup-grid">
+        ${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(day => `<span class="date-popup-weekday">${day}</span>`).join("")}
+        ${cells.join("")}
+      </div>
+      <div class="date-popup-foot"><button type="button" data-date="${today}">Today</button></div>`;
+  };
+  render();
+  const margin = 8;
+  popup.style.left = `${Math.max(margin, Math.min(anchorX, window.innerWidth - popup.offsetWidth - margin))}px`;
+  popup.style.top = `${Math.max(margin, Math.min(anchorY, window.innerHeight - popup.offsetHeight - margin))}px`;
+
   return new Promise(resolve => {
-    let settled = false;
+    const onOutside = event => {
+      if (!popup.contains(event.target)) finish(null);
+    };
+    const onKey = event => {
+      if (event.key === "Escape") finish(null);
+    };
     const finish = value => {
-      if (settled) return;
-      settled = true;
-      input.remove();
+      document.removeEventListener("pointerdown", onOutside, true);
+      document.removeEventListener("keydown", onKey, true);
+      popup.remove();
       resolve(value);
     };
-    input.addEventListener("change", () => finish(input.value || null));
-    input.addEventListener("cancel", () => finish(null));
-    input.addEventListener("blur", () => window.setTimeout(() => finish(null), 300));
-    try {
-      if (typeof input.showPicker !== "function") throw new Error("No date picker");
-      input.showPicker();
-    } catch {
-      input.remove();
-      settled = true;
-      resolve(prompt("Set report date (YYYY-MM-DD)", current));
-    }
+    popup.addEventListener("click", event => {
+      const nav = event.target.closest("[data-nav]");
+      if (nav) {
+        view = new Date(view.getFullYear(), view.getMonth() + Number(nav.dataset.nav), 1);
+        render();
+        return;
+      }
+      const day = event.target.closest("[data-date]");
+      if (day) finish(day.dataset.date);
+    });
+    // Attach after the menu click that opened the calendar has finished.
+    window.setTimeout(() => {
+      document.addEventListener("pointerdown", onOutside, true);
+      document.addEventListener("keydown", onKey, true);
+    }, 0);
   });
 }
 
@@ -5389,8 +5432,8 @@ function syncYearConverter(source) {
   target.value = String(source === beField ? year - 543 : year + 543);
 }
 
-// Clicking either year box opens a table of the last 60 years (newest decade
-// first, one row per decade) so common years can be picked instead of typed.
+// Clicking either year box opens a table of the last 60 years (newest first,
+// ten per row) so common years can be picked instead of typed.
 const YEAR_TABLE_SPAN = 60;
 
 function renderYearTable() {
@@ -5400,9 +5443,10 @@ function renderYearTable() {
   const oldest = current - YEAR_TABLE_SPAN + 1;
   const typedAd = currentConverterAdYear();
   const rows = [];
-  for (let decade = Math.floor(current / 10) * 10; decade + 9 >= oldest; decade -= 10) {
+  // Rows run by พ.ศ. last digit, 1 through 0 (e.g. 2561-2570).
+  for (let rowStart = Math.floor((current + 543 - 1) / 10) * 10 + 1 - 543; rowStart + 9 >= oldest; rowStart -= 10) {
     const cells = [];
-    for (let year = decade; year < decade + 10; year += 1) {
+    for (let year = rowStart; year < rowStart + 10; year += 1) {
       if (year > current || year < oldest) {
         cells.push('<div class="year-cell empty" aria-hidden="true"></div>');
         continue;
