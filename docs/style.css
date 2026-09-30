@@ -2778,6 +2778,11 @@ button.summary-card {
   white-space: nowrap;
 }
 
+/* Zero counts keep their grid slot so each modality stays in the same spot. */
+.calendar-mod.calendar-mod-empty {
+  visibility: hidden;
+}
+
 .mod-ct { --mod: #9fbfa0; }
 .mod-us { --mod: #8fb8c4; }
 .mod-cr { --mod: #c3a6c6; }

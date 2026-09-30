@@ -40,9 +40,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-offline-templates";
-import { collectDom } from "./dom.js?v=20260930-offline-templates";
-import { createInitialState } from "./state.js?v=20260930-offline-templates";
+} from "./constants.js?v=20260930-worklog-hide-zeros";
+import { collectDom } from "./dom.js?v=20260930-worklog-hide-zeros";
+import { createInitialState } from "./state.js?v=20260930-worklog-hide-zeros";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-offline-templates";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-offline-templates";
+} from "./utils.js?v=20260930-worklog-hide-zeros";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-worklog-hide-zeros";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4818,7 +4818,9 @@ function renderWorklogCalendar(counts, today) {
           <span class="calendar-number">${day}</span>
           ${count ? `<span class="calendar-count" title="Total">${count}</span>` : ""}
         </span>
-        ${parts.length ? `<span class="calendar-mods">${parts.map(([name, value]) => `<span class="calendar-mod mod-${name.toLowerCase()}" aria-label="${name} ${value}">${value}</span>`).join("")}</span>` : ""}
+        ${parts.length ? `<span class="calendar-mods">${parts.map(([name, value]) => (value
+          ? `<span class="calendar-mod mod-${name.toLowerCase()}" aria-label="${name} ${value}">${value}</span>`
+          : `<span class="calendar-mod calendar-mod-empty" aria-hidden="true"></span>`)).join("")}</span>` : ""}
       </button>
     `);
   }
