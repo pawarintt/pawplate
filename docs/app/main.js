@@ -40,9 +40,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-worklog-hide-zeros";
-import { collectDom } from "./dom.js?v=20260930-worklog-hide-zeros";
-import { createInitialState } from "./state.js?v=20260930-worklog-hide-zeros";
+} from "./constants.js?v=20260930-header-date-picker";
+import { collectDom } from "./dom.js?v=20260930-header-date-picker";
+import { createInitialState } from "./state.js?v=20260930-header-date-picker";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-worklog-hide-zeros";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-worklog-hide-zeros";
+} from "./utils.js?v=20260930-header-date-picker";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-header-date-picker";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4761,13 +4761,47 @@ function renderWorklogPreview() {
   updateReportNoteButton();
 }
 
+// Opens the browser's own calendar where the context menu was, so the date is
+// picked by clicking a day. Resolves to "YYYY-MM-DD", or null when cancelled.
+// Browsers without a calendar picker fall back to typing the date.
+function pickReportDate(current) {
+  const input = document.createElement("input");
+  input.type = "date";
+  input.value = current;
+  input.className = "report-date-picker";
+  input.setAttribute("aria-label", "Report date");
+  input.style.left = els.contextMenu?.style.left || "50%";
+  input.style.top = els.contextMenu?.style.top || "30%";
+  document.body.append(input);
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(value);
+    };
+    input.addEventListener("change", () => finish(input.value || null));
+    input.addEventListener("cancel", () => finish(null));
+    input.addEventListener("blur", () => window.setTimeout(() => finish(null), 300));
+    try {
+      if (typeof input.showPicker !== "function") throw new Error("No date picker");
+      input.showPicker();
+    } catch {
+      input.remove();
+      settled = true;
+      resolve(prompt("Set report date (YYYY-MM-DD)", current));
+    }
+  });
+}
+
 async function editWorklogDate(id) {
   const report = state.workLogReports.find(item => item.id === id);
   if (!report) return;
   const currentDate = savedDate(report);
   const current = currentDate ? dateKey(currentDate) : dateKey(new Date());
-  const next = prompt("Set report date (YYYY-MM-DD)", current);
-  if (next === null) return;
+  const next = await pickReportDate(current);
+  if (next === null || next.trim() === current) return;
   const trimmed = next.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     showToast("Date not changed", "Use YYYY-MM-DD format.", "error");

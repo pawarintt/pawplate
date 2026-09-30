@@ -2683,6 +2683,31 @@ button.summary-card {
   }
 }
 
+/* Laptop widths (1241-1440px): keep the one-line header from overlapping
+   the mode tabs, and let the report fields shrink instead of being cut off. */
+.topbar-primary-actions button {
+  white-space: nowrap;
+}
+
+@media (max-width: 1440px) {
+  .topbar-page-title,
+  .topbar-mode-context > .topbar-divider {
+    display: none;
+  }
+
+  .topbar {
+    gap: 6px;
+  }
+
+  .mode-tabs a {
+    padding: 4px 7px;
+  }
+
+  #writerView .meta-grid {
+    grid-template-columns: minmax(120px, 1.1fr) minmax(70px, .48fr) minmax(88px, .64fr) minmax(88px, .68fr) minmax(110px, .72fr) minmax(100px, .64fr) auto;
+  }
+}
+
 .heatmap {
   display: block;
   max-height: 64vh;
@@ -3846,3 +3871,15 @@ body[data-theme="dark"] .interesting-badge {
   border-color: rgba(255, 199, 153, .42) !important;
   color: #ffc799 !important;
 }
+
+/* Invisible anchor for the Work Log "Change report date" calendar. */
+.report-date-picker {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
