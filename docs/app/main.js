@@ -40,9 +40,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-tokens";
-import { collectDom } from "./dom.js?v=20260930-tokens";
-import { createInitialState } from "./state.js?v=20260930-tokens";
+} from "./constants.js?v=20260930-trend-bar-labels";
+import { collectDom } from "./dom.js?v=20260930-trend-bar-labels";
+import { createInitialState } from "./state.js?v=20260930-trend-bar-labels";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-tokens";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-tokens";
+} from "./utils.js?v=20260930-trend-bar-labels";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-trend-bar-labels";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4961,7 +4961,7 @@ function formatStat(value, digits = 1) {
 
 function worklogVolumeChart(months) {
   const width = 360;
-  const height = 150;
+  const height = 190;
   const top = 16;
   const bottom = 18;
   const left = 4;
@@ -4976,7 +4976,10 @@ function worklogVolumeChart(months) {
     const segments = series.filter(name => month.counts[name]).map(name => {
       const h = (month.counts[name] / max) * plotHeight;
       y -= h;
-      return `<rect class="trend-seg mod-${name.toLowerCase()}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(h, 0).toFixed(1)}"></rect>`;
+      const value = month.counts[name];
+      // Label the segment only when the number fits inside it.
+      const fits = h >= 8 && String(value).length * 4.3 <= barWidth - 2;
+      return `<rect class="trend-seg mod-${name.toLowerCase()}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(h, 0).toFixed(1)}"></rect>${fits ? `<text class="trend-seg-value" x="${(x + barWidth / 2).toFixed(1)}" y="${(y + h / 2).toFixed(1)}">${value}</text>` : ""}`;
     }).join("");
     const tip = [`${monthKey(month.start)}: ${month.total} report${month.total === 1 ? "" : "s"}`,
       ...series.filter(name => month.counts[name]).map(name => `${name}: ${month.counts[name]}`)].join("\n");

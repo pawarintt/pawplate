@@ -2822,6 +2822,15 @@ button.summary-card {
 }
 
 .trend-value { fill: var(--ink); }
+
+.trend-seg-value {
+  fill: #3f322c;
+  font-size: 7px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
 .trend-label { fill: var(--muted); }
 
 .trend-legend {
