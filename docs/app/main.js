@@ -40,9 +40,9 @@ import {
   TIPTAP_CDN,
   TIPTAP_VERSION,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-worklog-mmg";
-import { collectDom } from "./dom.js?v=20260930-worklog-mmg";
-import { createInitialState } from "./state.js?v=20260930-worklog-mmg";
+} from "./constants.js?v=20260930-fetch-body-timeout";
+import { collectDom } from "./dom.js?v=20260930-fetch-body-timeout";
+import { createInitialState } from "./state.js?v=20260930-fetch-body-timeout";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-worklog-mmg";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-worklog-mmg";
+} from "./utils.js?v=20260930-fetch-body-timeout";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-fetch-body-timeout";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1535,6 +1535,7 @@ function sessionNeedsRefresh(force = false) {
 // Most HTTP error statuses are NOT retryable (the server answered); the
 // transient ones proxies return on flaky links are in RETRYABLE_STATUSES.
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
 class NetworkError extends Error {
   constructor(message = "Network request failed.", options = {}) {
@@ -1554,7 +1555,17 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = READ_TIMEOUT_MS) 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    // Read the body before the timer is cleared. On spotty wifi the headers
+    // can arrive and the body then stall forever; an unbounded body read
+    // inside the shared auth refresh froze every later request until the
+    // user signed out and back in.
+    const body = NULL_BODY_STATUSES.has(response.status) ? null : await response.arrayBuffer();
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers
+    });
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new NetworkError(`Request timed out after ${Math.round(timeoutMs / 1000)}s. Check your connection and try again.`, { cause: error });

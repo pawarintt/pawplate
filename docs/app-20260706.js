@@ -1,1 +1,1 @@
-import("./app/main.js?v=20260930-worklog-mmg");
+import("./app/main.js?v=20260930-fetch-body-timeout");
