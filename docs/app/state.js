@@ -64,6 +64,11 @@ export function createInitialState(snippetDefaults) {
     startupPromise: null,
     startupRetryTimer: 0,
     startupRetryAttempt: 0,
+    // Workspace lists (filters, old reports, templates, work log) whose
+    // startup load failed; retried with backoff until they load.
+    failedWorkspaceLoads: [],
+    workspaceRetryTimer: 0,
+    workspaceRetryAttempt: 0,
     featureUsageSettingsId: "",
     featureUsage: { version: 1, features: {} },
     featureUsageLoaded: false,

@@ -40,9 +40,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-auth-refresh-400";
-import { collectDom } from "./dom.js?v=20260930-auth-refresh-400";
-import { createInitialState } from "./state.js?v=20260930-auth-refresh-400";
+} from "./constants.js?v=20260930-workspace-retry";
+import { collectDom } from "./dom.js?v=20260930-workspace-retry";
+import { createInitialState } from "./state.js?v=20260930-workspace-retry";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-auth-refresh-400";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-auth-refresh-400";
+} from "./utils.js?v=20260930-workspace-retry";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-workspace-retry";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1714,6 +1714,10 @@ function logout(message = "") {
   window.clearTimeout(state.startupRetryTimer);
   state.startupRetryTimer = 0;
   state.startupRetryAttempt = 0;
+  state.failedWorkspaceLoads = [];
+  window.clearTimeout(state.workspaceRetryTimer);
+  state.workspaceRetryTimer = 0;
+  state.workspaceRetryAttempt = 0;
   window.clearTimeout(state.featureUsageSaveTimer);
   state.featureUsageSettingsId = "";
   state.featureUsage = emptyFeatureUsage();
@@ -2914,13 +2918,14 @@ function loadViewData(promise, label) {
   });
 }
 
-async function loadInitialWorkspaceData() {
-  const loads = [
-    ["filters", loadFacets()],
-    ["old reports", loadOldReports()],
-    ["templates", loadTemplates()],
-    ["work log", loadWorkLog()]
-  ];
+async function loadInitialWorkspaceData(labels = null, { quiet = false } = {}) {
+  const loaders = {
+    filters: loadFacets,
+    "old reports": loadOldReports,
+    templates: loadTemplates,
+    "work log": loadWorkLog
+  };
+  const loads = (labels || Object.keys(loaders)).map(label => [label, loaders[label]()]);
   const results = await Promise.allSettled(loads.map(([, promise]) => promise));
   const authFailure = results.find(result => result.status === "rejected" && result.reason instanceof AuthSessionError);
   if (authFailure) throw authFailure.reason;
@@ -2928,20 +2933,19 @@ async function loadInitialWorkspaceData() {
     .map((result, index) => ({ result, label: loads[index][0] }))
     .filter(item => item.result.status === "rejected");
   failures.forEach(item => console.error(`${item.label} could not be loaded.`, item.result.reason));
-  if (failures.length) {
+  state.failedWorkspaceLoads = failures.map(item => item.label);
+  if (failures.length && !quiet) {
     showToast(
       "Some data is unavailable",
-      `${failures.map(item => item.label).join(", ")} will retry when the connection returns.`,
+      `${failures.map(item => item.label).join(", ")} will retry automatically.`,
       "error"
     );
   }
   return failures.length === 0;
 }
 
-// Re-run any per-user settings load that failed (e.g. on a weak connection)
-// so saves are unblocked and synced data appears once the network recovers.
-async function reloadMissingSettings() {
-  const loaders = [
+function missingSettingLoaders() {
+  return [
     ["personalDictionary", loadPersonalDictionary],
     [REPORT_NOTES_SETTINGS_KEY, loadReportNotes],
     [PERSONAL_NOTES_SETTINGS_KEY, loadPersonalNotes],
@@ -2949,7 +2953,55 @@ async function reloadMissingSettings() {
     [SHORTHAND_SETTINGS_KEY, loadShorthands],
     [FEATURE_USAGE_SETTINGS_KEY, loadFeatureUsage]
   ].filter(([key]) => !state.loadedSettingKeys.has(key));
-  await Promise.all(loaders.map(([, load]) => load()));
+}
+
+// Re-run any per-user settings load that failed (e.g. on a weak connection)
+// so saves are unblocked and synced data appears once the network recovers.
+async function reloadMissingSettings() {
+  await Promise.all(missingSettingLoaders().map(([, load]) => load()));
+}
+
+// Feature usage is background bookkeeping, so it never holds up the retry.
+function workspaceIncomplete() {
+  return state.failedWorkspaceLoads.length > 0
+    || missingSettingLoaders().some(([key]) => key !== FEATURE_USAGE_SETTINGS_KEY);
+}
+
+// A weak connection often stays "online", so the online event never fires
+// and nothing retried what failed at startup; users had to sign out and back
+// in. Keep retrying failed loads with backoff until everything has loaded.
+function scheduleWorkspaceRetry() {
+  if (state.workspaceRetryTimer || !workspaceIncomplete()) return;
+  const delay = Math.min(60000, 5000 * 2 ** state.workspaceRetryAttempt);
+  state.workspaceRetryAttempt += 1;
+  state.workspaceRetryTimer = window.setTimeout(async () => {
+    state.workspaceRetryTimer = 0;
+    if (!state.auth?.token || state.startupPending) return;
+    if (typeof navigator === "undefined" || navigator.onLine !== false) {
+      try {
+        await retryFailedWorkspaceLoads();
+      } catch (error) {
+        if (error instanceof AuthSessionError) return;
+        console.warn("Workspace retry failed.", error);
+      }
+    }
+    if (!workspaceIncomplete()) {
+      state.workspaceRetryAttempt = 0;
+      showToast("Workspace loaded", "Everything that failed to load earlier is now available.", "info");
+      return;
+    }
+    scheduleWorkspaceRetry();
+  }, delay);
+}
+
+async function retryFailedWorkspaceLoads() {
+  await refreshAuthSession();
+  await Promise.all([
+    reloadMissingSettings(),
+    state.failedWorkspaceLoads.length
+      ? loadInitialWorkspaceData(state.failedWorkspaceLoads, { quiet: true })
+      : null
+  ]);
 }
 
 async function reloadActiveView() {
@@ -6038,7 +6090,14 @@ async function recoverWorkspace() {
   if (!state.workingDraftChecked) {
     fetchRemoteWorkingDraft().catch(error => console.warn("Remote draft lookup still unavailable.", error));
   }
-  await Promise.all([reloadMissingSettings(), reloadActiveView()]);
+  await Promise.all([
+    reloadMissingSettings(),
+    reloadActiveView(),
+    state.failedWorkspaceLoads.length
+      ? loadInitialWorkspaceData(state.failedWorkspaceLoads, { quiet: true })
+      : null
+  ]);
+  scheduleWorkspaceRetry();
 }
 
 function scheduleStartupRetry() {
@@ -6101,6 +6160,7 @@ async function loadApp() {
   showReferenceTab(state.referenceTab, { updateRoute: false });
   blankTemplate();
   await loadInitialWorkspaceData();
+  scheduleWorkspaceRetry();
 }
 
 async function init() {
