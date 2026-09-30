@@ -40,9 +40,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-trend-bar-labels";
-import { collectDom } from "./dom.js?v=20260930-trend-bar-labels";
-import { createInitialState } from "./state.js?v=20260930-trend-bar-labels";
+} from "./constants.js?v=20260930-auth-refresh-400";
+import { collectDom } from "./dom.js?v=20260930-auth-refresh-400";
+import { createInitialState } from "./state.js?v=20260930-auth-refresh-400";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-trend-bar-labels";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-trend-bar-labels";
+} from "./utils.js?v=20260930-auth-refresh-400";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-auth-refresh-400";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1604,7 +1604,21 @@ async function refreshAuthSession(options = {}) {
     if (RETRYABLE_STATUSES.has(response.status)) {
       throw new NetworkError("PawPlate could not reach the server. Your local draft is safe.");
     }
-    if (!response.ok) throw new Error("PawPlate could not verify your session. Please try again.");
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      // The server answered but would not issue a new token (seen as a 400
+      // after a hard refresh). The saved token still works until it expires,
+      // so keep using it instead of blocking the whole workspace, and try the
+      // refresh again at the normal interval.
+      const expiresAt = authTokenExpiresAt();
+      if (expiresAt > Date.now()) {
+        console.warn(`Session refresh refused (${response.status}); using the current token.`, detail);
+        state.lastAuthRefreshAt = Date.now();
+        return state.auth;
+      }
+      console.error(`Session refresh refused (${response.status}).`, detail);
+      throw new Error("PawPlate could not verify your session. Please try again.");
+    }
 
     const auth = await response.json();
     if (!auth?.token || !auth?.record) {
