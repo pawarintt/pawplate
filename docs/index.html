@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260930-header-date-picker">
+  <link rel="stylesheet" href="style.css?v=20260930-year-table">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -220,11 +220,12 @@
             <button class="highlight-swatch lilac" type="button" data-command="backColor" data-value="#e3d8ff" aria-label="Purple highlight"></button>
             <button class="clear-highlight-button" type="button" data-command="clearHighlight" aria-label="Remove highlight" title="Remove highlight"></button>
           </div>
-          <div class="format-group">
+          <div id="yearConverter" class="format-group year-converter">
             <span>Year</span>
             <input id="yearBeInput" class="year-input" type="text" inputmode="numeric" autocomplete="off" placeholder="พ.ศ." aria-label="Buddhist Era year; subtracts 543 for Common Era">
             <span class="year-separator" aria-hidden="true">⇄</span>
             <input id="yearAdInput" class="year-input" type="text" inputmode="numeric" autocomplete="off" placeholder="ค.ศ." aria-label="Common Era year; adds 543 for Buddhist Era">
+            <div id="yearTable" class="year-table hidden" role="dialog" aria-label="Year table, last 60 years"></div>
           </div>
         </div>
         <div id="reportTextEditor" class="rich-editor" contenteditable="true" spellcheck="true" lang="en-US" autocapitalize="sentences" data-placeholder="Pick a template, then type the full report here. Saved reports return to Old Report Lookup."></div>
@@ -382,6 +383,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="vendor/typo-1.3.2.js"></script>
-  <script type="module" src="app/main.js?v=20260930-header-date-picker"></script>
+  <script type="module" src="app/main.js?v=20260930-year-table"></script>
 </body>
 </html>

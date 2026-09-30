@@ -40,9 +40,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-header-date-picker";
-import { collectDom } from "./dom.js?v=20260930-header-date-picker";
-import { createInitialState } from "./state.js?v=20260930-header-date-picker";
+} from "./constants.js?v=20260930-year-table";
+import { collectDom } from "./dom.js?v=20260930-year-table";
+import { createInitialState } from "./state.js?v=20260930-year-table";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-header-date-picker";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-header-date-picker";
+} from "./utils.js?v=20260930-year-table";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-year-table";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -5389,11 +5389,82 @@ function syncYearConverter(source) {
   target.value = String(source === beField ? year - 543 : year + 543);
 }
 
+// Clicking either year box opens a table of the last 60 years (newest decade
+// first, one row per decade) so common years can be picked instead of typed.
+const YEAR_TABLE_SPAN = 60;
+
+function renderYearTable() {
+  const table = els.yearTable;
+  if (!table) return;
+  const current = new Date().getFullYear();
+  const oldest = current - YEAR_TABLE_SPAN + 1;
+  const typedAd = currentConverterAdYear();
+  const rows = [];
+  for (let decade = Math.floor(current / 10) * 10; decade + 9 >= oldest; decade -= 10) {
+    const cells = [];
+    for (let year = decade; year < decade + 10; year += 1) {
+      if (year > current || year < oldest) {
+        cells.push('<div class="year-cell empty" aria-hidden="true"></div>');
+        continue;
+      }
+      cells.push(`<button type="button" class="year-cell${year === typedAd ? " active" : ""}" data-year-ad="${year}" aria-label="${year + 543} พ.ศ. = ${year} ค.ศ."><b>${year + 543}</b><i>${year}</i></button>`);
+    }
+    rows.push(`<div class="year-row">${cells.join("")}</div>`);
+  }
+  table.innerHTML = `<div class="year-table-head"><b>พ.ศ.</b><i>ค.ศ.</i></div>${rows.join("")}`;
+}
+
+function currentConverterAdYear() {
+  const ad = Number(els.yearAdInput?.value.trim());
+  return Number.isInteger(ad) && ad > 0 ? ad : 0;
+}
+
+function highlightYearTable() {
+  if (!els.yearTable || els.yearTable.classList.contains("hidden")) return;
+  const typedAd = currentConverterAdYear();
+  els.yearTable.querySelectorAll("[data-year-ad]").forEach(cell => {
+    cell.classList.toggle("active", Number(cell.dataset.yearAd) === typedAd);
+  });
+}
+
+function openYearTable() {
+  if (!els.yearTable || !els.yearTable.classList.contains("hidden")) return;
+  renderYearTable();
+  els.yearTable.classList.remove("hidden");
+}
+
+function closeYearTable() {
+  els.yearTable?.classList.add("hidden");
+}
+
 ["yearBeInput", "yearAdInput"].forEach(key => {
   const field = els[key];
   if (!field) return;
-  field.addEventListener("input", () => syncYearConverter(field));
-  field.addEventListener("focus", () => field.select());
+  field.addEventListener("input", () => {
+    syncYearConverter(field);
+    highlightYearTable();
+  });
+  field.addEventListener("focus", () => {
+    field.select();
+    openYearTable();
+  });
+  field.addEventListener("click", openYearTable);
+  field.addEventListener("keydown", event => {
+    if (event.key === "Escape") closeYearTable();
+  });
+});
+// Keep focus in the year box while clicking the table, so it stays open.
+els.yearTable?.addEventListener("mousedown", event => event.preventDefault());
+els.yearTable?.addEventListener("click", event => {
+  const cell = event.target.closest("[data-year-ad]");
+  if (!cell) return;
+  const year = Number(cell.dataset.yearAd);
+  els.yearAdInput.value = String(year);
+  els.yearBeInput.value = String(year + 543);
+  closeYearTable();
+});
+els.yearConverter?.addEventListener("focusout", event => {
+  if (!els.yearConverter.contains(event.relatedTarget)) closeYearTable();
 });
 [els.templateTextEditor, els.reportTextEditor].forEach(editor => {
   editor.addEventListener("focus", () => clearProofingFallback(editor));

@@ -115,6 +115,8 @@ export function collectDom() {
     reportAutosaveStatus: document.getElementById("reportAutosaveStatus"),
     reportTextEditor: document.getElementById("reportTextEditor"),
     reportProofing: document.getElementById("reportProofing"),
+    yearConverter: document.getElementById("yearConverter"),
+    yearTable: document.getElementById("yearTable"),
     yearBeInput: document.getElementById("yearBeInput"),
     yearAdInput: document.getElementById("yearAdInput"),
     newReportBtn: document.getElementById("newReportBtn"),
