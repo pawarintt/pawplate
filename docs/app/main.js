@@ -40,9 +40,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-date-popup";
-import { collectDom } from "./dom.js?v=20260930-date-popup";
-import { createInitialState } from "./state.js?v=20260930-date-popup";
+} from "./constants.js?v=20260930-tokens";
+import { collectDom } from "./dom.js?v=20260930-tokens";
+import { createInitialState } from "./state.js?v=20260930-tokens";
 import {
   copyText,
   debounce,
@@ -53,8 +53,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-date-popup";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-date-popup";
+} from "./utils.js?v=20260930-tokens";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-tokens";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
