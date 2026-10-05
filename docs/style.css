@@ -3917,3 +3917,63 @@ span.follow-up-dot {
     width: calc(100vw - 12px);
   }
 }
+
+/* Follow-up line inside the Quick note popover, and the quick note shown
+   on follow-up items in the bell. */
+.report-note-follow-up {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-top: 1px solid var(--rose-line);
+  background: var(--rose-light);
+}
+
+.report-note-follow-up-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-note-follow-up-text.due {
+  color: var(--danger);
+}
+
+.report-note-follow-up button {
+  min-height: 26px;
+  padding: 2px 9px;
+  border-color: var(--line);
+  background: var(--paper-strong);
+  color: var(--ink);
+  font-size: .74rem;
+}
+
+#reportNoteFollowUpDoneBtn {
+  border-color: var(--mint-line);
+  background: var(--mint);
+  color: var(--mint-ink);
+}
+
+#reportNoteFollowUpDoneBtn.hidden {
+  display: none;
+}
+
+.follow-up-quick-note {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--yellow-ink);
+  font-size: .76rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.follow-up-quick-note .note-dot {
+  margin: 0 5px 0 0;
+}

@@ -41,9 +41,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261005-follow-ups";
-import { collectDom } from "./dom.js?v=20261005-follow-ups";
-import { createInitialState } from "./state.js?v=20261005-follow-ups";
+} from "./constants.js?v=20261005-follow-up-notes";
+import { collectDom } from "./dom.js?v=20261005-follow-up-notes";
+import { createInitialState } from "./state.js?v=20261005-follow-up-notes";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261005-follow-ups";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261005-follow-ups";
+} from "./utils.js?v=20261005-follow-up-notes";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261005-follow-up-notes";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -2327,6 +2327,7 @@ function followUpItemHtml(item, today) {
   const unread = isFollowUpUnread(item, today);
   const overdue = due && item.dueDate < today;
   const hn = followUpHn(item);
+  const quickNote = item.reportId ? reportNoteText(item.reportId) : "";
   const dot = due
     ? `<button class="follow-up-dot" type="button" data-follow-up-action="toggle-read" aria-label="${unread ? "Mark as read" : "Mark as unread"}" title="${unread ? "Mark as read" : "Mark as unread"}"></button>`
     : '<span class="follow-up-dot" aria-hidden="true"></span>';
@@ -2342,6 +2343,7 @@ function followUpItemHtml(item, today) {
       <button class="follow-up-main" type="button" data-follow-up-action="open" title="${item.reportId ? "Open the report" : "Edit this follow-up"}">
         <span class="follow-up-title">${escapeHtml(followUpTitle(item))}${hn ? ` <span class="follow-up-hn">${escapeHtml(hn)}</span>` : ""}</span>
         ${item.note ? `<span class="follow-up-note">${escapeHtml(item.note)}</span>` : ""}
+        ${quickNote ? `<span class="follow-up-quick-note" title="Quick note"><span class="note-dot" aria-hidden="true"></span>${escapeHtml(snippet(quickNote, ""))}</span>` : ""}
       </button>
       <span class="follow-up-when${overdue ? " overdue" : ""}">${escapeHtml(followUpWhenLabel(item, today))}</span>
       <div class="follow-up-actions">${actions}</div>
@@ -2426,7 +2428,16 @@ function updateFollowUpButtons() {
   updateFollowUpButton(els.writerFollowUpBtn, writerFollowUp());
   const report = state.selectedWorklogReport;
   els.worklogFollowUpBtn.disabled = !report;
-  updateFollowUpButton(els.worklogFollowUpBtn, report ? openFollowUpFor(item => item.reportId === report.id) : null);
+  const reportItem = report ? openFollowUpFor(item => item.reportId === report.id) : null;
+  updateFollowUpButton(els.worklogFollowUpBtn, reportItem);
+  // The Quick note popover shows the same follow-up, so a note and its
+  // reminder can be read and changed in one place.
+  els.reportNoteFollowUpText.textContent = reportItem
+    ? `${followUpWhenLabel(reportItem, dateKey(new Date()))}${reportItem.note ? `: ${reportItem.note}` : ""}`
+    : "No follow-up for this report";
+  els.reportNoteFollowUpText.classList.toggle("due", Boolean(reportItem && isFollowUpDue(reportItem)));
+  els.reportNoteFollowUpDoneBtn.classList.toggle("hidden", !reportItem);
+  els.reportNoteFollowUpBtn.textContent = reportItem ? "Edit" : "Remind me later";
 }
 
 function positionFollowUpComposer(anchor) {
@@ -2562,16 +2573,16 @@ function openWriterFollowUp() {
   });
 }
 
-function openWorklogFollowUp() {
+function openWorklogFollowUp(anchor = els.worklogFollowUpBtn) {
   const report = state.selectedWorklogReport;
   if (!report) return;
   const existing = openFollowUpFor(item => item.reportId === report.id);
   if (existing) {
-    openFollowUpComposer({ item: existing, anchor: els.worklogFollowUpBtn });
+    openFollowUpComposer({ item: existing, anchor });
     return;
   }
   openFollowUpComposer({
-    anchor: els.worklogFollowUpBtn,
+    anchor,
     context: { reportId: report.id, title: report.title || "", hn: report.note || "", modality: report.modality || "" }
   });
 }
@@ -6513,6 +6524,20 @@ els.writerFollowUpBtn.addEventListener("click", () => {
   if (state.followUpComposer?.anchor === els.writerFollowUpBtn) closeFollowUpComposer();
   else openWriterFollowUp();
 });
+els.reportNoteFollowUpBtn.addEventListener("click", () => {
+  if (state.followUpComposer?.anchor === els.reportNoteFollowUpBtn) closeFollowUpComposer();
+  else openWorklogFollowUp(els.reportNoteFollowUpBtn);
+});
+els.reportNoteFollowUpDoneBtn.addEventListener("click", async () => {
+  const report = state.selectedWorklogReport;
+  const item = report && openFollowUpFor(entry => entry.reportId === report.id);
+  if (!item) return;
+  try {
+    await runFollowUpAction(item.id, "done");
+  } catch (error) {
+    showToast("Follow-up not saved", friendlyErrorMessage(error) || "Check the connection and try again.", "error");
+  }
+});
 els.worklogFollowUpBtn.addEventListener("click", () => {
   if (state.followUpComposer?.anchor === els.worklogFollowUpBtn) closeFollowUpComposer();
   else openWorklogFollowUp();
@@ -6558,6 +6583,7 @@ els.reportPersonalNoteInput.addEventListener("input", () => {
   if (!reportId) return;
   setReportNote(reportId, els.reportPersonalNoteInput.value);
   refreshReportNoteLists();
+  if (state.followUpsOpen) renderFollowUps();
 });
 document.addEventListener("pointerdown", event => {
   if (els.pawletImageLightbox.open && els.pawletImageLightbox.contains(event.target)) return;
@@ -6572,7 +6598,7 @@ document.addEventListener("pointerdown", event => {
   if (state.followUpsOpen && !els.followUpShell.contains(event.target) && !els.followUpComposer.contains(event.target)) {
     setFollowUpsOpen(false);
   }
-  if (state.reportNotePopoverOpen && !els.reportNotePopover.contains(event.target) && !els.quickReportNoteBtn.contains(event.target)) {
+  if (state.reportNotePopoverOpen && !els.reportNotePopover.contains(event.target) && !els.quickReportNoteBtn.contains(event.target) && !els.followUpComposer.contains(event.target)) {
     setReportNotePopoverOpen(false);
   }
 });

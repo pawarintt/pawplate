@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20261005-follow-ups">
+  <link rel="stylesheet" href="style.css?v=20261005-follow-up-notes">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -349,6 +349,11 @@
               <button id="closeReportNoteBtn" class="icon-button" type="button" aria-label="Close personal note" title="Close personal note">&times;</button>
             </div>
             <textarea id="reportPersonalNoteInput" rows="6" maxlength="10000" placeholder="Add a private note for this report."></textarea>
+            <div class="report-note-follow-up">
+              <span id="reportNoteFollowUpText" class="report-note-follow-up-text"></span>
+              <button id="reportNoteFollowUpDoneBtn" class="hidden" type="button">Done</button>
+              <button id="reportNoteFollowUpBtn" type="button" aria-haspopup="dialog">Remind me later</button>
+            </div>
           </section>
         </article>
       </aside>
@@ -434,6 +439,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="vendor/typo-1.3.2.js"></script>
-  <script type="module" src="app/main.js?v=20261005-follow-ups"></script>
+  <script type="module" src="app/main.js?v=20261005-follow-up-notes"></script>
 </body>
 </html>
