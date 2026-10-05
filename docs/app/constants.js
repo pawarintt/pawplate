@@ -54,6 +54,9 @@ export const TEMPLATE_ORDER_SETTINGS_KEY = "templateOrderV1";
 export const SHORTHAND_SETTINGS_KEY = "shorthandV1";
 export const REPORT_NOTES_SETTINGS_KEY = "reportNotesV1";
 export const PERSONAL_NOTES_SETTINGS_KEY = "personalNotesV1";
+// Each follow-up reminder is its own user_settings record keyed
+// FOLLOW_UP_KEY_PREFIX + id, so saving one never overwrites another.
+export const FOLLOW_UP_KEY_PREFIX = "followUp:";
 export const FEATURE_USAGE_DAYS = 90;
 export const REPORT_NOTES_LIMIT = 2000;
 export const PERSONAL_NOTES_LIMIT = 100;
@@ -128,6 +131,11 @@ export const TRACKED_FEATURES = new Set([
   "writer_old_report.preview",
   "writer_old_report.match",
   "writer_old_report.copy",
+  "follow_up.open_inbox",
+  "follow_up.create",
+  "follow_up.open_report",
+  "follow_up.done",
+  "follow_up.snooze",
   // Retired with AI Assist; kept so past usage counts are not dropped.
   "reference.ai_assist",
   "ai.generate",

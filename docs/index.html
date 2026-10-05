@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20260930-workspace-retry">
+  <link rel="stylesheet" href="style.css?v=20261005-follow-ups">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -115,6 +115,23 @@
           <a id="worklogModeBtn" href="#/work-log">Work Log</a>
           <a id="interestingModeBtn" href="#/interesting-cases">Interesting Cases</a>
         </nav>
+        <div id="followUpShell" class="follow-up-shell">
+          <button id="followUpBtn" class="follow-up-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Follow-ups" title="Follow-ups">
+            <svg class="follow-up-bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.8H4.5Z"/><path d="M10 20.2a2.2 2.2 0 0 0 4 0"/></svg>
+            <span id="followUpBadge" class="follow-up-badge hidden">0</span>
+          </button>
+          <section id="followUpPopover" class="follow-up-popover hidden" role="dialog" aria-label="Follow-ups">
+            <div class="notes-popover-head">
+              <div>
+                <strong>Follow-ups</strong>
+                <span id="followUpSummary">Nothing due</span>
+              </div>
+              <button id="markAllFollowUpsReadBtn" class="quiet-button" type="button">Mark all read</button>
+              <button id="closeFollowUpsBtn" class="icon-button" type="button" aria-label="Close follow-ups" title="Close follow-ups">&times;</button>
+            </div>
+            <div id="followUpList" class="follow-up-list"></div>
+          </section>
+        </div>
         <button id="logoutBtn" class="logout-button" type="button">Sign Out</button>
       </div>
     </header>
@@ -196,7 +213,10 @@
           <datalist id="reportBodyPartOptions"></datalist>
           <input id="reportKeywordInput" placeholder="Keywords / diagnosis">
           <input id="reportNoteInput" placeholder="Note / HN / accession">
-          <label class="interesting-toggle"><input id="reportInterestingInput" type="checkbox"><span>Interesting</span></label>
+          <div class="report-meta-actions">
+            <label class="interesting-toggle"><input id="reportInterestingInput" type="checkbox"><span>Interesting</span></label>
+            <button id="writerFollowUpBtn" class="follow-up-button" type="button" aria-haspopup="dialog" title="Remind me to check this case later">Follow up</button>
+          </div>
         </div>
         <div class="format-toolbar" data-editor-target="reportTextEditor">
           <div class="format-group">
@@ -315,6 +335,7 @@
                 <span id="quickReportNoteDot" class="note-dot hidden" aria-hidden="true"></span>
                 Quick note
               </button>
+              <button id="worklogFollowUpBtn" class="follow-up-button" type="button" aria-haspopup="dialog" title="Remind me to check this case later" disabled>Follow up</button>
               <button id="closeWorklogPreviewBtn" type="button">Close</button>
               <button id="editWorklogReportBtn" type="button">Edit</button>
             </div>
@@ -378,11 +399,41 @@
     </div>
   </dialog>
 
+  <section id="followUpComposer" class="follow-up-composer hidden" role="dialog" aria-labelledby="followUpComposerTitle">
+    <div class="notes-popover-head">
+      <div>
+        <strong id="followUpComposerTitle">Follow up</strong>
+        <span id="followUpComposerContext"></span>
+      </div>
+      <button id="closeFollowUpComposerBtn" class="icon-button" type="button" aria-label="Close follow-up" title="Close">&times;</button>
+    </div>
+    <div class="follow-up-form">
+      <label class="follow-up-field">
+        <span>What to check</span>
+        <input id="followUpNoteInput" type="text" maxlength="500" autocomplete="off" placeholder="e.g. Check pathology">
+      </label>
+      <div class="follow-up-field">
+        <span>Remind me</span>
+        <div id="followUpQuickDates" class="follow-up-quick-dates">
+          <button type="button" data-follow-up-days="7">1 week</button>
+          <button type="button" data-follow-up-days="14">2 weeks</button>
+          <button type="button" data-follow-up-months="1">1 month</button>
+          <button type="button" data-follow-up-months="3">3 months</button>
+          <input id="followUpDateInput" type="date" aria-label="Reminder date" required>
+        </div>
+      </div>
+      <div class="follow-up-form-actions">
+        <button id="deleteFollowUpBtn" class="follow-up-delete hidden" type="button">Delete</button>
+        <button id="cancelFollowUpBtn" class="quiet-button" type="button">Cancel</button>
+        <button id="saveFollowUpBtn" type="button">Save follow-up</button>
+      </div>
+    </div>
+  </section>
   <div id="contextMenu" class="context-menu hidden"></div>
   <div id="shorthandPalette" class="shorthand-palette hidden" role="listbox" aria-label="Shorthand suggestions"></div>
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="vendor/typo-1.3.2.js"></script>
-  <script type="module" src="app/main.js?v=20260930-workspace-retry"></script>
+  <script type="module" src="app/main.js?v=20261005-follow-ups"></script>
 </body>
 </html>

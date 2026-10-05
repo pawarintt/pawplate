@@ -7,6 +7,7 @@ import {
   DEFAULT_PALETTE,
   FEATURE_USAGE_DAYS,
   FEATURE_USAGE_SETTINGS_KEY,
+  FOLLOW_UP_KEY_PREFIX,
   MODE_ROUTES,
   MUTATION_TIMEOUT_MS,
   PALETTE_KEY_PREFIX,
@@ -40,9 +41,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20260930-workspace-retry";
-import { collectDom } from "./dom.js?v=20260930-workspace-retry";
-import { createInitialState } from "./state.js?v=20260930-workspace-retry";
+} from "./constants.js?v=20261005-follow-ups";
+import { collectDom } from "./dom.js?v=20261005-follow-ups";
+import { createInitialState } from "./state.js?v=20261005-follow-ups";
 import {
   copyText,
   debounce,
@@ -53,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20260930-workspace-retry";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20260930-workspace-retry";
+} from "./utils.js?v=20261005-follow-ups";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261005-follow-ups";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -631,6 +632,7 @@ function updateReportModeBadge() {
   const editing = Boolean(state.reportDraftId);
   els.reportModeBadge.textContent = editing ? "Editing saved report" : "New report";
   els.reportModeBadge.classList.toggle("editing", editing);
+  if (els.writerFollowUpBtn) updateFollowUpButtons();
 }
 
 function updateTemplateModeBadge() {
@@ -660,6 +662,7 @@ function resetGuidelineDraft() {
 function resetReportDraft() {
   state.reportDraftId = null;
   state.reportDraftSourceDate = "";
+  state.draftFollowUpIds = [];
   updateReportModeBadge();
 }
 
@@ -679,7 +682,8 @@ function reportWorkingDraftPayload() {
     keywords: els.reportKeywordInput.value,
     note: els.reportNoteInput.value,
     isInteresting: els.reportInterestingInput.checked,
-    report: getEditorHtml(els.reportTextEditor)
+    report: getEditorHtml(els.reportTextEditor),
+    followUpIds: [...state.draftFollowUpIds]
   };
 }
 
@@ -727,6 +731,22 @@ function setReportAutosaveStatus(status = "", label = "") {
   els.reportAutosaveStatus.className = `autosave-status ${status || "hidden"}`;
   els.reportAutosaveStatus.textContent = label;
   els.reportAutosaveStatus.title = label;
+  updateTopbarCrowding();
+}
+
+// The mode's own buttons share one line with the mode tabs. When they would
+// run under the tabs (laptop widths, a long autosave status), give them a
+// second line instead, as narrow screens already do.
+function updateTopbarCrowding() {
+  const topbar = els.appShell?.querySelector(".topbar");
+  const actions = topbar?.querySelector(".topbar-actions");
+  if (!topbar || !actions || els.appShell.classList.contains("hidden")) return;
+  topbar.classList.remove("is-crowded");
+  const context = [...topbar.querySelectorAll(".topbar-mode-context")].find(item => !item.classList.contains("hidden"));
+  if (!context || window.matchMedia("(max-width: 1240px)").matches) return;
+  const parts = [...context.querySelectorAll(":scope > *, .topbar-primary-actions > *")].filter(item => item.offsetWidth);
+  const contextRight = Math.max(0, ...parts.map(item => item.getBoundingClientRect().right));
+  topbar.classList.toggle("is-crowded", contextRight > actions.getBoundingClientRect().left - 6);
 }
 
 function draftSavedLabel(value = new Date()) {
@@ -835,6 +855,7 @@ function applyWorkingDraft(payload) {
   state.suppressReportAutosave = true;
   state.reportDraftId = payload.sourceReportId || null;
   state.reportDraftSourceDate = payload.sourceDate || "";
+  state.draftFollowUpIds = Array.isArray(payload.followUpIds) ? payload.followUpIds.map(String) : [];
   state.selectedTemplate = null;
   els.reportTitleInput.value = payload.title || "";
   els.reportModalityInput.value = payload.modality || "";
@@ -1751,6 +1772,15 @@ function logout(message = "") {
   state.personalNoteImageTargetId = "";
   state.personalNotePasteTargetId = "";
   state.alwaysNotesOpen = false;
+  state.followUps = [];
+  state.followUpsLoaded = false;
+  state.followUpsLoadPromise = null;
+  state.followUpsLoadedAt = 0;
+  state.followUpsNotifiedDay = "";
+  state.draftFollowUpIds = [];
+  setFollowUpsOpen(false);
+  closeFollowUpComposer();
+  renderFollowUps();
   els.alwaysNotesPopover.classList.add("hidden");
   els.reportNotePopover.classList.add("hidden");
   els.alwaysNotesBtn.setAttribute("aria-expanded", "false");
@@ -2073,6 +2103,601 @@ function removeReportNote(reportId) {
   delete state.reportNotes.notes[reportId];
   state.reportNotesDirty = true;
   scheduleReportNotesSave(0);
+}
+
+// Follow-ups: personal reminders to recheck a case (e.g. pathology) on a
+// date. Each one is its own user_settings record (FOLLOW_UP_KEY_PREFIX + id)
+// so two saves never overwrite each other. Once its date arrives a follow-up
+// counts as unread on the bell until it is opened or marked read.
+function newFollowUpId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeFollowUp(record) {
+  const value = record?.value || {};
+  const id = String(record?.key || "").slice(FOLLOW_UP_KEY_PREFIX.length);
+  const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(value.dueDate) ? value.dueDate : "";
+  if (!id || !dueDate) return null;
+  const text = (field, max) => String(value[field] || "").slice(0, max);
+  return {
+    id,
+    settingsId: record.id || "",
+    reportId: text("reportId", 40),
+    title: text("title", 300),
+    hn: text("hn", 300),
+    modality: text("modality", 60),
+    note: text("note", 500),
+    dueDate,
+    createdAt: text("createdAt", 40),
+    readAt: text("readAt", 40),
+    doneAt: text("doneAt", 40)
+  };
+}
+
+function followUpValue(item) {
+  return {
+    version: 1,
+    reportId: item.reportId,
+    title: item.title,
+    hn: item.hn,
+    modality: item.modality,
+    note: item.note,
+    dueDate: item.dueDate,
+    createdAt: item.createdAt,
+    readAt: item.readAt,
+    doneAt: item.doneAt
+  };
+}
+
+function dateFromKey(key) {
+  return new Date(`${key}T12:00:00`);
+}
+
+function addDaysKey(days, from = new Date()) {
+  const date = new Date(from);
+  date.setDate(date.getDate() + days);
+  return dateKey(date);
+}
+
+function addMonthsKey(months, from = new Date()) {
+  const lastDay = new Date(from.getFullYear(), from.getMonth() + months + 1, 0).getDate();
+  return dateKey(new Date(from.getFullYear(), from.getMonth() + months, Math.min(from.getDate(), lastDay)));
+}
+
+function followUpDateLabel(key, { weekday = true } = {}) {
+  const date = dateFromKey(key);
+  const options = { ...(weekday ? { weekday: "short" } : {}), day: "numeric", month: "short" };
+  if (date.getFullYear() !== new Date().getFullYear()) options.year = "numeric";
+  return date.toLocaleDateString("en-GB", options);
+}
+
+function isFollowUpDue(item, today = dateKey(new Date())) {
+  return !item.doneAt && item.dueDate <= today;
+}
+
+function isFollowUpUnread(item, today = dateKey(new Date())) {
+  return isFollowUpDue(item, today) && !item.readAt;
+}
+
+function followUpWhenLabel(item, today) {
+  if (item.doneAt) {
+    const done = new Date(item.doneAt);
+    return Number.isNaN(done.getTime()) ? "Done" : `Done ${followUpDateLabel(dateKey(done))}`;
+  }
+  const days = Math.round((dateFromKey(item.dueDate) - dateFromKey(today)) / 86400000);
+  if (days === 0) return "Due today";
+  if (days === -1) return "Due yesterday";
+  if (days < 0) return `Due ${-days} days ago`;
+  if (days === 1) return "Tomorrow";
+  if (days < 7) return `In ${days} days`;
+  return followUpDateLabel(item.dueDate);
+}
+
+function followUpReport(item) {
+  if (!item.reportId) return null;
+  if (state.selectedWorklogReport?.id === item.reportId) return state.selectedWorklogReport;
+  return state.workLogReports.find(report => report.id === item.reportId) || null;
+}
+
+function followUpTitle(item) {
+  return followUpReport(item)?.title || item.title || "Untitled report";
+}
+
+function followUpHn(item) {
+  return followUpReport(item)?.note || item.hn || "";
+}
+
+function openFollowUpFor(match) {
+  return state.followUps
+    .filter(item => !item.doneAt && match(item))
+    .sort((left, right) => left.dueDate.localeCompare(right.dueDate))[0] || null;
+}
+
+function openFollowUpsByReport() {
+  const byReport = new Map();
+  state.followUps.forEach(item => {
+    if (item.doneAt || !item.reportId) return;
+    const current = byReport.get(item.reportId);
+    if (!current || item.dueDate < current.dueDate) byReport.set(item.reportId, item);
+  });
+  return byReport;
+}
+
+async function loadFollowUps({ force = false } = {}) {
+  if (state.followUpsLoaded && !force) return state.followUps;
+  if (state.followUpsLoadPromise) return state.followUpsLoadPromise;
+  const owner = state.auth?.user?.id || "";
+  if (!owner) return state.followUps;
+  const generation = state.authGeneration;
+  const loadPromise = (async () => {
+    try {
+      const records = [];
+      for (let page = 1; page < 20; page += 1) {
+        const data = await pbList("user_settings", {
+          page,
+          perPage: 500,
+          filter: `owner="${owner}" && key~"${FOLLOW_UP_KEY_PREFIX}%"`,
+          fields: "id,key,value"
+        });
+        records.push(...(data.items || []));
+        if (page >= (data.totalPages || 1)) break;
+      }
+      // A save finishing during the reload would be undone by older data.
+      if (generation !== state.authGeneration || state.followUpSaves > 0) return state.followUps;
+      state.followUps = records.map(normalizeFollowUp).filter(Boolean);
+      state.followUpsLoaded = true;
+      state.followUpsLoadedAt = Date.now();
+      state.loadedSettingKeys.add(FOLLOW_UP_KEY_PREFIX);
+      renderFollowUps();
+      notifyDueFollowUps();
+    } catch (error) {
+      console.warn("Follow-ups unavailable.", error);
+    } finally {
+      if (state.followUpsLoadPromise === loadPromise) state.followUpsLoadPromise = null;
+    }
+    return state.followUps;
+  })();
+  state.followUpsLoadPromise = loadPromise;
+  return loadPromise;
+}
+
+async function saveFollowUp(item) {
+  const owner = state.auth?.user?.id || "";
+  if (!owner) throw new Error("Sign in again to save follow-ups.");
+  state.followUpSaves += 1;
+  try {
+    if (item.settingsId) {
+      await pbUpdate("user_settings", item.settingsId, { value: followUpValue(item) });
+    } else {
+      const created = await pbCreate("user_settings", {
+        owner,
+        key: `${FOLLOW_UP_KEY_PREFIX}${item.id}`,
+        value: followUpValue(item)
+      });
+      item.settingsId = created.id;
+    }
+  } finally {
+    state.followUpSaves -= 1;
+  }
+}
+
+// Applies a change right away and puts it back if the save fails.
+async function updateFollowUp(id, changes) {
+  const item = state.followUps.find(entry => entry.id === id);
+  if (!item) return false;
+  const previous = { ...item };
+  Object.assign(item, changes);
+  renderFollowUps();
+  try {
+    await saveFollowUp(item);
+    return true;
+  } catch (error) {
+    Object.assign(item, previous);
+    renderFollowUps();
+    throw error;
+  }
+}
+
+async function deleteFollowUp(id) {
+  const item = state.followUps.find(entry => entry.id === id);
+  if (!item) return;
+  if (item.settingsId) await pbDelete("user_settings", item.settingsId);
+  state.followUps = state.followUps.filter(entry => entry.id !== id);
+  state.draftFollowUpIds = state.draftFollowUpIds.filter(entryId => entryId !== id);
+  renderFollowUps();
+}
+
+function notifyDueFollowUps() {
+  const today = dateKey(new Date());
+  if (state.followUpsNotifiedDay === today || !state.auth?.token) return;
+  const unread = state.followUps.filter(item => isFollowUpUnread(item, today));
+  if (!unread.length) return;
+  state.followUpsNotifiedDay = today;
+  const names = unread.slice(0, 2).map(followUpTitle).join(", ");
+  showToast(
+    unread.length === 1 ? "1 follow-up is due" : `${unread.length} follow-ups are due`,
+    `${names}${unread.length > 2 ? ", ..." : ""}`,
+    "info",
+    { actions: [{ label: "Show", run: () => setFollowUpsOpen(true) }], duration: 9000 }
+  );
+}
+
+function followUpItemHtml(item, today) {
+  const due = isFollowUpDue(item, today);
+  const unread = isFollowUpUnread(item, today);
+  const overdue = due && item.dueDate < today;
+  const hn = followUpHn(item);
+  const dot = due
+    ? `<button class="follow-up-dot" type="button" data-follow-up-action="toggle-read" aria-label="${unread ? "Mark as read" : "Mark as unread"}" title="${unread ? "Mark as read" : "Mark as unread"}"></button>`
+    : '<span class="follow-up-dot" aria-hidden="true"></span>';
+  const actions = item.doneAt
+    ? `<button type="button" data-follow-up-action="reopen">Reopen</button>
+       <button type="button" data-follow-up-action="delete">Delete</button>`
+    : `<button type="button" data-follow-up-action="done" title="Checked, remove from the list">Done</button>
+       <button type="button" data-follow-up-action="snooze" title="Remind me again in a week">+1 week</button>
+       <button type="button" data-follow-up-action="edit">Edit</button>`;
+  return `
+    <div class="follow-up-item${unread ? " unread" : ""}${due ? " due" : ""}${item.doneAt ? " done" : ""}" data-follow-up-id="${escapeHtml(item.id)}">
+      ${dot}
+      <button class="follow-up-main" type="button" data-follow-up-action="open" title="${item.reportId ? "Open the report" : "Edit this follow-up"}">
+        <span class="follow-up-title">${escapeHtml(followUpTitle(item))}${hn ? ` <span class="follow-up-hn">${escapeHtml(hn)}</span>` : ""}</span>
+        ${item.note ? `<span class="follow-up-note">${escapeHtml(item.note)}</span>` : ""}
+      </button>
+      <span class="follow-up-when${overdue ? " overdue" : ""}">${escapeHtml(followUpWhenLabel(item, today))}</span>
+      <div class="follow-up-actions">${actions}</div>
+    </div>`;
+}
+
+function renderFollowUps() {
+  const today = dateKey(new Date());
+  state.followUpsToday = today;
+  const open = state.followUps.filter(item => !item.doneAt);
+  const due = open.filter(item => item.dueDate <= today).sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+  const upcoming = open.filter(item => item.dueDate > today).sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+  const done = state.followUps.filter(item => item.doneAt).sort((left, right) => right.doneAt.localeCompare(left.doneAt));
+  const unreadCount = due.filter(item => !item.readAt).length;
+
+  els.followUpBadge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+  els.followUpBadge.classList.toggle("hidden", !unreadCount);
+  els.followUpBtn.classList.toggle("has-unread", unreadCount > 0);
+  const bellLabel = unreadCount ? `Follow-ups, ${unreadCount} due` : "Follow-ups";
+  els.followUpBtn.setAttribute("aria-label", bellLabel);
+  els.followUpBtn.title = bellLabel;
+  els.followUpSummary.textContent = open.length
+    ? `${due.length} due · ${upcoming.length} upcoming`
+    : "Nothing to check";
+  els.markAllFollowUpsReadBtn.disabled = !unreadCount;
+  updateFollowUpButtons();
+  if (state.mode === "worklog" || state.mode === "interesting") refreshReportNoteLists();
+  if (!state.followUpsOpen) return;
+
+  if (!state.followUpsLoaded && !state.followUps.length) {
+    els.followUpList.innerHTML = `<div class="empty">${state.followUpsLoadPromise ? "Loading follow-ups..." : "Follow-ups could not load. Check the connection; they will retry."}</div>`;
+    return;
+  }
+  const section = (label, items, extra = "") => items.length
+    ? `<div class="follow-up-section"><h4>${label}${extra}</h4>${items.map(item => followUpItemHtml(item, today)).join("")}</div>`
+    : "";
+  const doneToggle = done.length
+    ? `<button class="follow-up-done-toggle quiet-button" type="button" data-follow-up-action="toggle-done">${state.followUpsShowDone ? "Hide done" : `Show done (${done.length})`}</button>`
+    : "";
+  const empty = open.length
+    ? ""
+    : `<div class="empty">No follow-ups to check. Press “Follow up” on a report in Report Writer or Work Log, and it will show up here on the date you pick.</div>`;
+  els.followUpList.innerHTML = [
+    empty,
+    section("Due", due),
+    section("Upcoming", upcoming),
+    doneToggle,
+    state.followUpsShowDone ? section("Done", done.slice(0, 50)) : ""
+  ].join("");
+}
+
+function setFollowUpsOpen(open) {
+  state.followUpsOpen = Boolean(open);
+  els.followUpPopover.classList.toggle("hidden", !state.followUpsOpen);
+  els.followUpBtn.setAttribute("aria-expanded", String(state.followUpsOpen));
+  if (!state.followUpsOpen) return;
+  setAlwaysNotesOpen(false);
+  setShorthandOpen(false);
+  renderFollowUps();
+  trackFeature("follow_up.open_inbox");
+  if (!state.followUpsLoaded || Date.now() - state.followUpsLoadedAt > 30000) {
+    loadFollowUps({ force: true }).then(() => {
+      if (state.followUpsOpen) renderFollowUps();
+    });
+  }
+}
+
+function writerFollowUp() {
+  return openFollowUpFor(item => (
+    (state.reportDraftId && item.reportId === state.reportDraftId)
+    || state.draftFollowUpIds.includes(item.id)
+  ));
+}
+
+function updateFollowUpButton(button, item) {
+  button.classList.toggle("has-follow-up", Boolean(item));
+  button.textContent = item ? `Follow-up · ${followUpDateLabel(item.dueDate, { weekday: false })}` : "Follow up";
+  button.title = item ? "Edit the follow-up for this case" : "Remind me to check this case later";
+}
+
+function updateFollowUpButtons() {
+  updateFollowUpButton(els.writerFollowUpBtn, writerFollowUp());
+  const report = state.selectedWorklogReport;
+  els.worklogFollowUpBtn.disabled = !report;
+  updateFollowUpButton(els.worklogFollowUpBtn, report ? openFollowUpFor(item => item.reportId === report.id) : null);
+}
+
+function positionFollowUpComposer(anchor) {
+  const composer = els.followUpComposer;
+  const rect = anchor.getBoundingClientRect();
+  const width = composer.offsetWidth;
+  const height = composer.offsetHeight;
+  const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+  let top = rect.bottom + 6;
+  if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 6);
+  composer.style.left = `${left}px`;
+  composer.style.top = `${top}px`;
+}
+
+function markFollowUpQuickDate() {
+  const value = els.followUpDateInput.value;
+  els.followUpQuickDates.querySelectorAll("button").forEach(button => {
+    const target = button.dataset.followUpDays
+      ? addDaysKey(Number(button.dataset.followUpDays))
+      : addMonthsKey(Number(button.dataset.followUpMonths));
+    button.classList.toggle("active", target === value);
+  });
+}
+
+// context: { reportId, title, hn, modality, fromDraft } for a new follow-up.
+function openFollowUpComposer({ item = null, context = null, anchor }) {
+  state.followUpComposer = { itemId: item?.id || "", context: item ? null : context, anchor };
+  const title = item ? followUpTitle(item) : (context.title || "Untitled report");
+  const hn = item ? followUpHn(item) : context.hn;
+  els.followUpComposerTitle.textContent = item ? "Edit follow-up" : "Follow up";
+  els.followUpComposerContext.textContent = `${title}${hn ? ` · ${hn}` : ""}${!item && !context.reportId ? " (not saved yet)" : ""}`;
+  els.followUpNoteInput.value = item ? item.note : "Check pathology";
+  els.followUpDateInput.min = item && item.dueDate < dateKey(new Date()) ? item.dueDate : dateKey(new Date());
+  els.followUpDateInput.value = item ? item.dueDate : addDaysKey(14);
+  els.deleteFollowUpBtn.classList.toggle("hidden", !item);
+  els.saveFollowUpBtn.textContent = item ? "Save" : "Save follow-up";
+  markFollowUpQuickDate();
+  els.followUpComposer.classList.remove("hidden");
+  positionFollowUpComposer(anchor);
+  anchor.setAttribute?.("aria-expanded", "true");
+  window.setTimeout(() => {
+    els.followUpNoteInput.focus();
+    els.followUpNoteInput.select();
+  }, 0);
+}
+
+function closeFollowUpComposer() {
+  state.followUpComposer?.anchor?.setAttribute?.("aria-expanded", "false");
+  state.followUpComposer = null;
+  els.followUpComposer.classList.add("hidden");
+}
+
+async function submitFollowUpComposer() {
+  const composer = state.followUpComposer;
+  if (!composer) return false;
+  const dueDate = els.followUpDateInput.value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    showToast("Pick a date", "Choose when you want to be reminded.", "info");
+    els.followUpDateInput.focus();
+    return false;
+  }
+  const note = els.followUpNoteInput.value.trim().slice(0, 500);
+  if (composer.itemId) {
+    const item = state.followUps.find(entry => entry.id === composer.itemId);
+    if (!item) {
+      closeFollowUpComposer();
+      return false;
+    }
+    await updateFollowUp(item.id, {
+      note,
+      dueDate,
+      ...(dueDate !== item.dueDate ? { readAt: "" } : {})
+    });
+    closeFollowUpComposer();
+    showToast("Follow-up updated", followUpWhenLabel({ dueDate }, dateKey(new Date())));
+    return true;
+  }
+  const context = composer.context;
+  const item = {
+    id: newFollowUpId(),
+    settingsId: "",
+    reportId: context.reportId || "",
+    title: (context.title || "").slice(0, 300),
+    hn: (context.hn || "").slice(0, 300),
+    modality: (context.modality || "").slice(0, 60),
+    note,
+    dueDate,
+    createdAt: new Date().toISOString(),
+    readAt: "",
+    doneAt: ""
+  };
+  state.followUps.push(item);
+  try {
+    await saveFollowUp(item);
+  } catch (error) {
+    state.followUps = state.followUps.filter(entry => entry !== item);
+    renderFollowUps();
+    throw error;
+  }
+  // An unsaved report gets its link when it is saved (linkReportFollowUps).
+  if (context.fromDraft && !item.reportId) {
+    state.draftFollowUpIds.push(item.id);
+    scheduleReportAutosave();
+  }
+  renderFollowUps();
+  closeFollowUpComposer();
+  trackFeature("follow_up.create");
+  showToast("Follow-up saved", `The bell will remind you on ${followUpDateLabel(dueDate)}.`);
+  return true;
+}
+
+function openWriterFollowUp() {
+  const existing = writerFollowUp();
+  if (existing) {
+    openFollowUpComposer({ item: existing, anchor: els.writerFollowUpBtn });
+    return;
+  }
+  const title = els.reportTitleInput.value.trim();
+  const hn = els.reportNoteInput.value.trim();
+  if (!state.reportDraftId && !title && !hn && !getEditorText(els.reportTextEditor)) {
+    showToast("Nothing to follow up yet", "Start the report or add the HN first.", "info");
+    return;
+  }
+  openFollowUpComposer({
+    anchor: els.writerFollowUpBtn,
+    context: {
+      reportId: state.reportDraftId || "",
+      title,
+      hn,
+      modality: els.reportModalityInput.value.trim(),
+      fromDraft: !state.reportDraftId
+    }
+  });
+}
+
+function openWorklogFollowUp() {
+  const report = state.selectedWorklogReport;
+  if (!report) return;
+  const existing = openFollowUpFor(item => item.reportId === report.id);
+  if (existing) {
+    openFollowUpComposer({ item: existing, anchor: els.worklogFollowUpBtn });
+    return;
+  }
+  openFollowUpComposer({
+    anchor: els.worklogFollowUpBtn,
+    context: { reportId: report.id, title: report.title || "", hn: report.note || "", modality: report.modality || "" }
+  });
+}
+
+// After a report save: link follow-ups made while it was a draft and keep
+// the title/HN copies current (they are shown if the report is not loaded).
+async function linkReportFollowUps(reportId, data) {
+  if (!reportId) return;
+  const draftIds = new Set(state.draftFollowUpIds);
+  state.draftFollowUpIds = [];
+  const saves = state.followUps
+    .filter(item => draftIds.has(item.id) || item.reportId === reportId)
+    .filter(item => item.reportId !== reportId || item.title !== data.title || item.hn !== data.note)
+    .map(item => updateFollowUp(item.id, {
+      reportId,
+      title: data.title.slice(0, 300),
+      hn: data.note.slice(0, 300),
+      modality: data.modality.slice(0, 60)
+    }).catch(error => console.warn("Follow-up could not be linked to the saved report.", error)));
+  await Promise.all(saves);
+}
+
+async function openFollowUpReport(item) {
+  if (!item.reportId) {
+    openFollowUpComposer({ item, anchor: els.followUpBtn });
+    return;
+  }
+  setFollowUpsOpen(false);
+  showMode("worklog", { loadData: false });
+  try {
+    await loadWorkLog();
+  } catch (error) {
+    console.warn("Work Log could not load.", error);
+  }
+  let report = state.workLogReports.find(entry => entry.id === item.reportId);
+  if (!report) {
+    try {
+      const data = await pbList("old_reports", {
+        perPage: 1,
+        filter: `id="${escapeFilter(item.reportId)}"`,
+        fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,updated,note,isInteresting,owner"
+      });
+      report = data.items?.[0] ? { ...data.items[0], openedFromFollowUp: true } : null;
+    } catch (error) {
+      console.warn("Follow-up report could not load.", error);
+    }
+  }
+  if (!report) {
+    showToast("Report not found", "It may have been deleted. The follow-up keeps its title and HN.", "error");
+    return;
+  }
+  setReportNotePopoverOpen(false);
+  state.selectedWorklogReport = report;
+  renderWorkLog();
+  renderInterestingCases();
+  renderWorklogPreview();
+  els.worklogList.querySelector(`[data-worklog-id="${CSS.escape(report.id)}"]`)?.scrollIntoView({ block: "nearest" });
+  trackFeature("follow_up.open_report");
+}
+
+async function runFollowUpAction(id, action) {
+  const item = state.followUps.find(entry => entry.id === id);
+  if (action === "toggle-done") {
+    state.followUpsShowDone = !state.followUpsShowDone;
+    renderFollowUps();
+    return;
+  }
+  if (!item) return;
+  const now = new Date().toISOString();
+  const today = dateKey(new Date());
+  if (action === "open") {
+    if (isFollowUpUnread(item, today)) updateFollowUp(id, { readAt: now }).catch(error => console.warn("Follow-up read state not saved.", error));
+    await openFollowUpReport(item);
+    return;
+  }
+  if (action === "toggle-read") {
+    await updateFollowUp(id, { readAt: item.readAt ? "" : now });
+    return;
+  }
+  if (action === "done") {
+    await updateFollowUp(id, { doneAt: now, readAt: item.readAt || now });
+    trackFeature("follow_up.done");
+    showToast("Follow-up done", followUpTitle(item), "success", {
+      actions: [{ label: "Undo", run: () => updateFollowUp(id, { doneAt: "" }).catch(error => showToast("Undo failed", friendlyErrorMessage(error) || "Please try again.", "error")) }],
+      duration: 6000
+    });
+    return;
+  }
+  if (action === "snooze") {
+    const dueDate = addDaysKey(7);
+    await updateFollowUp(id, { dueDate, readAt: "" });
+    trackFeature("follow_up.snooze");
+    showToast("Snoozed", `Back on ${followUpDateLabel(dueDate)}.`);
+    return;
+  }
+  if (action === "reopen") {
+    await updateFollowUp(id, { doneAt: "", readAt: "" });
+    return;
+  }
+  if (action === "edit") {
+    const row = els.followUpList.querySelector(`[data-follow-up-id="${CSS.escape(id)}"]`);
+    openFollowUpComposer({ item, anchor: row || els.followUpBtn });
+    return;
+  }
+  if (action === "delete") {
+    if (!confirm("Delete this follow-up?")) return;
+    await deleteFollowUp(id);
+  }
+}
+
+async function markAllFollowUpsRead() {
+  const today = dateKey(new Date());
+  const now = new Date().toISOString();
+  const unread = state.followUps.filter(item => isFollowUpUnread(item, today));
+  const results = await Promise.allSettled(unread.map(item => updateFollowUp(item.id, { readAt: now })));
+  if (results.some(result => result.status === "rejected")) {
+    showToast("Some follow-ups were not updated", "Check the connection and try again.", "error");
+  }
+}
+
+// The badge changes when a date arrives, so recheck while the app stays open.
+function checkFollowUpDay() {
+  if (!state.auth?.token || !state.followUpsLoaded) return;
+  if (dateKey(new Date()) === state.followUpsToday) return;
+  renderFollowUps();
+  notifyDueFollowUps();
 }
 
 function emptyPersonalNotes() {
@@ -2951,7 +3576,8 @@ function missingSettingLoaders() {
     [PERSONAL_NOTES_SETTINGS_KEY, loadPersonalNotes],
     [TEMPLATE_ORDER_SETTINGS_KEY, loadTemplateOrder],
     [SHORTHAND_SETTINGS_KEY, loadShorthands],
-    [FEATURE_USAGE_SETTINGS_KEY, loadFeatureUsage]
+    [FEATURE_USAGE_SETTINGS_KEY, loadFeatureUsage],
+    [FOLLOW_UP_KEY_PREFIX, loadFollowUps]
   ].filter(([key]) => !state.loadedSettingKeys.has(key));
 }
 
@@ -3058,6 +3684,7 @@ function showMode(mode, options = {}) {
     interesting: "Interesting Cases"
   }[mode]}`;
   if (options.updateRoute !== false) updateRoute(mode);
+  updateTopbarCrowding();
 }
 
 function skeletonRows(count = 6) {
@@ -4581,6 +5208,7 @@ async function saveFullReport() {
     state.reportDraftSourceDate = created.sourceDate || data.sourceDate;
     updateReportModeBadge();
   }
+  await linkReportFollowUps(state.reportDraftId, data);
   await clearWorkingDraft();
   els.oldSearchInput.value = data.title;
   state.selectedOldReport = null;
@@ -4694,7 +5322,8 @@ async function loadWorkLog() {
   state.workLogReports = data.items;
   loadWorklogStats();
   if (state.selectedWorklogReport) {
-    state.selectedWorklogReport = state.workLogReports.find(item => item.id === state.selectedWorklogReport.id) || null;
+    state.selectedWorklogReport = state.workLogReports.find(item => item.id === state.selectedWorklogReport.id)
+      || (state.selectedWorklogReport.openedFromFollowUp ? state.selectedWorklogReport : null);
   }
   renderWorkLog();
   renderInterestingCases();
@@ -4755,6 +5384,7 @@ function renderWorkLog() {
     return `<button type="button" class="summary-card${modality ? ` mod-${label.toLowerCase()}` : ""}${active ? " active" : ""}" data-worklog-modality="${modality}" aria-pressed="${active ? "true" : "false"}" title="${escapeHtml(`${title || label}. ${hint}`)}"><strong>${value}</strong><span>${label}</span></button>`;
   }).join("");
   els.worklogSummary.classList.toggle("filtering", Boolean(state.worklogModality));
+  updateTopbarCrowding();
 
   if (state.worklogPanel === "trends") renderWorklogTrends(today);
   else renderWorklogCalendar(counts, today);
@@ -4763,15 +5393,17 @@ function renderWorkLog() {
     els.worklogList.innerHTML = `<div class="empty">${state.worklogModality || state.worklogSelectedDate ? `No saved ${state.worklogModality ? `${escapeHtml(state.worklogModality)} ` : ""}reports${state.worklogSelectedDate ? ` on ${escapeHtml(state.worklogSelectedDate)}` : ""}.` : "Saved reports will build your personal work log here."}</div>`;
     return;
   }
+  const followUps = openFollowUpsByReport();
   els.worklogList.innerHTML = reports.map((report, index) => {
     const date = savedDate(report);
     const personalNote = reportNoteText(report.id);
+    const followUp = followUps.get(report.id);
     const reportExcerpt = report.report ? snippet(report.report, query) : "";
     return `
       <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-worklog-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
         <span>
-          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}</span>
+          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}${followUp ? `<span class="follow-up-tag${isFollowUpDue(followUp) ? " due" : ""}">Follow-up ${escapeHtml(followUpDateLabel(followUp.dueDate, { weekday: false }))}</span>` : ""}</span>
           <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
           ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
           ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
@@ -4810,6 +5442,7 @@ function renderWorklogPreview() {
     els.editWorklogReportBtn.disabled = true;
     els.quickReportNoteBtn.disabled = true;
     updateReportNoteButton();
+    updateFollowUpButtons();
     return;
   }
   const date = savedDate(report);
@@ -4825,6 +5458,7 @@ function renderWorklogPreview() {
   els.editWorklogReportBtn.disabled = false;
   els.quickReportNoteBtn.disabled = false;
   updateReportNoteButton();
+  updateFollowUpButtons();
 }
 
 // Small calendar that opens where the context menu was, so the date is picked
@@ -5136,6 +5770,7 @@ async function openSavedReport(id) {
   state.suppressReportAutosave = true;
   state.reportDraftId = report.id;
   state.reportDraftSourceDate = report.sourceDate || report.created || "";
+  state.draftFollowUpIds = [];
   updateReportModeBadge();
   els.reportTitleInput.value = report.title || "";
   els.reportModalityInput.value = report.modality || "";
@@ -5861,6 +6496,63 @@ els.personalNotesBoard.addEventListener("contextmenu", event => {
 });
 els.quickReportNoteBtn.addEventListener("click", () => setReportNotePopoverOpen(!state.reportNotePopoverOpen));
 els.closeReportNoteBtn.addEventListener("click", () => setReportNotePopoverOpen(false));
+els.followUpBtn.addEventListener("click", () => setFollowUpsOpen(!state.followUpsOpen));
+els.closeFollowUpsBtn.addEventListener("click", () => setFollowUpsOpen(false));
+els.markAllFollowUpsReadBtn.addEventListener("click", markAllFollowUpsRead);
+els.followUpList.addEventListener("click", async event => {
+  const button = event.target.closest("[data-follow-up-action]");
+  if (!button) return;
+  const id = button.closest("[data-follow-up-id]")?.dataset.followUpId || "";
+  try {
+    await runFollowUpAction(id, button.dataset.followUpAction);
+  } catch (error) {
+    showToast("Follow-up not saved", friendlyErrorMessage(error) || "Check the connection and try again.", "error");
+  }
+});
+els.writerFollowUpBtn.addEventListener("click", () => {
+  if (state.followUpComposer?.anchor === els.writerFollowUpBtn) closeFollowUpComposer();
+  else openWriterFollowUp();
+});
+els.worklogFollowUpBtn.addEventListener("click", () => {
+  if (state.followUpComposer?.anchor === els.worklogFollowUpBtn) closeFollowUpComposer();
+  else openWorklogFollowUp();
+});
+els.closeFollowUpComposerBtn.addEventListener("click", closeFollowUpComposer);
+els.cancelFollowUpBtn.addEventListener("click", closeFollowUpComposer);
+els.saveFollowUpBtn.addEventListener("click", () => {
+  withButtonFeedback(els.saveFollowUpBtn, "Saving...", submitFollowUpComposer);
+});
+els.followUpNoteInput.addEventListener("keydown", event => {
+  if (event.key !== "Enter" || event.isComposing) return;
+  event.preventDefault();
+  els.saveFollowUpBtn.click();
+});
+els.followUpQuickDates.addEventListener("click", event => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  els.followUpDateInput.value = button.dataset.followUpDays
+    ? addDaysKey(Number(button.dataset.followUpDays))
+    : addMonthsKey(Number(button.dataset.followUpMonths));
+  markFollowUpQuickDate();
+});
+els.followUpDateInput.addEventListener("input", markFollowUpQuickDate);
+els.deleteFollowUpBtn.addEventListener("click", async () => {
+  const id = state.followUpComposer?.itemId;
+  if (!id || !confirm("Delete this follow-up?")) return;
+  try {
+    await deleteFollowUp(id);
+    closeFollowUpComposer();
+    showToast("Follow-up deleted");
+  } catch (error) {
+    showToast("Follow-up not deleted", friendlyErrorMessage(error) || "Check the connection and try again.", "error");
+  }
+});
+window.addEventListener("resize", () => {
+  if (state.followUpComposer?.anchor?.isConnected) positionFollowUpComposer(state.followUpComposer.anchor);
+});
+window.setInterval(checkFollowUpDay, 60000);
+window.addEventListener("resize", debounce(updateTopbarCrowding, 80));
+document.fonts?.ready.then(updateTopbarCrowding);
 els.reportPersonalNoteInput.addEventListener("input", () => {
   const reportId = state.selectedWorklogReport?.id;
   if (!reportId) return;
@@ -5874,12 +6566,27 @@ document.addEventListener("pointerdown", event => {
     && !els.writerOldList.contains(event.target)) closeWriterOldReport();
   if (state.alwaysNotesOpen && !els.alwaysNotesShell.contains(event.target) && !els.contextMenu.contains(event.target)) setAlwaysNotesOpen(false);
   if (state.shorthandOpen && !els.shorthandShell.contains(event.target) && !els.contextMenu.contains(event.target)) setShorthandOpen(false);
+  if (state.followUpComposer && !els.followUpComposer.contains(event.target) && !state.followUpComposer.anchor?.contains?.(event.target)) {
+    closeFollowUpComposer();
+  }
+  if (state.followUpsOpen && !els.followUpShell.contains(event.target) && !els.followUpComposer.contains(event.target)) {
+    setFollowUpsOpen(false);
+  }
   if (state.reportNotePopoverOpen && !els.reportNotePopover.contains(event.target) && !els.quickReportNoteBtn.contains(event.target)) {
     setReportNotePopoverOpen(false);
   }
 });
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
+  if (state.followUpComposer) {
+    closeFollowUpComposer();
+    return;
+  }
+  if (state.followUpsOpen) {
+    setFollowUpsOpen(false);
+    els.followUpBtn.focus();
+    return;
+  }
   if (els.pawletImageLightbox.open) {
     event.preventDefault();
     closePawletImageLightbox();
@@ -6059,6 +6766,8 @@ document.addEventListener("visibilitychange", () => {
   if (!state.auth?.token) return;
   // Coming back with no connection: skip quietly instead of flashing errors.
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+  checkFollowUpDay();
+  if (state.followUpsLoaded && Date.now() - state.followUpsLoadedAt > 60000) loadFollowUps({ force: true });
   recoverWorkspace()
     .catch(error => {
       if (error instanceof AuthSessionError) return;
@@ -6153,6 +6862,7 @@ async function loadApp() {
     loadTemplateOrder(),
     loadShorthands()
   ]);
+  loadFollowUps();
   loadFeatureUsage();
   loadSpellchecker();
   updateTemplateModeBadge();
