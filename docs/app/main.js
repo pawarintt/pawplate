@@ -41,9 +41,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261005-follow-up-notes";
-import { collectDom } from "./dom.js?v=20261005-follow-up-notes";
-import { createInitialState } from "./state.js?v=20261005-follow-up-notes";
+} from "./constants.js?v=20261005-follow-up-menu";
+import { collectDom } from "./dom.js?v=20261005-follow-up-menu";
+import { createInitialState } from "./state.js?v=20261005-follow-up-menu";
 import {
   copyText,
   debounce,
@@ -54,8 +54,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261005-follow-up-notes";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261005-follow-up-notes";
+} from "./utils.js?v=20261005-follow-up-menu";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261005-follow-up-menu";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -2571,6 +2571,17 @@ function openWriterFollowUp() {
       fromDraft: !state.reportDraftId
     }
   });
+}
+
+// Right-click menu entry for a saved report row.
+function followUpMenuAction(report, anchor) {
+  const existing = openFollowUpFor(item => item.reportId === report.id);
+  return {
+    label: existing ? `Edit follow-up (${followUpDateLabel(existing.dueDate, { weekday: false })})` : "Add follow-up",
+    run: () => openFollowUpComposer(existing
+      ? { item: existing, anchor }
+      : { anchor, context: { reportId: report.id, title: report.title || "", hn: report.note || "", modality: report.modality || "" } })
+  };
 }
 
 function openWorklogFollowUp(anchor = els.worklogFollowUpBtn) {
@@ -6002,6 +6013,7 @@ els.oldReportList.addEventListener("contextmenu", event => {
         await loadWorkLog();
         await openSavedReport(id);
       }});
+      actions.splice(1, 0, followUpMenuAction(report, button));
     }
     actions.push({ label: report.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: !report.isInteresting });
@@ -6716,6 +6728,7 @@ els.worklogList.addEventListener("contextmenu", event => {
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
     { label: reportNoteText(id) ? "Edit personal note" : "Add personal note", run: () => openReportNote(id) },
+    ...(report ? [followUpMenuAction(report, button)] : []),
     { label: "Change report date", run: () => editWorklogDate(id) },
     { label: report?.isInteresting ? "Remove interesting" : "Save as interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: !report?.isInteresting });
@@ -6747,6 +6760,7 @@ els.interestingList.addEventListener("contextmenu", event => {
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
     { label: reportNoteText(id) ? "Edit personal note" : "Add personal note", run: () => openReportNote(id) },
+    ...(report ? [followUpMenuAction(report, button)] : []),
     { label: "Change report date", run: () => editWorklogDate(id) },
     { label: "Remove interesting", run: async () => {
       await pbUpdate("old_reports", id, { isInteresting: false });
