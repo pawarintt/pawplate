@@ -98,6 +98,7 @@ export function createInitialState(snippetDefaults) {
     pawletEditorFailed: false,
     pawletKnownAssets: new Map(),
     pawletDropTarget: null,
+    pawletActiveNoteId: "",
     personalNotesResizeTrackTimer: 0,
     personalNoteImageTargetId: "",
     personalNotePasteTargetId: "",

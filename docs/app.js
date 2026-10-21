@@ -1,1 +1,1 @@
-import("./app/main.js?v=20261021-note-docs");
+import("./app/main.js?v=20261021-note-format");

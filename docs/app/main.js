@@ -42,9 +42,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261021-note-docs";
-import { collectDom } from "./dom.js?v=20261021-note-docs";
-import { createInitialState } from "./state.js?v=20261021-note-docs";
+} from "./constants.js?v=20261021-note-format";
+import { collectDom } from "./dom.js?v=20261021-note-format";
+import { createInitialState } from "./state.js?v=20261021-note-format";
 import {
   copyText,
   debounce,
@@ -55,9 +55,9 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261021-note-docs";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261021-note-docs";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261021-note-docs";
+} from "./utils.js?v=20261021-note-format";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261021-note-format";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261021-note-format";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -3038,7 +3038,7 @@ async function mountPersonalNoteEditors() {
     renderPersonalNotes();
     return;
   }
-  const { Editor, StarterKit, Underline, Placeholder, PawletImage } = modules;
+  const { Editor, StarterKit, Underline, TextStyle, Color, Highlight, Placeholder, PawletImage } = modules;
   els.personalNotesBoard.querySelectorAll("[data-note-doc]").forEach(host => {
     if (!host.isConnected || host.__pawletEditor) return;
     const id = host.closest("[data-personal-note-id]")?.dataset.personalNoteId || "";
@@ -3060,6 +3060,9 @@ async function mountPersonalNoteEditors() {
             horizontalRule: false
           }),
           Underline,
+          TextStyle,
+          Color,
+          Highlight.configure({ multicolor: true }),
           Placeholder.configure({ placeholder: "Write here, or paste an image" }),
           PawletImage
         ],
@@ -3081,6 +3084,7 @@ async function mountPersonalNoteEditors() {
         },
         onFocus: () => {
           editor.__pawletTouched = true;
+          state.pawletActiveNoteId = id;
           state.personalNotePasteTargetId = id;
         },
         onUpdate: () => syncPersonalNoteFromEditor(id, editor)
@@ -6170,6 +6174,24 @@ function handleModeLink(event, mode) {
 
 function runFormatCommand(button) {
   const toolbar = button.closest(".format-toolbar");
+  // Pawlet's toolbar formats whichever note you were last typing in.
+  if (toolbar.dataset.editorTarget === "pawlet") {
+    const noteEditor = state.personalNoteEditors.get(state.pawletActiveNoteId);
+    if (!noteEditor || noteEditor.isDestroyed) {
+      showToast("Pick a note first", "Click into a note's text, then choose the formatting.", "info");
+      return;
+    }
+    const chain = noteEditor.chain().focus();
+    const value = button.dataset.value || null;
+    if (button.dataset.command === "bold") chain.toggleBold().run();
+    if (button.dataset.command === "italic") chain.toggleItalic().run();
+    if (button.dataset.command === "underline") chain.toggleUnderline().run();
+    if (button.dataset.command === "foreColor" && value) chain.setColor(value).run();
+    if (button.dataset.command === "backColor" && value) chain.setHighlight({ color: value }).run();
+    if (button.dataset.command === "clearHighlight") chain.unsetHighlight().run();
+    trackFeature("always_notes.format");
+    return;
+  }
   const editor = document.getElementById(toolbar.dataset.editorTarget);
   if (!editor) return;
   const tiptap = editor.__pawplateEditor;
