@@ -5,8 +5,8 @@ on a third-party CDN (which stalled on weak wifi). Files never change at a
 given name; the service worker (`docs/sw.js`) caches them permanently, so a
 new version must use a new file name.
 
-- `tiptap-2.11.7.js`: one ES module bundle exporting `Editor`, `Extension`,
-  `StarterKit`, `Underline`, `TextStyle`, `Color`, `Highlight`, `Placeholder`.
+- `tiptap-2.11.7-nodes.js`: one ES module bundle exporting `Editor`, `Extension`,
+  `Node`, `mergeAttributes` (from `@tiptap/core`; Pawlet's image block needs `Node`), `StarterKit`, `Underline`, `TextStyle`, `Color`, `Highlight`, `Placeholder`.
   Every `@tiptap/*` package is pinned to 2.11.7. Rebuild in a scratch folder:
 
   ```
@@ -17,7 +17,7 @@ new version must use a new file name.
     @tiptap/extension-placeholder@2.11.7
   # add "overrides" pinning every @tiptap/* dependency of starter-kit to 2.11.7
   # entry.js re-exports the names above from their packages
-  npx esbuild entry.js --bundle --format=esm --minify --legal-comments=eof --outfile=tiptap-2.11.7.js
+  npx esbuild entry.js --bundle --format=esm --minify --legal-comments=eof --outfile=tiptap-2.11.7-nodes.js
   ```
 
 - `typo-1.3.2.js`, `typo-en_US/`: `typo.js` and `dictionaries/en_US` from the

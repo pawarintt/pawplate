@@ -570,6 +570,62 @@ input[type="radio"] {
   overflow: auto;
 }
 
+/* A text note is one editor: text and images flow together and the note scrolls. */
+.personal-note-content.is-doc {
+  display: block;
+}
+
+.personal-note-doc {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 9px 11px 11px;
+  color: var(--ink);
+  font-size: .82rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.personal-note-prose {
+  flex: 1 1 auto;
+  min-height: 74px;
+  outline: none;
+  white-space: pre-wrap;
+}
+
+.personal-note-doc .personal-note-prose p {
+  min-height: 1.4em;
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.personal-note-prose .is-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.personal-note-prose .personal-note-doc-image {
+  display: block;
+  max-width: 100%;
+  margin: 6px 0;
+}
+
+.personal-note-prose .personal-note-doc-image img {
+  height: auto;
+  min-height: 0;
+}
+
+.personal-note-prose .ProseMirror-selectednode {
+  outline: 2px solid rgba(118, 145, 128, .55);
+  outline-offset: 1px;
+}
+
 /* min-height is set from main.js to fit the text; the box never scrolls itself. */
 .personal-note-content .personal-note-body {
   min-height: 74px;

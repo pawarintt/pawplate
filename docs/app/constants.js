@@ -43,7 +43,7 @@ export class AuthSessionError extends Error {
 // so a stalled CDN on weak wifi cannot drop the editor to its plain fallback.
 // See docs/vendor/README.md to rebuild them.
 export const SPELLCHECK_DICTIONARY_URL = new URL("../vendor/typo-en_US", import.meta.url).href;
-export const TIPTAP_BUNDLE_URL = new URL("../vendor/tiptap-2.11.7.js", import.meta.url).href;
+export const TIPTAP_BUNDLE_URL = new URL("../vendor/tiptap-2.11.7-nodes.js", import.meta.url).href;
 export const DEFAULT_PALETTE = {
   text: ["#2b2526", "#8f4d57", "#7f5f3b", "#52654d"],
   highlight: ["#fff0a8", "#ffd4dc", "#dcefc8", "#efe2c3", "#d9edf0"]
