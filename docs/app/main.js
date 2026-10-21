@@ -42,9 +42,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261020-infinite-pawlet";
-import { collectDom } from "./dom.js?v=20261020-infinite-pawlet";
-import { createInitialState } from "./state.js?v=20261020-infinite-pawlet";
+} from "./constants.js?v=20261021-menu-fit";
+import { collectDom } from "./dom.js?v=20261021-menu-fit";
+import { createInitialState } from "./state.js?v=20261021-menu-fit";
 import {
   copyText,
   debounce,
@@ -55,8 +55,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261020-infinite-pawlet";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261020-infinite-pawlet";
+} from "./utils.js?v=20261021-menu-fit";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261021-menu-fit";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -5265,9 +5265,15 @@ function showContextMenu(x, y, actions) {
   els.contextMenu.innerHTML = actions.map((action, index) => (
     `<button class="${action.danger ? "danger" : ""}" data-action-index="${index}" type="button">${escapeHtml(action.label)}</button>`
   )).join("");
-  els.contextMenu.style.left = `${x}px`;
-  els.contextMenu.style.top = `${y}px`;
   els.contextMenu.classList.remove("hidden");
+  // Keep the whole menu on screen: open up or left of the pointer when it
+  // would run past the bottom or right edge.
+  const margin = 8;
+  const { width, height } = els.contextMenu.getBoundingClientRect();
+  const left = x + width + margin > window.innerWidth ? x - width : x;
+  const top = y + height + margin > window.innerHeight ? y - height : y;
+  els.contextMenu.style.left = `${Math.max(margin, Math.min(left, window.innerWidth - width - margin))}px`;
+  els.contextMenu.style.top = `${Math.max(margin, Math.min(top, window.innerHeight - height - margin))}px`;
   els.contextMenu.onclick = async event => {
     const button = event.target.closest("[data-action-index]");
     if (!button) return;
