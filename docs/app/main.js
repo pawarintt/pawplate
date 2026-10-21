@@ -42,9 +42,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261021-note-colors";
-import { collectDom } from "./dom.js?v=20261021-note-colors";
-import { createInitialState } from "./state.js?v=20261021-note-colors";
+} from "./constants.js?v=20261021-note-images-fit";
+import { collectDom } from "./dom.js?v=20261021-note-images-fit";
+import { createInitialState } from "./state.js?v=20261021-note-images-fit";
 import {
   copyText,
   debounce,
@@ -55,8 +55,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261021-note-colors";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261021-note-colors";
+} from "./utils.js?v=20261021-note-images-fit";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261021-note-images-fit";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -2899,6 +2899,10 @@ function observePersonalNoteSizes() {
       const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
       if (!note) return;
       const rect = card.getBoundingClientRect();
+      if (Math.round(rect.width) !== Number(card.dataset.fitWidth)) {
+        card.dataset.fitWidth = String(Math.round(rect.width));
+        fitPersonalNoteBodies(card);
+      }
       if (rect.width < PERSONAL_NOTE_CARD_MIN_WIDTH || (!note.collapsed && rect.height < PERSONAL_NOTE_CARD_MIN_HEIGHT)) return;
       const width = clampPersonalNoteSize(rect.width, PERSONAL_NOTE_CARD_MIN_WIDTH, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_WIDTH);
       const height = clampPersonalNoteSize(rect.height, PERSONAL_NOTE_CARD_MIN_HEIGHT, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_HEIGHT);
@@ -2937,6 +2941,24 @@ function observePersonalNoteSizes() {
   els.personalNotesBoard.querySelectorAll("[data-personal-note-id]").forEach(card => state.personalNotesResizeObserver.observe(card));
 }
 
+// A note's text box grows to fit its text, so images below it push down
+// (the note scrolls) instead of squeezing the text into a tiny box.
+function fitPersonalNoteBody(textarea) {
+  if (!textarea?.isConnected) return;
+  const content = textarea.closest(".personal-note-content");
+  const scrollTop = content?.scrollTop || 0;
+  textarea.style.minHeight = "0px";
+  textarea.style.height = "0px";
+  const needed = textarea.scrollHeight;
+  textarea.style.height = "";
+  textarea.style.minHeight = `${Math.max(74, needed)}px`;
+  if (content) content.scrollTop = scrollTop;
+}
+
+function fitPersonalNoteBodies(root = els.personalNotesBoard) {
+  root.querySelectorAll(".personal-note-content [data-note-body]").forEach(fitPersonalNoteBody);
+}
+
 function renderPersonalNotes() {
   const notes = state.personalNotes.notes || [];
   els.alwaysNotesCount.textContent = String(notes.length);
@@ -2967,6 +2989,7 @@ function renderPersonalNotes() {
       <button class="personal-note-resize" data-note-resize type="button" aria-label="Resize note" title="Resize note"></button>
     </div>
   `).join("");
+  fitPersonalNoteBodies();
   observePersonalNoteSizes();
   sizePersonalNotesBoard();
 }
@@ -2975,7 +2998,7 @@ function personalNoteImageGallery(note, { showEmpty = false, resizable = false }
   const images = personalNoteAssets(note);
   if (!images.length) return showEmpty ? '<div class="personal-note-image-empty">Add or paste an image</div>' : "";
   return `<div class="personal-note-images ${images.length === 1 ? "is-single" : ""}">${images.map((asset, index) => `
-    <figure class="personal-note-image" data-note-image-index="${index}"${resizable ? ` style="width:${asset.width ? `${asset.width}px` : images.length === 1 ? "100%" : "calc(50% - 3px)"};height:${asset.height ? `${asset.height}px` : "128px"}"` : ""}>
+    <figure class="personal-note-image" data-note-image-index="${index}"${resizable ? ` style="width:${asset.width ? `${asset.width}px` : images.length === 1 ? "100%" : "calc(50% - 3px)"}"` : ""}>
       <img src="${escapeHtml(personalNoteImageUrl(asset))}" alt="${escapeHtml(asset.alt)}" loading="lazy" data-note-image-record="${escapeHtml(asset.recordId)}" data-note-image-file="${escapeHtml(asset.filename)}" title="Double-click to view full screen">
       <button class="personal-note-image-remove" type="button" data-note-image-remove="${index}" aria-label="Remove ${escapeHtml(asset.alt)}" title="Remove image">&times;</button>
       ${resizable ? `<button class="personal-note-image-resize" type="button" data-note-image-resize="${index}" aria-label="Resize ${escapeHtml(asset.alt)}" title="Resize image"></button>` : ""}
@@ -3410,14 +3433,17 @@ function startPersonalNoteImageResize(event, card, handle) {
   const maxWidth = Math.max(PERSONAL_NOTE_IMAGE_MIN_WIDTH, Math.min(PERSONAL_NOTE_IMAGE_MAX_WIDTH, card.clientWidth - 24));
   let resized = false;
   figure.classList.add("is-resizing");
+  // Images in a text note keep their shape: dragging the corner sets the width
+  // (either direction of the drag works) and the height follows.
+  const aspect = originHeight / originWidth || 1;
   const move = moveEvent => {
-    const width = clampPersonalNoteSize(originWidth + moveEvent.clientX - startX, PERSONAL_NOTE_IMAGE_MIN_WIDTH, maxWidth, originWidth);
-    const height = clampPersonalNoteSize(originHeight + moveEvent.clientY - startY, PERSONAL_NOTE_IMAGE_MIN_HEIGHT, PERSONAL_NOTE_IMAGE_MAX_HEIGHT, originHeight);
-    resized ||= width !== Math.round(originWidth) || height !== Math.round(originHeight);
+    const dx = moveEvent.clientX - startX;
+    const dy = (moveEvent.clientY - startY) / aspect;
+    const width = clampPersonalNoteSize(originWidth + (Math.abs(dx) > Math.abs(dy) ? dx : dy), PERSONAL_NOTE_IMAGE_MIN_WIDTH, maxWidth, originWidth);
+    resized ||= width !== Math.round(originWidth);
     asset.width = width;
-    asset.height = height;
+    asset.height = clampPersonalNoteSize(width * aspect, PERSONAL_NOTE_IMAGE_MIN_HEIGHT, PERSONAL_NOTE_IMAGE_MAX_HEIGHT, PERSONAL_NOTE_IMAGE_MIN_HEIGHT);
     figure.style.width = `${width}px`;
-    figure.style.height = `${height}px`;
   };
   const stop = () => {
     window.removeEventListener("pointermove", move);
@@ -6548,7 +6574,10 @@ els.personalNotesBoard.addEventListener("input", event => {
   const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
   if (!note) return;
   if (titleInput) note.title = titleInput.value.replace(/\s+/g, " ").slice(0, 120);
-  if (bodyInput) note.text = bodyInput.value.replace(/\r/g, "").slice(0, 10000);
+  if (bodyInput) {
+    note.text = bodyInput.value.replace(/\r/g, "").slice(0, 10000);
+    fitPersonalNoteBody(bodyInput);
+  }
   note.updatedAt = new Date().toISOString();
   state.personalNotesDirty = true;
   state.personalNotesEditPending = true;

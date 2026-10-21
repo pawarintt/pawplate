@@ -1,1 +1,1 @@
-import("./app/main.js?v=20261021-note-colors");
+import("./app/main.js?v=20261021-note-images-fit");
