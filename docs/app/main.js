@@ -42,9 +42,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261021-menu-fit";
-import { collectDom } from "./dom.js?v=20261021-menu-fit";
-import { createInitialState } from "./state.js?v=20261021-menu-fit";
+} from "./constants.js?v=20261021-note-colors";
+import { collectDom } from "./dom.js?v=20261021-note-colors";
+import { createInitialState } from "./state.js?v=20261021-note-colors";
 import {
   copyText,
   debounce,
@@ -55,8 +55,8 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261021-menu-fit";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261021-menu-fit";
+} from "./utils.js?v=20261021-note-colors";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261021-note-colors";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -3206,6 +3206,21 @@ async function removePersonalNoteImage(noteId, imageIndex) {
   await deletePawletAssets([asset]);
 }
 
+// Index matches data-note-color in style.css.
+const PERSONAL_NOTE_COLOR_NAMES = ["Yellow", "Pink", "Mint", "Blue", "Lavender", "Peach"];
+
+function setPersonalNoteColor(id, color) {
+  const note = state.personalNotes.notes.find(item => item.id === id);
+  if (!note || note.color === color) return;
+  note.color = color;
+  note.updatedAt = new Date().toISOString();
+  const card = [...els.personalNotesBoard.querySelectorAll("[data-personal-note-id]")].find(item => item.dataset.personalNoteId === id);
+  if (card) card.dataset.noteColor = String(color);
+  state.personalNotesDirty = true;
+  schedulePersonalNotesSave(0);
+  trackFeature("always_notes.color");
+}
+
 function bringPersonalNoteToFront(id, card) {
   const note = state.personalNotes.notes.find(item => item.id === id);
   if (!note || note.z === topPersonalNoteZ()) return;
@@ -5262,8 +5277,12 @@ function reportData() {
 
 function showContextMenu(x, y, actions) {
   if (!els.contextMenu) return;
-  els.contextMenu.innerHTML = actions.map((action, index) => (
-    `<button class="${action.danger ? "danger" : ""}" data-action-index="${index}" type="button">${escapeHtml(action.label)}</button>`
+  const swatches = actions.map((action, index) => ({ action, index })).filter(({ action }) => action.noteColor !== undefined);
+  const swatchRow = swatches.length ? `<div class="context-menu-swatches" role="group" aria-label="Note color">${swatches.map(({ action, index }) => (
+    `<button class="context-swatch${action.current ? " is-current" : ""}" data-action-index="${index}" data-note-color="${action.noteColor}" type="button" aria-label="${escapeHtml(action.label)}" aria-pressed="${action.current ? "true" : "false"}" title="${escapeHtml(action.label)}"></button>`
+  )).join("")}</div>` : "";
+  els.contextMenu.innerHTML = swatchRow + actions.map((action, index) => (
+    action.noteColor !== undefined ? "" : `<button class="${action.danger ? "danger" : ""}" data-action-index="${index}" type="button">${escapeHtml(action.label)}</button>`
   )).join("");
   els.contextMenu.classList.remove("hidden");
   // Keep the whole menu on screen: open up or left of the pointer when it
@@ -6650,7 +6669,14 @@ els.personalNotesBoard.addEventListener("contextmenu", event => {
   const card = event.target.closest("[data-personal-note-id]");
   if (!card) return;
   event.preventDefault();
+  const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
   showContextMenu(event.clientX, event.clientY, [
+    ...PERSONAL_NOTE_COLOR_NAMES.map((label, color) => ({
+      label,
+      noteColor: color,
+      current: note?.color === color,
+      run: () => setPersonalNoteColor(card.dataset.personalNoteId, color)
+    })),
     { label: "Delete note", danger: true, run: () => deletePersonalNote(card.dataset.personalNoteId) }
   ]);
 });
