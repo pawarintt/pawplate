@@ -1,6 +1,6 @@
-// Report name suggestions from the impression, offered when a report is
-// saved. Runs locally; report text never leaves the browser.
-import { impressionLines } from "./template-combine.js?v=20261022-report-name";
+// Local report name suggestions from the impression, used when GPT title
+// suggestions are unavailable (offline, server error).
+import { impressionLines } from "./template-combine.js?v=20261022-gpt-title";
 
 const MAX_PHRASE = 70;
 const LEADING_FILLER = [
@@ -71,4 +71,9 @@ function lowerFirst(phrase) {
 export function titleCoversImpression(title, html) {
   const lead = impressionLines(html).map(impressionPhrase).find(Boolean);
   return Boolean(lead) && String(title || "").toLowerCase().includes(lead.toLowerCase());
+}
+
+// The impression as plain lines, used for GPT and to tell whether it changed.
+export function impressionText(html) {
+  return impressionLines(html).join("\n");
 }

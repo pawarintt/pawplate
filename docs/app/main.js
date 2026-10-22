@@ -10,6 +10,7 @@ import {
   FOLLOW_UP_KEY_PREFIX,
   MODE_ROUTES,
   MUTATION_TIMEOUT_MS,
+  REPORT_NAME_TIMEOUT_MS,
   PALETTE_KEY_PREFIX,
   PERSONAL_DICTIONARY_KEY_PREFIX,
   PERSONAL_NOTES_LIMIT,
@@ -42,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261022-report-name";
-import { collectDom } from "./dom.js?v=20261022-report-name";
-import { createInitialState } from "./state.js?v=20261022-report-name";
+} from "./constants.js?v=20261022-gpt-title";
+import { collectDom } from "./dom.js?v=20261022-gpt-title";
+import { createInitialState } from "./state.js?v=20261022-gpt-title";
 import {
   copyText,
   debounce,
@@ -55,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261022-report-name";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-report-name";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-report-name";
-import { suggestReportNames, titleCoversImpression } from "./report-name.js?v=20261022-report-name";
+} from "./utils.js?v=20261022-gpt-title";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-gpt-title";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-gpt-title";
+import { impressionText, suggestReportNames, titleCoversImpression } from "./report-name.js?v=20261022-gpt-title";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -664,6 +665,7 @@ function resetGuidelineDraft() {
 
 function resetReportDraft() {
   state.reportDraftId = null;
+  state.reportNamedImpression = "";
   state.reportDraftSourceDate = "";
   state.draftFollowUpIds = [];
   updateReportModeBadge();
@@ -5563,31 +5565,69 @@ async function withButtonFeedback(button, busyLabel, action, doneLabel = null) {
   }
 }
 
+// GPT names from the exam title and the impression only; never the HN, note
+// or the rest of the report.
+async function fetchGptReportNames(title, impression) {
+  const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/report-title`, {
+    method: "POST",
+    timeoutMs: REPORT_NAME_TIMEOUT_MS,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, impression })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || "Title suggestions failed.");
+  const names = (payload.names || []).map(name => String(name || "").trim()).filter(Boolean);
+  if (!names.length) throw new Error("No names returned.");
+  return names;
+}
+
 // Resolves with the chosen name, or null when the save is cancelled. Skipped
-// when there is no impression or the title already names it.
+// when there is no impression, or it has not changed since the report was
+// last named, or the title already names it.
 function confirmReportName() {
   const current = els.reportTitleInput.value.trim();
   const html = getEditorHtml(els.reportTextEditor);
-  const suggestions = suggestReportNames(html, current);
-  if (!suggestions.length || titleCoversImpression(current, html)) return Promise.resolve(current);
+  const impression = impressionText(html);
+  if (!impression || impression === state.reportNamedImpression || titleCoversImpression(current, html)) {
+    return Promise.resolve(current);
+  }
   const keep = current && !/^untitled/i.test(current) ? current : "";
-  els.reportNameInput.value = suggestions[0];
-  els.reportNameSuggestions.innerHTML = [
-    ...suggestions.map(name => `<button type="button" data-report-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`),
-    keep ? `<button type="button" class="keep" data-report-name="${escapeHtml(keep)}">Keep "${escapeHtml(keep)}"</button>` : ""
-  ].join("");
+  let suggestions = [];
+  let edited = false;
   const markActive = () => {
     els.reportNameSuggestions.querySelectorAll("[data-report-name]").forEach(button => {
       button.classList.toggle("active", button.dataset.reportName === els.reportNameInput.value);
     });
   };
-  markActive();
+  const render = (names, hint, loading = false) => {
+    suggestions = names;
+    els.reportNameHint.textContent = hint;
+    els.reportNameSuggestions.innerHTML = [
+      loading ? `<span class="report-name-loading">Asking GPT...</span>` : "",
+      ...names.map(name => `<button type="button" data-report-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`),
+      keep ? `<button type="button" class="keep" data-report-name="${escapeHtml(keep)}">Keep "${escapeHtml(keep)}"</button>` : ""
+    ].join("");
+    if (!edited && names.length) els.reportNameInput.value = names[0];
+    markActive();
+  };
+  els.reportNameInput.value = keep;
+  render([], "GPT is suggesting names from the impression.", true);
   trackFeature("report.name.suggested");
   return new Promise(resolve => {
+    let done = false;
+    fetchGptReportNames(current, impression)
+      .then(names => {
+        if (!done) render(names, "Suggested by GPT from the impression. Pick one or edit it.");
+      })
+      .catch(error => {
+        console.warn("GPT title suggestions failed.", error);
+        if (!done) render(suggestReportNames(html, current), "GPT is unavailable, so these come from the impression text. Pick one or edit it.");
+      });
     const finish = name => {
+      done = true;
       els.reportNameForm.removeEventListener("submit", onSubmit);
       els.reportNameSuggestions.removeEventListener("click", onPick);
-      els.reportNameInput.removeEventListener("input", markActive);
+      els.reportNameInput.removeEventListener("input", onInput);
       els.cancelReportNameBtn.removeEventListener("click", onCancel);
       els.reportNameDialog.removeEventListener("cancel", onCancel);
       if (els.reportNameDialog.open) els.reportNameDialog.close();
@@ -5602,9 +5642,14 @@ function confirmReportName() {
     const onPick = event => {
       const button = event.target.closest("[data-report-name]");
       if (!button) return;
+      edited = true;
       els.reportNameInput.value = button.dataset.reportName;
       markActive();
       els.reportNameInput.focus();
+    };
+    const onInput = () => {
+      edited = true;
+      markActive();
     };
     const onCancel = event => {
       event?.preventDefault();
@@ -5612,12 +5657,11 @@ function confirmReportName() {
     };
     els.reportNameForm.addEventListener("submit", onSubmit);
     els.reportNameSuggestions.addEventListener("click", onPick);
-    els.reportNameInput.addEventListener("input", markActive);
+    els.reportNameInput.addEventListener("input", onInput);
     els.cancelReportNameBtn.addEventListener("click", onCancel);
     els.reportNameDialog.addEventListener("cancel", onCancel);
     els.reportNameDialog.showModal();
     els.reportNameInput.focus();
-    els.reportNameInput.select();
   });
 }
 
@@ -5630,6 +5674,7 @@ async function saveFullReport() {
   if (name === null) return false;
   els.reportTitleInput.value = name;
   const data = reportData();
+  const namedImpression = impressionText(data.report);
   const wasExisting = Boolean(state.reportDraftId);
   if (state.reportDraftId) {
     await pbUpdate("old_reports", state.reportDraftId, data);
@@ -5639,6 +5684,7 @@ async function saveFullReport() {
     state.reportDraftSourceDate = created.sourceDate || data.sourceDate;
     updateReportModeBadge();
   }
+  state.reportNamedImpression = namedImpression;
   await linkReportFollowUps(state.reportDraftId, data);
   await clearWorkingDraft();
   els.oldSearchInput.value = data.title;
@@ -6201,6 +6247,7 @@ async function openSavedReport(id) {
   state.suppressReportAutosave = true;
   state.reportDraftId = report.id;
   state.reportDraftSourceDate = report.sourceDate || report.created || "";
+  state.reportNamedImpression = impressionText(report.report || "");
   state.draftFollowUpIds = [];
   updateReportModeBadge();
   els.reportTitleInput.value = report.title || "";

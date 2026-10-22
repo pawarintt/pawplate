@@ -3264,6 +3264,12 @@ button.summary-card {
   overflow-wrap: anywhere;
 }
 
+.report-name-loading {
+  padding: 4px 2px;
+  color: var(--muted);
+  font-size: .8rem;
+}
+
 .report-name-suggestions button.keep {
   border-color: var(--line);
   background: var(--paper-strong);

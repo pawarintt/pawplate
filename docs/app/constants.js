@@ -15,6 +15,7 @@ export const AUTH_REFRESH_LEEWAY_MS = 60 * 60 * 1000;
 // backoff; mutations get a timeout only (a blind retry could duplicate them).
 export const READ_TIMEOUT_MS = 15 * 1000;
 export const MUTATION_TIMEOUT_MS = 25 * 1000;
+export const REPORT_NAME_TIMEOUT_MS = 30 * 1000;
 export const READ_MAX_RETRIES = 2;
 export const RETRY_BASE_DELAY_MS = 400;
 

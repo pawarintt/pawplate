@@ -31,6 +31,7 @@ export function createInitialState(snippetDefaults) {
     guidelineDraftId: null,
     reportDraftId: null,
     reportDraftSourceDate: "",
+    reportNamedImpression: "",
     workingDraftId: "",
     workingDraftChecked: false,
     reportAutosaveTimer: 0,

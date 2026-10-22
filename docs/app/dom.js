@@ -60,6 +60,7 @@ export function collectDom() {
     reportNameDialog: document.getElementById("reportNameDialog"),
     reportNameForm: document.getElementById("reportNameForm"),
     reportNameInput: document.getElementById("reportNameInput"),
+    reportNameHint: document.getElementById("reportNameHint"),
     reportNameSuggestions: document.getElementById("reportNameSuggestions"),
     cancelReportNameBtn: document.getElementById("cancelReportNameBtn"),
     builderModeBtn: document.getElementById("builderModeBtn"),
