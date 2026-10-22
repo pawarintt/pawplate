@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261022-gpt-title";
-import { collectDom } from "./dom.js?v=20261022-gpt-title";
-import { createInitialState } from "./state.js?v=20261022-gpt-title";
+} from "./constants.js?v=20261022-gpt-title2";
+import { collectDom } from "./dom.js?v=20261022-gpt-title2";
+import { createInitialState } from "./state.js?v=20261022-gpt-title2";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261022-gpt-title";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-gpt-title";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-gpt-title";
-import { impressionText, suggestReportNames, titleCoversImpression } from "./report-name.js?v=20261022-gpt-title";
+} from "./utils.js?v=20261022-gpt-title2";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-gpt-title2";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-gpt-title2";
+import { impressionText, suggestReportNames, titleCoversImpression } from "./report-name.js?v=20261022-gpt-title2";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -5565,20 +5565,33 @@ async function withButtonFeedback(button, busyLabel, action, doneLabel = null) {
   }
 }
 
-// GPT names from the exam title and the impression only; never the HN, note
-// or the rest of the report.
+// GPT name through the existing AI draft route (pb_hooks/pawplate_ai.pb.js).
+// Only the exam title and the impression are sent; never the HN, note or
+// the rest of the report. The route also drafts an impression, which is
+// ignored here.
+const REPORT_NAME_PROMPT = [
+  "This request is only for the title field. Keep the impression field to one short line.",
+  "Title: name this saved report so a radiologist can find it later in a work log.",
+  "- Format: exam + \" - \" + main diagnosis, e.g. \"CT Brain - Acute left MCA infarct\". Add the next most important diagnosis only if it is clinically important, e.g. \"CT Abdomen - HCC with portal vein thrombosis, cirrhosis\".",
+  "- Take the exam from the current title, dropping any old \" - diagnosis\" part. If the current title names no exam, give the diagnosis alone.",
+  "- Short, specific, standard radiology terms and abbreviations. No full sentences, no filler such as \"findings consistent with\", no trailing period.",
+  "- Keep laterality, location and acuity when they matter; keep important uncertainty short (\"suspected\").",
+  "- For a normal study use \"Normal\" or the pertinent negative.",
+  "- Under 80 characters. Use only facts in the impression."
+].join("\n");
+
 async function fetchGptReportNames(title, impression) {
-  const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/report-title`, {
+  const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/ai-draft`, {
     method: "POST",
     timeoutMs: REPORT_NAME_TIMEOUT_MS,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, impression })
+    body: JSON.stringify({ report: `IMPRESSION:\n${impression}`, title, aiPrompt: REPORT_NAME_PROMPT, aiReasoning: "low" })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.message || "Title suggestions failed.");
-  const names = (payload.names || []).map(name => String(name || "").trim()).filter(Boolean);
-  if (!names.length) throw new Error("No names returned.");
-  return names;
+  const name = String(payload.title || "").replace(/\s+/g, " ").replace(/[.\s]+$/, "").trim().slice(0, 300);
+  if (!name) throw new Error("No name returned.");
+  return [name];
 }
 
 // Resolves with the chosen name, or null when the save is cancelled. Skipped
@@ -5617,7 +5630,7 @@ function confirmReportName() {
     let done = false;
     fetchGptReportNames(current, impression)
       .then(names => {
-        if (!done) render(names, "Suggested by GPT from the impression. Pick one or edit it.");
+        if (!done) render(names, "Suggested by GPT from the impression. Use it or edit it.");
       })
       .catch(error => {
         console.warn("GPT title suggestions failed.", error);
