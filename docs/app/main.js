@@ -10,6 +10,7 @@ import {
   FOLLOW_UP_KEY_PREFIX,
   MODE_ROUTES,
   MUTATION_TIMEOUT_MS,
+  OPENAI_TIMEOUT_MS,
   REPORT_NAME_TIMEOUT_MS,
   PALETTE_KEY_PREFIX,
   PERSONAL_DICTIONARY_KEY_PREFIX,
@@ -43,9 +44,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261022-gpt-title2";
-import { collectDom } from "./dom.js?v=20261022-gpt-title2";
-import { createInitialState } from "./state.js?v=20261022-gpt-title2";
+} from "./constants.js?v=20261022-openai";
+import { collectDom } from "./dom.js?v=20261022-openai";
+import { createInitialState } from "./state.js?v=20261022-openai";
 import {
   copyText,
   debounce,
@@ -56,10 +57,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261022-gpt-title2";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-gpt-title2";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-gpt-title2";
-import { impressionText, suggestReportNames, titleCoversImpression } from "./report-name.js?v=20261022-gpt-title2";
+} from "./utils.js?v=20261022-openai";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-openai";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-openai";
+import { impressionText, suggestReportNames, titleCoversImpression } from "./report-name.js?v=20261022-openai";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -5565,33 +5566,58 @@ async function withButtonFeedback(button, busyLabel, action, doneLabel = null) {
   }
 }
 
-// GPT name through the existing AI draft route (pb_hooks/pawplate_ai.pb.js).
-// Only the exam title and the impression are sent; never the HN, note or
-// the rest of the report. The route also drafts an impression, which is
-// ignored here.
-const REPORT_NAME_PROMPT = [
-  "This request is only for the title field. Keep the impression field to one short line.",
-  "Title: name this saved report so a radiologist can find it later in a work log.",
-  "- Format: exam + \" - \" + main diagnosis, e.g. \"CT Brain - Acute left MCA infarct\". Add the next most important diagnosis only if it is clinically important, e.g. \"CT Abdomen - HCC with portal vein thrombosis, cirrhosis\".",
-  "- Take the exam from the current title, dropping any old \" - diagnosis\" part. If the current title names no exam, give the diagnosis alone.",
-  "- Short, specific, standard radiology terms and abbreviations. No full sentences, no filler such as \"findings consistent with\", no trailing period.",
-  "- Keep laterality, location and acuity when they matter; keep important uncertainty short (\"suspected\").",
-  "- For a normal study use \"Normal\" or the pertinent negative.",
-  "- Under 80 characters. Use only facts in the impression."
-].join("\n");
-
-async function fetchGptReportNames(title, impression) {
-  const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/ai-draft`, {
+// Shared OpenAI call (pb_hooks/pawplate_openai.pb.js). The prompt lives
+// here; the server only adds the key and model. Returns parsed JSON when a
+// schema is given, otherwise text.
+async function askOpenAI({ instructions, input, schema = null, reasoning = "low", timeoutMs = OPENAI_TIMEOUT_MS }) {
+  const response = await authenticatedFetch(`${POCKETBASE_URL.replace(/\/$/, "")}/api/pawplate/openai`, {
     method: "POST",
-    timeoutMs: REPORT_NAME_TIMEOUT_MS,
+    timeoutMs,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ report: `IMPRESSION:\n${impression}`, title, aiPrompt: REPORT_NAME_PROMPT, aiReasoning: "low" })
+    body: JSON.stringify({ instructions, input, schema, reasoning })
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || "Title suggestions failed.");
-  const name = String(payload.title || "").replace(/\s+/g, " ").replace(/[.\s]+$/, "").trim().slice(0, 300);
-  if (!name) throw new Error("No name returned.");
-  return [name];
+  if (!response.ok) throw new Error(payload.message || "The AI request failed.");
+  return payload.output;
+}
+
+const REPORT_NAME_PROMPT = [
+  "You name saved radiology reports so a radiologist can find them later in a work log and search.",
+  "",
+  "Return exactly 3 different names, best first:",
+  "1. Exam + main diagnosis, e.g. \"CT Brain - Acute left MCA infarct\".",
+  "2. Exam + the main diagnosis and the next most important one, e.g. \"CT Abdomen - HCC with portal vein thrombosis, cirrhosis\".",
+  "3. The diagnosis alone, without the exam.",
+  "",
+  "- Take the exam from the current title, dropping any old \" - diagnosis\" part. If the current title names no exam, leave the exam out.",
+  "- Short, specific, standard radiology terms and abbreviations (HCC, PE, MCA, s/p). No full sentences, no filler such as \"findings consistent with\", no trailing period.",
+  "- Keep laterality, location and acuity when they matter; keep important uncertainty short (\"suspected\").",
+  "- For a normal study use \"Normal\" or the pertinent negative, e.g. \"No acute intracranial abnormality\".",
+  "- Each name under 80 characters. Use only facts in the impression. Never include patient identifiers, HN, accession numbers, dates or names of people."
+].join("\n");
+
+const REPORT_NAME_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: { names: { type: "array", items: { type: "string" } } },
+  required: ["names"]
+};
+
+// Only the exam title and the impression are sent; never the HN, note or
+// the rest of the report.
+async function fetchGptReportNames(title, impression) {
+  const output = await askOpenAI({
+    instructions: REPORT_NAME_PROMPT,
+    input: `Current title: ${title || "(none)"}\n\nImpression:\n${impression}`,
+    schema: REPORT_NAME_SCHEMA,
+    timeoutMs: REPORT_NAME_TIMEOUT_MS
+  });
+  const names = (output?.names || [])
+    .map(name => String(name || "").replace(/\s+/g, " ").replace(/[.\s]+$/, "").trim().slice(0, 300))
+    .filter(Boolean);
+  const unique = names.filter((name, index) => names.findIndex(other => other.toLowerCase() === name.toLowerCase()) === index).slice(0, 3);
+  if (!unique.length) throw new Error("No names returned.");
+  return unique;
 }
 
 // Resolves with the chosen name, or null when the save is cancelled. Skipped
@@ -5630,7 +5656,7 @@ function confirmReportName() {
     let done = false;
     fetchGptReportNames(current, impression)
       .then(names => {
-        if (!done) render(names, "Suggested by GPT from the impression. Use it or edit it.");
+        if (!done) render(names, "Suggested by GPT from the impression. Pick one or edit it.");
       })
       .catch(error => {
         console.warn("GPT title suggestions failed.", error);

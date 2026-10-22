@@ -1,6 +1,6 @@
 // Local report name suggestions from the impression, used when GPT title
 // suggestions are unavailable (offline, server error).
-import { impressionLines } from "./template-combine.js?v=20261022-gpt-title2";
+import { impressionLines } from "./template-combine.js?v=20261022-openai";
 
 const MAX_PHRASE = 70;
 const LEADING_FILLER = [

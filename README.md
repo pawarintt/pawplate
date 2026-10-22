@@ -5,7 +5,7 @@ Personal radiology reporting workspace (hosted).
 - App: https://pawarintt.github.io/pawplate/#/report-writer/templates
 - Frontend source: `docs/` (deployed via GitHub Pages)
 - Backend: PocketBase at the URL in `docs/config.js`
-- Backend hooks: `pb_hooks/`
+- Backend hooks: `pb_hooks/` (`pawplate_openai.pb.js` is the one OpenAI route; prompts live in the app)
 
 ## Layout
 
