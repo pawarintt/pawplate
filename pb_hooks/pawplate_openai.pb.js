@@ -7,7 +7,7 @@
 //   { instructions, input, schema?, reasoning? ("low" | "medium" | "high") }
 // -> { output } (parsed JSON when a schema was given, otherwise text)
 routerAdd("POST", "/api/pawplate/openai", (e) => {
-  const MODEL = "gpt-5.6-luna";
+  const MODEL = "gpt-6-luna";
   const apiKey = $os.getenv("OPENAI_API_KEY");
   if (!apiKey) {
     return e.json(503, { message: "OpenAI is not configured on this server." });
