@@ -44,9 +44,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261022-openai";
-import { collectDom } from "./dom.js?v=20261022-openai";
-import { createInitialState } from "./state.js?v=20261022-openai";
+} from "./constants.js?v=20261022-old-report-name";
+import { collectDom } from "./dom.js?v=20261022-old-report-name";
+import { createInitialState } from "./state.js?v=20261022-old-report-name";
 import {
   copyText,
   debounce,
@@ -57,10 +57,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261022-openai";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-openai";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-openai";
-import { impressionText, suggestReportNames, titleCoversImpression } from "./report-name.js?v=20261022-openai";
+} from "./utils.js?v=20261022-old-report-name";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-old-report-name";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-old-report-name";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261022-old-report-name";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -5621,13 +5621,13 @@ async function fetchGptReportNames(title, impression) {
 }
 
 // Resolves with the chosen name, or null when the save is cancelled. Skipped
-// when there is no impression, or it has not changed since the report was
-// last named, or the title already names it.
+// when there is no impression, or it has not changed since this report was
+// saved in this session. Opening an old report always asks again.
 function confirmReportName() {
   const current = els.reportTitleInput.value.trim();
   const html = getEditorHtml(els.reportTextEditor);
   const impression = impressionText(html);
-  if (!impression || impression === state.reportNamedImpression || titleCoversImpression(current, html)) {
+  if (!impression || impression === state.reportNamedImpression) {
     return Promise.resolve(current);
   }
   const keep = current && !/^untitled/i.test(current) ? current : "";
@@ -6286,7 +6286,7 @@ async function openSavedReport(id) {
   state.suppressReportAutosave = true;
   state.reportDraftId = report.id;
   state.reportDraftSourceDate = report.sourceDate || report.created || "";
-  state.reportNamedImpression = impressionText(report.report || "");
+  state.reportNamedImpression = "";
   state.draftFollowUpIds = [];
   updateReportModeBadge();
   els.reportTitleInput.value = report.title || "";

@@ -1,6 +1,6 @@
 // Local report name suggestions from the impression, used when GPT title
 // suggestions are unavailable (offline, server error).
-import { impressionLines } from "./template-combine.js?v=20261022-openai";
+import { impressionLines } from "./template-combine.js?v=20261022-old-report-name";
 
 const MAX_PHRASE = 70;
 const LEADING_FILLER = [
@@ -65,12 +65,6 @@ function mainClause(phrase) {
 // Keep "MCA infarct" as is, but "Old infarct" -> "old infarct".
 function lowerFirst(phrase) {
   return /^[A-Z][a-z]/.test(phrase) ? phrase.charAt(0).toLowerCase() + phrase.slice(1) : phrase;
-}
-
-// No need to ask again when the title already names the main impression.
-export function titleCoversImpression(title, html) {
-  const lead = impressionLines(html).map(impressionPhrase).find(Boolean);
-  return Boolean(lead) && String(title || "").toLowerCase().includes(lead.toLowerCase());
 }
 
 // The impression as plain lines, used for GPT and to tell whether it changed.
