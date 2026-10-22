@@ -3238,6 +3238,48 @@ button.summary-card {
   color: #342729;
 }
 
+.report-name-dialog input {
+  width: 100%;
+  min-height: 38px;
+  font-size: .95rem;
+}
+
+.report-name-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -6px;
+}
+
+.report-name-suggestions button {
+  min-height: 28px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-color: var(--peach-line);
+  background: var(--peach-soft);
+  color: var(--ink);
+  font-size: .8rem;
+  font-weight: var(--weight-medium);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.report-name-suggestions button.keep {
+  border-color: var(--line);
+  background: var(--paper-strong);
+  color: var(--muted);
+}
+
+.report-name-suggestions button.active {
+  border-color: var(--coffee);
+  background: var(--coffee-soft);
+  color: var(--peach-ink);
+}
+
+.draft-recovery-actions .quiet-button {
+  color: var(--muted);
+}
+
 .toast {
   display: grid;
   grid-template-columns: 10px 1fr;

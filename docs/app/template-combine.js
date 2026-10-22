@@ -7,7 +7,7 @@
 // document is flattened into lines: one per paragraph, split again on <br>.
 // Lists, headings and other blocks stay whole. Each line remembers whether it
 // was followed by a <br> or a paragraph break so the output keeps its spacing.
-import { reportHtml } from "./utils.js?v=20261021-note-format";
+import { reportHtml } from "./utils.js?v=20261022-report-name";
 
 // Headings recognised as sections, grouped by the section they mean.
 const SECTION_ALIASES = {
@@ -443,4 +443,26 @@ export function combineTemplateHtml(currentHtml, addedHtml, mode = "append") {
 
 export function sectionLabel(key) {
   return key.charAt(0) + key.slice(1).toLowerCase();
+}
+
+// Plain-text items of the report's impression: one per line or list item,
+// without numbering or bullets. Empty when the report has no impression.
+export function impressionLines(html) {
+  const section = splitSections(htmlToLines(html)).sections.find(item => item.key === "IMPRESSION");
+  if (!section) return [];
+  const texts = [section.rest];
+  section.body.forEach(line => {
+    if (!line.block) {
+      texts.push(line.text);
+      return;
+    }
+    const container = document.createElement("template");
+    container.innerHTML = line.html;
+    const items = container.content.querySelectorAll("li");
+    if (items.length) items.forEach(item => texts.push(item.textContent));
+    else texts.push(container.content.textContent);
+  });
+  return texts
+    .map(text => String(text || "").replace(/ /g, " ").replace(/^\s*(?:\d+[.)]|[-•*])\s*/, "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
 }

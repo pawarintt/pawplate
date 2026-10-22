@@ -137,6 +137,10 @@ export const TRACKED_FEATURES = new Set([
   "follow_up.open_report",
   "follow_up.done",
   "follow_up.snooze",
+  "report.name.suggested",
+  "report.name.picked",
+  "report.name.edited",
+  "report.name.kept",
   // Retired with AI Assist; kept so past usage counts are not dropped.
   "reference.ai_assist",
   "ai.generate",

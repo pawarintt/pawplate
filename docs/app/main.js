@@ -42,9 +42,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261021-note-format";
-import { collectDom } from "./dom.js?v=20261021-note-format";
-import { createInitialState } from "./state.js?v=20261021-note-format";
+} from "./constants.js?v=20261022-report-name";
+import { collectDom } from "./dom.js?v=20261022-report-name";
+import { createInitialState } from "./state.js?v=20261022-report-name";
 import {
   copyText,
   debounce,
@@ -55,9 +55,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261021-note-format";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261021-note-format";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261021-note-format";
+} from "./utils.js?v=20261022-report-name";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261022-report-name";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261022-report-name";
+import { suggestReportNames, titleCoversImpression } from "./report-name.js?v=20261022-report-name";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -5562,12 +5563,73 @@ async function withButtonFeedback(button, busyLabel, action, doneLabel = null) {
   }
 }
 
+// Resolves with the chosen name, or null when the save is cancelled. Skipped
+// when there is no impression or the title already names it.
+function confirmReportName() {
+  const current = els.reportTitleInput.value.trim();
+  const html = getEditorHtml(els.reportTextEditor);
+  const suggestions = suggestReportNames(html, current);
+  if (!suggestions.length || titleCoversImpression(current, html)) return Promise.resolve(current);
+  const keep = current && !/^untitled/i.test(current) ? current : "";
+  els.reportNameInput.value = suggestions[0];
+  els.reportNameSuggestions.innerHTML = [
+    ...suggestions.map(name => `<button type="button" data-report-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`),
+    keep ? `<button type="button" class="keep" data-report-name="${escapeHtml(keep)}">Keep "${escapeHtml(keep)}"</button>` : ""
+  ].join("");
+  const markActive = () => {
+    els.reportNameSuggestions.querySelectorAll("[data-report-name]").forEach(button => {
+      button.classList.toggle("active", button.dataset.reportName === els.reportNameInput.value);
+    });
+  };
+  markActive();
+  trackFeature("report.name.suggested");
+  return new Promise(resolve => {
+    const finish = name => {
+      els.reportNameForm.removeEventListener("submit", onSubmit);
+      els.reportNameSuggestions.removeEventListener("click", onPick);
+      els.reportNameInput.removeEventListener("input", markActive);
+      els.cancelReportNameBtn.removeEventListener("click", onCancel);
+      els.reportNameDialog.removeEventListener("cancel", onCancel);
+      if (els.reportNameDialog.open) els.reportNameDialog.close();
+      resolve(name);
+    };
+    const onSubmit = event => {
+      event.preventDefault();
+      const name = els.reportNameInput.value.replace(/\s+/g, " ").trim();
+      trackFeature(keep && name === keep ? "report.name.kept" : suggestions.includes(name) ? "report.name.picked" : "report.name.edited");
+      finish(name || current);
+    };
+    const onPick = event => {
+      const button = event.target.closest("[data-report-name]");
+      if (!button) return;
+      els.reportNameInput.value = button.dataset.reportName;
+      markActive();
+      els.reportNameInput.focus();
+    };
+    const onCancel = event => {
+      event?.preventDefault();
+      finish(null);
+    };
+    els.reportNameForm.addEventListener("submit", onSubmit);
+    els.reportNameSuggestions.addEventListener("click", onPick);
+    els.reportNameInput.addEventListener("input", markActive);
+    els.cancelReportNameBtn.addEventListener("click", onCancel);
+    els.reportNameDialog.addEventListener("cancel", onCancel);
+    els.reportNameDialog.showModal();
+    els.reportNameInput.focus();
+    els.reportNameInput.select();
+  });
+}
+
 async function saveFullReport() {
-  const data = reportData();
   if (!getEditorText(els.reportTextEditor)) {
     showToast("Nothing to save", "Type a report first.", "info");
     return false;
   }
+  const name = await confirmReportName();
+  if (name === null) return false;
+  els.reportTitleInput.value = name;
+  const data = reportData();
   const wasExisting = Boolean(state.reportDraftId);
   if (state.reportDraftId) {
     await pbUpdate("old_reports", state.reportDraftId, data);

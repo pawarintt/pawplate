@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20261021-note-format">
+  <link rel="stylesheet" href="style.css?v=20261022-report-name">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -404,6 +404,24 @@
     </div>
   </dialog>
 
+  <dialog id="reportNameDialog" class="draft-recovery-dialog report-name-dialog" aria-labelledby="reportNameTitle">
+    <form id="reportNameForm" class="draft-recovery-content" method="dialog">
+      <div class="draft-recovery-heading">
+        <span class="draft-recovery-mark" aria-hidden="true"></span>
+        <div>
+          <h2 id="reportNameTitle">Name this report</h2>
+          <p>Suggested from the impression. Pick one or edit it.</p>
+        </div>
+      </div>
+      <input id="reportNameInput" type="text" maxlength="300" autocomplete="off" aria-label="Report name">
+      <div id="reportNameSuggestions" class="report-name-suggestions" aria-label="Suggested names"></div>
+      <div class="draft-recovery-actions">
+        <button id="cancelReportNameBtn" class="quiet-button" type="button">Cancel</button>
+        <button id="confirmReportNameBtn" class="primary-button" type="submit">Save Report</button>
+      </div>
+    </form>
+  </dialog>
+
   <section id="writerOldPopover" class="writer-old-popover hidden" role="dialog" aria-labelledby="writerOldPreviewTitle">
     <div class="notes-popover-head">
       <div>
@@ -462,6 +480,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="vendor/typo-1.3.2.js"></script>
-  <script type="module" src="app/main.js?v=20261021-note-format"></script>
+  <script type="module" src="app/main.js?v=20261022-report-name"></script>
 </body>
 </html>
