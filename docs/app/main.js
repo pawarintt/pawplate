@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261025-pawlet-minimap-strip";
-import { collectDom } from "./dom.js?v=20261025-pawlet-minimap-strip";
-import { createInitialState } from "./state.js?v=20261025-pawlet-minimap-strip";
+} from "./constants.js?v=20261025-pawlet-top-fixed";
+import { collectDom } from "./dom.js?v=20261025-pawlet-top-fixed";
+import { createInitialState } from "./state.js?v=20261025-pawlet-top-fixed";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261025-pawlet-minimap-strip";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-minimap-strip";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-minimap-strip";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-minimap-strip";
+} from "./utils.js?v=20261025-pawlet-top-fixed";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-top-fixed";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-top-fixed";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-top-fixed";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -3437,29 +3437,6 @@ function sizePersonalNotesBoard({ reachX = 0, reachY = 0 } = {}) {
   schedulePawletMinimap();
 }
 
-// Moves every note right/down and scrolls by the same amount, so nothing
-// appears to move but there is new room above or to the left.
-function shiftPersonalNotes(dx, dy) {
-  if (!dx && !dy) return;
-  const canvas = els.personalNotesCanvas;
-  const cards = new Map([...els.personalNotesBoard.querySelectorAll("[data-personal-note-id]")].map(card => [card.dataset.personalNoteId, card]));
-  state.personalNotes.notes.forEach(note => {
-    note.x = clampPersonalNotePosition(note.x + dx);
-    note.y = clampPersonalNotePosition(note.y + dy);
-    const card = cards.get(note.id);
-    if (card) {
-      card.style.left = `${note.x}px`;
-      card.style.top = `${note.y}px`;
-    }
-  });
-  const zoom = pawletZoom();
-  sizePersonalNotesBoard({ reachX: canvas.scrollLeft + dx * zoom, reachY: canvas.scrollTop + dy * zoom });
-  canvas.scrollLeft += dx * zoom;
-  canvas.scrollTop += dy * zoom;
-  state.personalNotesDirty = true;
-  schedulePersonalNotesSave();
-}
-
 function topPersonalNoteZ() {
   return Math.max(0, ...state.personalNotes.notes.map(note => Number(note.z) || 0));
 }
@@ -3697,14 +3674,8 @@ function startPersonalNoteDrag(event, card) {
   let frame = 0;
   card.classList.add("is-dragging");
   const place = () => {
-    let rect = els.personalNotesBoard.getBoundingClientRect();
-    const wantX = (pointerX - rect.left) / zoom - grabX;
-    const wantY = (pointerY - rect.top) / zoom - grabY;
-    // Dragging past the top edge makes room there instead of stopping.
-    if (wantY < 12) {
-      shiftPersonalNotes(0, Math.ceil(12 - wantY));
-      rect = els.personalNotesBoard.getBoundingClientRect();
-    }
+    // The top edge is fixed; the board only grows downward.
+    const rect = els.personalNotesBoard.getBoundingClientRect();
     const nextX = clampPersonalNoteX(clampPersonalNotePosition((pointerX - rect.left) / zoom - grabX), note.width);
     const nextY = clampPersonalNotePosition((pointerY - rect.top) / zoom - grabY);
     moved ||= nextX !== originX || nextY !== originY;
@@ -3714,7 +3685,8 @@ function startPersonalNoteDrag(event, card) {
     card.style.top = `${nextY}px`;
     sizePersonalNotesBoard();
   };
-  // Holding a note near the edge of the board keeps scrolling that way.
+  // Holding a note near the top or bottom of the view keeps scrolling that way
+  // (down forever, up until the top of the board).
   const autoScroll = () => {
     frame = 0;
     const rect = canvas.getBoundingClientRect();
@@ -3722,13 +3694,10 @@ function startPersonalNoteDrag(event, card) {
     const speed = distance => Math.min(24, Math.ceil(Math.max(0, edge - distance) / 3));
     // Only scroll toward an edge the note is being moved toward, so picking up a
     // note that already sits near an edge doesn't send the board sliding.
-    const dx = 0;
-    const dy = (pointerY > startY + 8 ? speed(rect.bottom - pointerY) : 0) - (pointerY < startY - 8 ? speed(pointerY - rect.top) : 0);
-    if (!dx && !dy) return;
-    if (dx < 0 && canvas.scrollLeft < -dx) shiftPersonalNotes(Math.ceil(-dx / zoom), 0);
-    if (dy < 0 && canvas.scrollTop < -dy) shiftPersonalNotes(0, Math.ceil(-dy / zoom));
-    sizePersonalNotesBoard({ reachX: canvas.scrollLeft + Math.max(0, dx), reachY: canvas.scrollTop + Math.max(0, dy) });
-    canvas.scrollLeft += dx;
+    let dy = (pointerY > startY + 8 ? speed(rect.bottom - pointerY) : 0) - (pointerY < startY - 8 ? speed(pointerY - rect.top) : 0);
+    if (dy < 0 && canvas.scrollTop <= 0) dy = 0;
+    if (!dy) return;
+    sizePersonalNotesBoard({ reachY: canvas.scrollTop + Math.max(0, dy) });
     canvas.scrollTop += dy;
     place();
     frame = window.requestAnimationFrame(autoScroll);
@@ -3746,7 +3715,6 @@ function startPersonalNoteDrag(event, card) {
     window.cancelAnimationFrame(frame);
     frame = 0;
     card.classList.remove("is-dragging");
-    if (moved) trimPersonalNotesTop();
     sizePersonalNotesBoard();
     if (!moved) return;
     note.updatedAt = new Date().toISOString();
