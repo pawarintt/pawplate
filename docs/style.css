@@ -385,36 +385,44 @@ input[type="radio"] {
   background: #fbfaf6;
 }
 
-/* Minimap and zoom buttons float over the bottom-right of the board. */
-.pawlet-nav {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  z-index: 6;
-  display: grid;
-  gap: 6px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: rgba(var(--cream-rgb), .94);
-  box-shadow: 0 8px 22px rgba(82, 55, 45, .16);
+/* The board with a VS Code-style minimap strip down its right side. */
+.pawlet-body {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.pawlet-body .personal-notes-canvas {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .pawlet-minimap {
+  flex: 0 0 72px;
+  width: 72px;
+  height: 100%;
   display: block;
-  width: 176px;
-  height: 112px;
-  border: 1px solid rgba(101, 83, 59, .16);
-  border-radius: var(--radius-sm);
-  background: #fbfaf6;
+  border-left: 1px solid var(--line);
+  background: #f4f1ea;
   cursor: pointer;
   touch-action: none;
 }
 
+/* Zoom buttons float at the bottom-right of the board, beside the minimap. */
 .pawlet-zoom {
+  position: absolute;
+  right: 88px;
+  bottom: 14px;
+  z-index: 6;
   display: grid;
-  grid-template-columns: 30px 1fr 30px auto;
+  grid-template-columns: 30px 52px 30px auto;
   gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(var(--cream-rgb), .94);
+  box-shadow: 0 8px 22px rgba(82, 55, 45, .16);
 }
 
 .pawlet-zoom button {

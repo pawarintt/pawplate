@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261025-pawlet-vertical";
-import { collectDom } from "./dom.js?v=20261025-pawlet-vertical";
-import { createInitialState } from "./state.js?v=20261025-pawlet-vertical";
+} from "./constants.js?v=20261025-pawlet-minimap-strip";
+import { collectDom } from "./dom.js?v=20261025-pawlet-minimap-strip";
+import { createInitialState } from "./state.js?v=20261025-pawlet-minimap-strip";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261025-pawlet-vertical";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-vertical";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-vertical";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-vertical";
+} from "./utils.js?v=20261025-pawlet-minimap-strip";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-minimap-strip";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-minimap-strip";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-minimap-strip";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -3257,9 +3257,7 @@ function fitPawletBoard() {
     return;
   }
   const pad = 40;
-  // Keep the notes above the minimap so none end up hidden behind it.
-  const navHeight = els.pawletMinimap.closest(".pawlet-nav")?.offsetHeight || 0;
-  const viewHeight = Math.max(120, canvas.clientHeight - navHeight - 24);
+  const viewHeight = canvas.clientHeight;
   const zoom = Math.min(1, Math.max(PAWLET_ZOOM_MIN, Math.floor(Math.min(
     canvas.clientWidth / (bounds.maxX - bounds.minX + pad * 2),
     viewHeight / (bounds.maxY - bounds.minY + pad * 2)
@@ -3281,35 +3279,26 @@ function schedulePawletMinimap() {
   });
 }
 
-// Where everything sits on the minimap: all notes plus the current view,
-// scaled to fit the little map.
+// Like VS Code's minimap: the board's full width squeezed into the strip,
+// top to bottom. When the notes run taller than the strip, the map scrolls
+// along with the view.
 function pawletMinimapGeometry() {
   const canvas = els.personalNotesCanvas;
   const map = els.pawletMinimap;
   const zoom = pawletZoom();
   const view = {
-    x: canvas.scrollLeft / zoom,
+    x: 0,
     y: canvas.scrollTop / zoom,
-    width: canvas.clientWidth / zoom,
+    width: pawletBoardWidth(),
     height: canvas.clientHeight / zoom
   };
-  const notes = personalNotesBounds() || { minX: view.x, minY: view.y, maxX: view.x, maxY: view.y };
-  const pad = 80;
-  const minX = Math.min(notes.minX, view.x) - pad;
-  const minY = Math.min(notes.minY, view.y) - pad;
-  const maxX = Math.max(notes.maxX, view.x + view.width) + pad;
-  const maxY = Math.max(notes.maxY, view.y + view.height) + pad;
-  const width = map.clientWidth;
-  const height = map.clientHeight;
-  const scale = Math.min(width / (maxX - minX), height / (maxY - minY));
-  return {
-    view,
-    minX,
-    minY,
-    scale,
-    offsetX: 0,
-    offsetY: 0
-  };
+  const bounds = personalNotesBounds();
+  const scale = map.clientWidth / Math.max(1, pawletBoardWidth());
+  const contentHeight = Math.max(bounds ? bounds.maxY + 40 : 0, view.y + view.height);
+  const overflow = contentHeight * scale - map.clientHeight;
+  const travel = contentHeight - view.height;
+  const offsetY = overflow > 0 && travel > 0 ? -(view.y / travel) * overflow : 0;
+  return { view, minX: 0, minY: 0, scale, offsetX: 0, offsetY, contentHeight };
 }
 
 function drawPawletMinimap() {
@@ -3363,7 +3352,9 @@ function movePawletViewToMinimap(event) {
   const boardX = geometry.minX + (event.clientX - rect.left - geometry.offsetX) / geometry.scale;
   const boardY = geometry.minY + (event.clientY - rect.top - geometry.offsetY) / geometry.scale;
   const left = Math.max(0, (boardX - geometry.view.width / 2) * zoom);
-  const top = Math.max(0, (boardY - geometry.view.height / 2) * zoom);
+  // Clicking below the last note goes no further than the end of the notes.
+  const lastTop = Math.max(0, (geometry.contentHeight ?? Infinity) - geometry.view.height);
+  const top = Math.max(0, Math.min(lastTop, boardY - geometry.view.height / 2) * zoom);
   sizePersonalNotesBoard({ reachX: left, reachY: top });
   canvas.scrollLeft = left;
   canvas.scrollTop = top;
@@ -3380,11 +3371,28 @@ function clampPersonalNoteX(x, width) {
   return Math.round(Math.max(12, Math.min(x, boardWidth - width - 12)));
 }
 
+// The board always starts at the top note: empty space above it is removed
+// (the view scrolls with it, so nothing seems to jump).
+function trimPersonalNotesTop() {
+  const bounds = personalNotesBounds();
+  const gap = bounds ? Math.round(bounds.minY - 12) : 0;
+  if (gap <= 0) return false;
+  els.personalNotesBoard.querySelectorAll("[data-personal-note-id]").forEach(card => {
+    const note = state.personalNotes.notes.find(item => item.id === card.dataset.personalNoteId);
+    if (note) card.style.top = `${note.y - gap}px`;
+  });
+  state.personalNotes.notes.forEach(note => {
+    note.y -= gap;
+  });
+  els.personalNotesCanvas.scrollTop = Math.max(0, els.personalNotesCanvas.scrollTop - gap * pawletZoom());
+  return true;
+}
+
 // Notes left off to the right (from a wider window, or from before the board
 // stopped scrolling sideways) are pulled back into view.
 function fitPersonalNotesToBoardWidth() {
   if (!pawletBoardWidth()) return;
-  let changed = false;
+  let changed = trimPersonalNotesTop();
   state.personalNotes.notes.forEach(note => {
     const width = Math.min(note.width, Math.max(PERSONAL_NOTE_CARD_MIN_WIDTH, pawletBoardWidth() - 24));
     const x = clampPersonalNoteX(note.x, width);
@@ -3738,6 +3746,7 @@ function startPersonalNoteDrag(event, card) {
     window.cancelAnimationFrame(frame);
     frame = 0;
     card.classList.remove("is-dragging");
+    if (moved) trimPersonalNotesTop();
     sizePersonalNotesBoard();
     if (!moved) return;
     note.updatedAt = new Date().toISOString();

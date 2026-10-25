@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20261025-pawlet-vertical">
+  <link rel="stylesheet" href="style.css?v=20261025-pawlet-minimap-strip">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -67,11 +67,11 @@
             </div>
           </div>
           <input id="personalNoteImageInput" class="hidden" type="file" accept="image/*" multiple>
-          <div id="personalNotesCanvas" class="personal-notes-canvas">
-            <div id="personalNotesBoard" class="personal-notes-board" tabindex="0" aria-label="Pawlet notes board"></div>
-          </div>
-          <div class="pawlet-nav">
-            <canvas id="pawletMinimap" class="pawlet-minimap" aria-label="Map of the whole board" title="Click or drag to move around the board"></canvas>
+          <div class="pawlet-body">
+            <div id="personalNotesCanvas" class="personal-notes-canvas">
+              <div id="personalNotesBoard" class="personal-notes-board" tabindex="0" aria-label="Pawlet notes board"></div>
+            </div>
+            <canvas id="pawletMinimap" class="pawlet-minimap" aria-label="Map of the whole board" title="Click or drag to move up and down the board"></canvas>
             <div class="pawlet-zoom" role="group" aria-label="Zoom">
               <button id="pawletZoomOutBtn" type="button" aria-label="Zoom out" title="Zoom out">&minus;</button>
               <button id="pawletZoomResetBtn" class="pawlet-zoom-level" type="button" title="Back to 100%">100%</button>
@@ -489,6 +489,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="vendor/typo-1.3.2.js"></script>
-  <script type="module" src="app/main.js?v=20261025-pawlet-vertical"></script>
+  <script type="module" src="app/main.js?v=20261025-pawlet-minimap-strip"></script>
 </body>
 </html>
