@@ -17,7 +17,6 @@ import {
   PERSONAL_NOTES_LIMIT,
   PERSONAL_NOTES_SETTINGS_KEY,
   PERSONAL_NOTE_BOARD_HEIGHT,
-  PERSONAL_NOTE_BOARD_WIDTH,
   PERSONAL_NOTE_CARD_HEIGHT,
   PERSONAL_NOTE_CARD_MAX_SIZE,
   PERSONAL_NOTE_CARD_MIN_HEIGHT,
@@ -44,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261025-pawlet-fit-topleft";
-import { collectDom } from "./dom.js?v=20261025-pawlet-fit-topleft";
-import { createInitialState } from "./state.js?v=20261025-pawlet-fit-topleft";
+} from "./constants.js?v=20261025-pawlet-vertical";
+import { collectDom } from "./dom.js?v=20261025-pawlet-vertical";
+import { createInitialState } from "./state.js?v=20261025-pawlet-vertical";
 import {
   copyText,
   debounce,
@@ -57,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261025-pawlet-fit-topleft";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-fit-topleft";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-fit-topleft";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-fit-topleft";
+} from "./utils.js?v=20261025-pawlet-vertical";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-vertical";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-vertical";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-vertical";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -3012,6 +3011,7 @@ function renderPersonalNotes() {
   `).join("");
   fitPersonalNoteBodies();
   observePersonalNoteSizes();
+  fitPersonalNotesToBoardWidth();
   sizePersonalNotesBoard();
   mountPersonalNoteEditors();
 }
@@ -3265,7 +3265,7 @@ function fitPawletBoard() {
     viewHeight / (bounds.maxY - bounds.minY + pad * 2)
   ) * 100) / 100));
   applyPawletZoom(zoom);
-  const left = Math.max(0, (bounds.minX - pad) * zoom);
+  const left = 0;
   const top = Math.max(0, (bounds.minY - pad) * zoom);
   sizePersonalNotesBoard({ reachX: left, reachY: top });
   canvas.scrollLeft = left;
@@ -3369,6 +3369,40 @@ function movePawletViewToMinimap(event) {
   canvas.scrollTop = top;
 }
 
+function pawletBoardWidth() {
+  return els.personalNotesCanvas.clientWidth;
+}
+
+// Keeps a note inside the board's width (the board only scrolls up and down).
+function clampPersonalNoteX(x, width) {
+  const boardWidth = pawletBoardWidth();
+  if (!boardWidth) return x;
+  return Math.round(Math.max(12, Math.min(x, boardWidth - width - 12)));
+}
+
+// Notes left off to the right (from a wider window, or from before the board
+// stopped scrolling sideways) are pulled back into view.
+function fitPersonalNotesToBoardWidth() {
+  if (!pawletBoardWidth()) return;
+  let changed = false;
+  state.personalNotes.notes.forEach(note => {
+    const width = Math.min(note.width, Math.max(PERSONAL_NOTE_CARD_MIN_WIDTH, pawletBoardWidth() - 24));
+    const x = clampPersonalNoteX(note.x, width);
+    if (x === note.x && width === note.width) return;
+    note.x = x;
+    note.width = width;
+    const card = [...els.personalNotesBoard.querySelectorAll("[data-personal-note-id]")].find(item => item.dataset.personalNoteId === note.id);
+    if (card) {
+      card.style.left = `${x}px`;
+      card.style.width = `${width}px`;
+    }
+    changed = true;
+  });
+  if (!changed) return;
+  state.personalNotesDirty = true;
+  schedulePersonalNotesSave();
+}
+
 // The board has no far edge: it is always the notes' extent, or the scrolled view,
 // plus one more screen, so scrolling right or down never runs out.
 function sizePersonalNotesBoard({ reachX = 0, reachY = 0 } = {}) {
@@ -3380,15 +3414,13 @@ function sizePersonalNotesBoard({ reachX = 0, reachY = 0 } = {}) {
   const viewWidth = canvas.clientWidth / zoom;
   const viewHeight = canvas.clientHeight / zoom;
   if (!viewWidth || !viewHeight) return;
-  const scrollX = Math.max(canvas.scrollLeft, reachX) / zoom;
   const scrollY = Math.max(canvas.scrollTop, reachY) / zoom;
-  let right = 0;
   let bottom = 0;
   (state.personalNotes.notes || []).forEach(note => {
-    right = Math.max(right, note.x + note.width);
     bottom = Math.max(bottom, note.y + (note.collapsed ? 38 : note.height));
   });
-  const width = Math.max(PERSONAL_NOTE_BOARD_WIDTH, right + viewWidth, scrollX + viewWidth * 2);
+  // Only the height grows; the board is always as wide as the window at 100%.
+  const width = pawletBoardWidth();
   const height = Math.max(PERSONAL_NOTE_BOARD_HEIGHT, bottom + viewHeight, scrollY + viewHeight * 2);
   const nextWidth = `${Math.round(width)}px`;
   const nextHeight = `${Math.round(height)}px`;
@@ -3435,7 +3467,7 @@ function createPersonalNote({ type = "note", title = "", images = [], position =
   const isImage = type === "image";
   const width = isImage ? 320 : PERSONAL_NOTE_CARD_WIDTH;
   const height = isImage ? 280 : PERSONAL_NOTE_CARD_HEIGHT;
-  const x = clampPersonalNotePosition(position?.x ?? els.personalNotesCanvas.scrollLeft / pawletZoom() + 34 + (offset % 520));
+  const x = clampPersonalNoteX(clampPersonalNotePosition(position?.x ?? els.personalNotesCanvas.scrollLeft / pawletZoom() + 34 + (offset % 520)), width);
   const y = clampPersonalNotePosition(position?.y ?? els.personalNotesCanvas.scrollTop / pawletZoom() + 34 + (offset % 310));
   state.personalNotes.notes.push({
     id,
@@ -3660,12 +3692,12 @@ function startPersonalNoteDrag(event, card) {
     let rect = els.personalNotesBoard.getBoundingClientRect();
     const wantX = (pointerX - rect.left) / zoom - grabX;
     const wantY = (pointerY - rect.top) / zoom - grabY;
-    // Dragging past the top or left edge makes room there instead of stopping.
-    if (wantX < 12 || wantY < 12) {
-      shiftPersonalNotes(Math.max(0, Math.ceil(12 - wantX)), Math.max(0, Math.ceil(12 - wantY)));
+    // Dragging past the top edge makes room there instead of stopping.
+    if (wantY < 12) {
+      shiftPersonalNotes(0, Math.ceil(12 - wantY));
       rect = els.personalNotesBoard.getBoundingClientRect();
     }
-    const nextX = clampPersonalNotePosition((pointerX - rect.left) / zoom - grabX);
+    const nextX = clampPersonalNoteX(clampPersonalNotePosition((pointerX - rect.left) / zoom - grabX), note.width);
     const nextY = clampPersonalNotePosition((pointerY - rect.top) / zoom - grabY);
     moved ||= nextX !== originX || nextY !== originY;
     note.x = nextX;
@@ -3682,7 +3714,7 @@ function startPersonalNoteDrag(event, card) {
     const speed = distance => Math.min(24, Math.ceil(Math.max(0, edge - distance) / 3));
     // Only scroll toward an edge the note is being moved toward, so picking up a
     // note that already sits near an edge doesn't send the board sliding.
-    const dx = (pointerX > startX + 8 ? speed(rect.right - pointerX) : 0) - (pointerX < startX - 8 ? speed(pointerX - rect.left) : 0);
+    const dx = 0;
     const dy = (pointerY > startY + 8 ? speed(rect.bottom - pointerY) : 0) - (pointerY < startY - 8 ? speed(pointerY - rect.top) : 0);
     if (!dx && !dy) return;
     if (dx < 0 && canvas.scrollLeft < -dx) shiftPersonalNotes(Math.ceil(-dx / zoom), 0);
@@ -3767,7 +3799,8 @@ function startPersonalNoteResize(event, card) {
   let resized = false;
   card.classList.add("is-resizing");
   const move = moveEvent => {
-    const width = clampPersonalNoteSize(originWidth + (moveEvent.clientX - startX) / zoom, PERSONAL_NOTE_CARD_MIN_WIDTH, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_WIDTH);
+    const roomRight = pawletBoardWidth() ? pawletBoardWidth() - note.x - 12 : PERSONAL_NOTE_CARD_MAX_SIZE;
+    const width = clampPersonalNoteSize(originWidth + (moveEvent.clientX - startX) / zoom, PERSONAL_NOTE_CARD_MIN_WIDTH, Math.max(PERSONAL_NOTE_CARD_MIN_WIDTH, Math.min(PERSONAL_NOTE_CARD_MAX_SIZE, roomRight)), PERSONAL_NOTE_CARD_WIDTH);
     const height = clampPersonalNoteSize(originHeight + (moveEvent.clientY - startY) / zoom, PERSONAL_NOTE_CARD_MIN_HEIGHT, PERSONAL_NOTE_CARD_MAX_SIZE, PERSONAL_NOTE_CARD_HEIGHT);
     resized ||= width !== originWidth || height !== originHeight;
     note.width = width;
@@ -7270,7 +7303,10 @@ els.pawletMinimap.addEventListener("pointerdown", event => {
   els.pawletMinimap.addEventListener("pointerup", stop);
   els.pawletMinimap.addEventListener("pointercancel", stop);
 });
-if ("ResizeObserver" in window) new ResizeObserver(() => sizePersonalNotesBoard()).observe(els.personalNotesCanvas);
+if ("ResizeObserver" in window) new ResizeObserver(() => {
+  fitPersonalNotesToBoardWidth();
+  sizePersonalNotesBoard();
+}).observe(els.personalNotesCanvas);
 els.personalNotesBoard.addEventListener("contextmenu", event => {
   const card = event.target.closest("[data-personal-note-id]");
   if (!card) return;

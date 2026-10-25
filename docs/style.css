@@ -379,7 +379,8 @@ input[type="radio"] {
 
 .personal-notes-canvas {
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   background: #fbfaf6;
 }
