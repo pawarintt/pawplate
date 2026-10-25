@@ -44,9 +44,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261025-pawlet-zoom";
-import { collectDom } from "./dom.js?v=20261025-pawlet-zoom";
-import { createInitialState } from "./state.js?v=20261025-pawlet-zoom";
+} from "./constants.js?v=20261025-pawlet-fit-topleft";
+import { collectDom } from "./dom.js?v=20261025-pawlet-fit-topleft";
+import { createInitialState } from "./state.js?v=20261025-pawlet-fit-topleft";
 import {
   copyText,
   debounce,
@@ -57,10 +57,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261025-pawlet-zoom";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-zoom";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-zoom";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-zoom";
+} from "./utils.js?v=20261025-pawlet-fit-topleft";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-fit-topleft";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-fit-topleft";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-fit-topleft";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -3246,7 +3246,7 @@ function personalNotesBounds() {
   }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
 }
 
-// Zooms out (never past 100%) until every note fits, centred in the view.
+// Zooms out (never past 100%) until every note fits, starting from the top-left.
 function fitPawletBoard() {
   const canvas = els.personalNotesCanvas;
   const bounds = personalNotesBounds();
@@ -3265,8 +3265,8 @@ function fitPawletBoard() {
     viewHeight / (bounds.maxY - bounds.minY + pad * 2)
   ) * 100) / 100));
   applyPawletZoom(zoom);
-  const left = Math.max(0, ((bounds.minX + bounds.maxX) / 2) * zoom - canvas.clientWidth / 2);
-  const top = Math.max(0, ((bounds.minY + bounds.maxY) / 2) * zoom - viewHeight / 2);
+  const left = Math.max(0, (bounds.minX - pad) * zoom);
+  const top = Math.max(0, (bounds.minY - pad) * zoom);
   sizePersonalNotesBoard({ reachX: left, reachY: top });
   canvas.scrollLeft = left;
   canvas.scrollTop = top;
@@ -3307,8 +3307,8 @@ function pawletMinimapGeometry() {
     minX,
     minY,
     scale,
-    offsetX: (width - (maxX - minX) * scale) / 2,
-    offsetY: (height - (maxY - minY) * scale) / 2
+    offsetX: 0,
+    offsetY: 0
   };
 }
 
