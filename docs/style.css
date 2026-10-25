@@ -384,6 +384,52 @@ input[type="radio"] {
   background: #fbfaf6;
 }
 
+/* Minimap and zoom buttons float over the bottom-right of the board. */
+.pawlet-nav {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 6;
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(var(--cream-rgb), .94);
+  box-shadow: 0 8px 22px rgba(82, 55, 45, .16);
+}
+
+.pawlet-minimap {
+  display: block;
+  width: 176px;
+  height: 112px;
+  border: 1px solid rgba(101, 83, 59, .16);
+  border-radius: var(--radius-sm);
+  background: #fbfaf6;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.pawlet-zoom {
+  display: grid;
+  grid-template-columns: 30px 1fr 30px auto;
+  gap: 4px;
+}
+
+.pawlet-zoom button {
+  min-height: 28px;
+  padding: 0 8px;
+  background: var(--paper-strong);
+  color: var(--ink);
+  border-color: var(--line);
+  font-size: .78rem;
+  font-weight: var(--weight-heavy);
+}
+
+.pawlet-zoom .pawlet-zoom-level {
+  font-variant-numeric: tabular-nums;
+}
+
 .personal-notes-board {
   position: relative;
   /* Real size is set from main.js and grows as you scroll or drag. */

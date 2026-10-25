@@ -65,7 +65,7 @@ export function isValidDoc(doc) {
 // An image block inside a note: shows the picture at its saved width (never
 // wider than the note), with a remove button and a corner handle that resizes
 // it proportionally.
-export function createPawletImageNode(Node, { imageUrl }) {
+export function createPawletImageNode(Node, { imageUrl, getZoom = () => 1 }) {
   return Node.create({
     name: "pawletImage",
     group: "block",
@@ -147,14 +147,17 @@ export function createPawletImageNode(Node, { imageUrl }) {
           event.stopPropagation();
           const startX = event.clientX;
           const startY = event.clientY;
-          const rect = figure.getBoundingClientRect();
+          // Sizes are in note units; the board may be drawn zoomed in or out.
+          const zoom = getZoom() || 1;
+          const box = figure.getBoundingClientRect();
+          const rect = { width: box.width / zoom, height: box.height / zoom };
           const aspect = rect.height / rect.width || 1;
           const maxWidth = Math.max(IMAGE_MIN_WIDTH, Math.min(IMAGE_MAX_WIDTH, figure.parentElement?.clientWidth || IMAGE_MAX_WIDTH));
           let width = Math.round(rect.width);
           figure.classList.add("is-resizing");
           const move = moveEvent => {
-            const dx = moveEvent.clientX - startX;
-            const dy = (moveEvent.clientY - startY) / aspect;
+            const dx = (moveEvent.clientX - startX) / zoom;
+            const dy = (moveEvent.clientY - startY) / zoom / aspect;
             width = Math.round(Math.min(maxWidth, Math.max(IMAGE_MIN_WIDTH, rect.width + (Math.abs(dx) > Math.abs(dy) ? dx : dy))));
             figure.style.width = `${width}px`;
           };
