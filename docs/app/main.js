@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261025-pawlet-top-fixed";
-import { collectDom } from "./dom.js?v=20261025-pawlet-top-fixed";
-import { createInitialState } from "./state.js?v=20261025-pawlet-top-fixed";
+} from "./constants.js?v=20261107-worklog-old-days";
+import { collectDom } from "./dom.js?v=20261107-worklog-old-days";
+import { createInitialState } from "./state.js?v=20261107-worklog-old-days";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261025-pawlet-top-fixed";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261025-pawlet-top-fixed";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261025-pawlet-top-fixed";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261025-pawlet-top-fixed";
+} from "./utils.js?v=20261107-worklog-old-days";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261107-worklog-old-days";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261107-worklog-old-days";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261107-worklog-old-days";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -6046,6 +6046,8 @@ function worklogModalityCounts(reports = worklogStatRecords()) {
   return counts;
 }
 
+const WORKLOG_REPORT_FIELDS = "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,updated,note,isInteresting,owner";
+
 async function loadWorkLog() {
   const request = beginDataLoad("workLog");
   await loadReportNotes();
@@ -6054,7 +6056,7 @@ async function loadWorkLog() {
     perPage: 500,
     sort: "-created",
     filter: 'sourceType="final-report"',
-    fields: "id,title,modality,topic,bodyPart,keywords,report,sourceDate,created,updated,note,isInteresting,owner"
+    fields: WORKLOG_REPORT_FIELDS
   });
   if (!isCurrentDataLoad("workLog", request)) return false;
   state.workLogReports = data.items;
@@ -6097,6 +6099,50 @@ async function loadWorklogStats() {
   return true;
 }
 
+// The Work Log list only holds the newest 500 reports, but the calendar counts
+// every report. When a selected day has reports outside that list, fetch just
+// those (by id from the stats) and merge them in. Returns true while loading.
+const worklogDayLoads = new Map();
+function ensureWorklogDayReports() {
+  const day = state.worklogSelectedDate;
+  if (!day || !state.worklogStatsLoaded) return false;
+  const status = worklogDayLoads.get(day);
+  if (status === "loading") return true;
+  if (status === "failed") return false;
+  const loaded = new Set(state.workLogReports.map(report => report.id));
+  const missing = state.worklogStats
+    .filter(record => !loaded.has(record.id) && dateKey(savedDate(record) || new Date(0)) === day)
+    .map(record => record.id);
+  if (!missing.length) return false;
+  worklogDayLoads.set(day, "loading");
+  (async () => {
+    try {
+      const items = [];
+      for (let i = 0; i < missing.length; i += 50) {
+        const ids = missing.slice(i, i + 50);
+        const data = await pbList("old_reports", {
+          page: 1,
+          perPage: 50,
+          filter: ids.map(id => `id="${id.replace(/[^a-zA-Z0-9]/g, "")}"`).join(" || "),
+          fields: WORKLOG_REPORT_FIELDS
+        });
+        items.push(...data.items);
+      }
+      const present = new Set(state.workLogReports.map(report => report.id));
+      state.workLogReports = state.workLogReports
+        .concat(items.filter(item => !present.has(item.id)))
+        .sort((a, b) => String(b.created).localeCompare(String(a.created)));
+      worklogDayLoads.delete(day);
+    } catch (error) {
+      console.warn("Work Log day reports could not load", error);
+      worklogDayLoads.set(day, "failed");
+      showToast("Reports not loaded", `Could not load reports for ${day}. Click the date again to retry.`, "error");
+    }
+    renderWorkLog();
+  })();
+  return true;
+}
+
 function renderWorkLog() {
   const query = els.worklogSearchInput.value.trim();
   const reports = filteredWorklogReports();
@@ -6127,6 +6173,11 @@ function renderWorkLog() {
   if (state.worklogPanel === "trends") renderWorklogTrends(today);
   else renderWorklogCalendar(counts, today);
 
+  const dayLoading = ensureWorklogDayReports();
+  if (!reports.length && dayLoading) {
+    els.worklogList.innerHTML = `<div class="empty">Loading reports for ${escapeHtml(state.worklogSelectedDate)}...</div>`;
+    return;
+  }
   if (!reports.length) {
     els.worklogList.innerHTML = `<div class="empty">${state.worklogModality || state.worklogSelectedDate ? `No saved ${state.worklogModality ? `${escapeHtml(state.worklogModality)} ` : ""}reports${state.worklogSelectedDate ? ` on ${escapeHtml(state.worklogSelectedDate)}` : ""}.` : "Saved reports will build your personal work log here."}</div>`;
     return;
@@ -7477,6 +7528,7 @@ els.worklogHeatmap.addEventListener("click", event => {
   const dayButton = event.target.closest("[data-worklog-date]");
   if (!dayButton) return;
   state.worklogSelectedDate = state.worklogSelectedDate === dayButton.dataset.worklogDate ? "" : dayButton.dataset.worklogDate;
+  worklogDayLoads.delete(state.worklogSelectedDate);
   trackFeature("work_log.calendar_filter");
   renderWorkLog();
 });
