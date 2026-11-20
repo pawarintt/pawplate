@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20261120-liquid-glass">
+  <link rel="stylesheet" href="style.css?v=20261120-rename-report">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -389,7 +389,13 @@
       <aside class="lookup-pane interesting-pane">
         <article class="worklog-preview">
           <div class="preview-head">
-            <h3 id="worklogPreviewTitle">Select a report</h3>
+            <div class="preview-title-wrap">
+              <h3 id="worklogPreviewTitle">Select a report</h3>
+              <input id="worklogTitleInput" class="preview-title-input hidden" type="text" aria-label="Report name" autocomplete="off" spellcheck="false">
+              <button id="renameWorklogReportBtn" class="preview-rename-btn hidden" type="button" title="Rename report" aria-label="Rename report">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              </button>
+            </div>
             <div class="inline-actions">
               <button id="quickReportNoteBtn" class="quick-report-note" type="button" aria-haspopup="dialog" aria-expanded="false" disabled>
                 <span id="quickReportNoteDot" class="note-dot hidden" aria-hidden="true"></span>
@@ -522,6 +528,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="vendor/typo-1.3.2.js"></script>
-  <script type="module" src="app/main.js?v=20261120-liquid-glass"></script>
+  <script type="module" src="app/main.js?v=20261120-rename-report"></script>
 </body>
 </html>

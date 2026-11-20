@@ -4889,3 +4889,69 @@ button.summary-card {
     --glass-paper: #fff;
   }
 }
+
+/* Work Log preview: rename the report in place (double-click the title or
+   press the pencil). */
+.preview-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.preview-head h3.renamable {
+  cursor: text;
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px 4px;
+  margin-left: -4px;
+  transition: background .15s;
+}
+
+.preview-head h3.renamable:hover {
+  background: rgba(255, 255, 255, .7);
+}
+
+.preview-head .preview-rename-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  opacity: .55;
+  flex: 0 0 auto;
+}
+
+.preview-head .preview-rename-btn:hover,
+.preview-head .preview-rename-btn:focus-visible {
+  opacity: 1;
+  background: rgba(255, 255, 255, .75);
+  color: var(--heading);
+}
+
+.preview-head .preview-rename-btn.hidden,
+.preview-title-input.hidden {
+  display: none;
+}
+
+.preview-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 520px;
+  margin: 0 0 0 -4px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: .86rem;
+  font-weight: var(--weight-bold);
+  color: var(--heading);
+  background: rgba(255, 255, 255, .92);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(196, 181, 253, .35);
+}

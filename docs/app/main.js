@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-liquid-glass";
-import { collectDom } from "./dom.js?v=20261120-liquid-glass";
-import { createInitialState } from "./state.js?v=20261120-liquid-glass";
+} from "./constants.js?v=20261120-rename-report";
+import { collectDom } from "./dom.js?v=20261120-rename-report";
+import { createInitialState } from "./state.js?v=20261120-rename-report";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-liquid-glass";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-liquid-glass";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-liquid-glass";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-liquid-glass";
+} from "./utils.js?v=20261120-rename-report";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-rename-report";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-rename-report";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-rename-report";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +71,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-liquid-glass";
+} from "./prior-report.js?v=20261120-rename-report";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -6446,6 +6446,10 @@ function closeWorklogPreview() {
 
 function renderWorklogPreview() {
   const report = state.selectedWorklogReport;
+  stopWorklogRename();
+  els.renameWorklogReportBtn.classList.toggle("hidden", !report);
+  els.worklogPreviewTitle.classList.toggle("renamable", Boolean(report));
+  els.worklogPreviewTitle.title = report ? "Double-click to rename" : "";
   if (!report) {
     els.worklogPreviewTitle.textContent = "Select a report";
     els.worklogPreviewMeta.textContent = "";
@@ -6472,6 +6476,64 @@ function renderWorklogPreview() {
   els.quickReportNoteBtn.disabled = false;
   updateReportNoteButton();
   updateFollowUpButtons();
+}
+
+// Rename a saved report right in the Work Log preview: double-click the
+// title (or press the pencil) to edit it in place. Enter or clicking away
+// saves, Escape cancels.
+function startWorklogRename(id = state.selectedWorklogReport?.id) {
+  if (!id) return;
+  if (state.selectedWorklogReport?.id !== id) selectWorklogReport(id);
+  const report = state.selectedWorklogReport;
+  if (!report) return;
+  els.worklogTitleInput.value = report.title || "";
+  els.worklogTitleInput.dataset.reportId = report.id;
+  els.worklogPreviewTitle.classList.add("hidden");
+  els.renameWorklogReportBtn.classList.add("hidden");
+  els.worklogTitleInput.classList.remove("hidden");
+  els.worklogTitleInput.focus();
+  els.worklogTitleInput.select();
+  trackFeature("work_log.rename_report");
+}
+
+function stopWorklogRename() {
+  if (els.worklogTitleInput.classList.contains("hidden")) return;
+  delete els.worklogTitleInput.dataset.reportId;
+  els.worklogTitleInput.classList.add("hidden");
+  els.worklogPreviewTitle.classList.remove("hidden");
+  els.renameWorklogReportBtn.classList.toggle("hidden", !state.selectedWorklogReport);
+}
+
+async function commitWorklogRename() {
+  const id = els.worklogTitleInput.dataset.reportId;
+  const title = els.worklogTitleInput.value.trim().replace(/\s+/g, " ");
+  const report = state.workLogReports.find(item => item.id === id) || state.selectedWorklogReport;
+  stopWorklogRename();
+  if (!id || !report || !title || title === (report.title || "")) return;
+  const oldTitle = report.title || "";
+  const data = { title };
+  // Keywords were saved as "title topic body part ...", so swap the old
+  // title there too and search finds the report by its new name.
+  if (oldTitle && typeof report.keywords === "string" && report.keywords.startsWith(oldTitle)) {
+    data.keywords = title + report.keywords.slice(oldTitle.length);
+  }
+  els.worklogPreviewTitle.textContent = title;
+  try {
+    await pbUpdate("old_reports", id, data);
+  } catch (error) {
+    els.worklogPreviewTitle.textContent = oldTitle || "Untitled";
+    showToast("Name not changed", error.message || "Could not save the new name.", "error");
+    return;
+  }
+  for (const item of [report, state.selectedWorklogReport, ...state.workLogReports]) {
+    if (item?.id === id) Object.assign(item, data);
+  }
+  if (state.reportDraftId === id) els.reportTitleInput.value = title;
+  renderWorkLog();
+  renderInterestingCases();
+  renderWorklogPreview();
+  loadOldReports().catch(() => {});
+  showToast("Report renamed", title);
 }
 
 // Small calendar that opens where the context menu was, so the date is picked
@@ -7832,6 +7894,19 @@ els.editWorklogReportBtn.addEventListener("click", () => {
   }
 });
 els.closeWorklogPreviewBtn.addEventListener("click", closeWorklogPreview);
+els.worklogPreviewTitle.addEventListener("dblclick", () => startWorklogRename());
+els.renameWorklogReportBtn.addEventListener("click", () => startWorklogRename());
+els.worklogTitleInput.addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    commitWorklogRename();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    stopWorklogRename();
+  }
+});
+els.worklogTitleInput.addEventListener("blur", () => commitWorklogRename());
 els.worklogList.addEventListener("contextmenu", event => {
   const button = event.target.closest("[data-worklog-id]");
   if (!button) return;
@@ -7840,6 +7915,7 @@ els.worklogList.addEventListener("contextmenu", event => {
   const report = state.workLogReports.find(item => item.id === id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
+    { label: "Rename report", run: () => startWorklogRename(id) },
     { label: reportNoteText(id) ? "Edit personal note" : "Add personal note", run: () => openReportNote(id) },
     ...(report ? [followUpMenuAction(report, button)] : []),
     { label: "Change report date", run: () => editWorklogDate(id) },
@@ -7873,6 +7949,7 @@ els.interestingList.addEventListener("contextmenu", event => {
   const report = state.workLogReports.find(item => item.id === id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
+    { label: "Rename report", run: () => startWorklogRename(id) },
     { label: reportNoteText(id) ? "Edit personal note" : "Add personal note", run: () => openReportNote(id) },
     ...(report ? [followUpMenuAction(report, button)] : []),
     { label: "Change report date", run: () => editWorklogDate(id) },

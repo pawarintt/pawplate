@@ -178,6 +178,8 @@ export function collectDom() {
     interestingSearchInput: document.getElementById("interestingSearchInput"),
     interestingList: document.getElementById("interestingList"),
     worklogPreviewTitle: document.getElementById("worklogPreviewTitle"),
+    worklogTitleInput: document.getElementById("worklogTitleInput"),
+    renameWorklogReportBtn: document.getElementById("renameWorklogReportBtn"),
     worklogPreviewMeta: document.getElementById("worklogPreviewMeta"),
     worklogPreviewText: document.getElementById("worklogPreviewText"),
     editWorklogReportBtn: document.getElementById("editWorklogReportBtn"),

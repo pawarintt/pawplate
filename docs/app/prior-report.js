@@ -2,7 +2,7 @@
 // pastes a prior report from PACS; identifiers are removed here, in the
 // browser, before anything is sent. GPT only picks sentence numbers for the
 // highlighted original, so the original wording is never rewritten.
-import { escapeHtml } from "./utils.js?v=20261120-liquid-glass";
+import { escapeHtml } from "./utils.js?v=20261120-rename-report";
 
 export const PRIOR_KEY_PREFIX = "prior:";
 export const PRIOR_TEXT_LIMIT = 24000;
