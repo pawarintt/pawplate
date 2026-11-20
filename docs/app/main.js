@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-copy-hn";
-import { collectDom } from "./dom.js?v=20261120-copy-hn";
-import { createInitialState } from "./state.js?v=20261120-copy-hn";
+} from "./constants.js?v=20261120-search-all";
+import { collectDom } from "./dom.js?v=20261120-search-all";
+import { createInitialState } from "./state.js?v=20261120-search-all";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-copy-hn";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-copy-hn";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-copy-hn";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-copy-hn";
+} from "./utils.js?v=20261120-search-all";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-search-all";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-search-all";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-search-all";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +71,17 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-copy-hn";
+} from "./prior-report.js?v=20261120-search-all";
+import {
+  createReportIndex,
+  getIndexedReport,
+  indexSize,
+  indexedReports,
+  removeReport,
+  searchReports,
+  stripHtml,
+  upsertReport
+} from "./report-search.js?v=20261120-search-all";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -1748,6 +1758,7 @@ function logout(message = "") {
   state.workLogReports = [];
   state.worklogStats = [];
   state.worklogStatsLoaded = false;
+  resetWorklogSearchIndex();
   state.selectedOldReport = null;
   state.selectedTemplate = null;
   state.templateOrder = [];
@@ -2224,7 +2235,7 @@ function followUpWhenLabel(item, today) {
 function followUpReport(item) {
   if (!item.reportId) return null;
   if (state.selectedWorklogReport?.id === item.reportId) return state.selectedWorklogReport;
-  return state.workLogReports.find(report => report.id === item.reportId) || null;
+  return findWorklogReport(item.reportId);
 }
 
 function followUpTitle(item) {
@@ -2656,7 +2667,7 @@ async function openFollowUpReport(item) {
   } catch (error) {
     console.warn("Work Log could not load.", error);
   }
-  let report = state.workLogReports.find(entry => entry.id === item.reportId);
+  let report = findWorklogReport(item.reportId);
   if (!report) {
     try {
       const data = await pbList("old_reports", {
@@ -6216,12 +6227,173 @@ function reportMatchesQuery(report, query) {
   return query.toLowerCase().split(/\s+/).every(term => haystack.includes(term));
 }
 
+// ---- Search across every saved report ----
+// The Work Log list loads only the newest 500 reports. Searching (or the
+// modality filter) loads every report into an in-memory index, never to disk,
+// and keeps it in sync with changes until sign-out.
+const worklogSearch = { index: null, status: "idle", syncedAt: "", generation: 0, syncing: null };
+const WORKLOG_SEARCH_RENDER_LIMIT = 500;
+
+function resetWorklogSearchIndex() {
+  worklogSearch.index = null;
+  worklogSearch.status = "idle";
+  worklogSearch.syncedAt = "";
+  worklogSearch.syncing = null;
+  worklogSearch.generation += 1;
+}
+
+function worklogSearchText(report) {
+  return [
+    report.title,
+    report.modality,
+    report.topic,
+    report.bodyPart,
+    report.keywords,
+    report.note,
+    stripHtml(report.report)
+  ].join(" ");
+}
+
+function indexWorklogReports(items) {
+  for (const item of items) {
+    upsertReport(worklogSearch.index, item, worklogSearchText(item));
+    if (String(item.updated || "") > worklogSearch.syncedAt) worklogSearch.syncedAt = String(item.updated);
+  }
+}
+
+function findWorklogReport(id) {
+  return state.workLogReports.find(item => item.id === id)
+    || (worklogSearch.index && getIndexedReport(worklogSearch.index, id))
+    || null;
+}
+
+const nextFrame = () => new Promise(resolve => window.setTimeout(resolve, 0));
+
+async function ensureWorklogSearchIndex() {
+  if (worklogSearch.status === "loading" || worklogSearch.status === "ready") return;
+  if (!state.auth?.user?.id) return;
+  const generation = worklogSearch.generation;
+  worklogSearch.status = "loading";
+  worklogSearch.index = createReportIndex();
+  worklogSearch.syncedAt = "";
+  renderWorkLog();
+  const fetchPage = page => pbList("old_reports", {
+    page,
+    perPage: 500,
+    sort: "-created",
+    filter: 'sourceType="final-report"',
+    fields: WORKLOG_REPORT_FIELDS,
+    ...(page === 1 ? {} : { skipTotal: "1" })
+  });
+  try {
+    const first = await fetchPage(1);
+    if (generation !== worklogSearch.generation) return;
+    indexWorklogReports(first.items);
+    const pages = [];
+    for (let page = 2; page <= Math.min(first.totalPages || 1, 200); page += 1) pages.push(page);
+    // A few pages at a time keeps it quick without flooding the server.
+    for (let i = 0; i < pages.length; i += 4) {
+      const batch = await Promise.all(pages.slice(i, i + 4).map(fetchPage));
+      if (generation !== worklogSearch.generation) return;
+      for (const data of batch) {
+        indexWorklogReports(data.items);
+        await nextFrame();
+      }
+    }
+    worklogSearch.status = "ready";
+  } catch (error) {
+    if (generation !== worklogSearch.generation) return;
+    console.warn("Search index could not load", error);
+    worklogSearch.status = "failed";
+    worklogSearch.index = null;
+    showToast("Search covers recent reports only", "Older reports could not load. Search again to retry.", "error");
+  }
+  renderWorkLog();
+}
+
+// Pulls reports created or edited since the index was built, so renames,
+// date changes and new saves show up in search without reloading everything.
+function syncWorklogSearchIndex() {
+  if (worklogSearch.status !== "ready" || worklogSearch.syncing) return worklogSearch.syncing;
+  const generation = worklogSearch.generation;
+  const since = worklogSearch.syncedAt;
+  worklogSearch.syncing = (async () => {
+    try {
+      for (let page = 1; page < 40; page += 1) {
+        const data = await pbList("old_reports", {
+          page,
+          perPage: 500,
+          sort: "updated",
+          filter: `sourceType="final-report"${since ? ` && updated>"${escapeFilter(since)}"` : ""}`,
+          fields: WORKLOG_REPORT_FIELDS
+        });
+        if (generation !== worklogSearch.generation) return;
+        indexWorklogReports(data.items);
+        if (page >= data.totalPages) break;
+      }
+    } catch (error) {
+      console.warn("Search index could not refresh", error);
+    } finally {
+      if (generation === worklogSearch.generation) worklogSearch.syncing = null;
+    }
+    if (generation === worklogSearch.generation && els.worklogSearchInput.value.trim()) renderWorkLog();
+  })();
+  return worklogSearch.syncing;
+}
+
+// Drops deleted reports from the index once the full id list is known.
+function pruneWorklogSearchIndex(records) {
+  if (!worklogSearch.index) return;
+  const ids = new Set(records.map(record => record.id));
+  for (const report of indexedReports(worklogSearch.index)) {
+    if (!ids.has(report.id)) removeReport(worklogSearch.index, report.id);
+  }
+}
+
+// Loaded reports win over indexed copies: they are the ones edits update.
+function preferLoadedReports(reports) {
+  const loaded = new Map(state.workLogReports.map(report => [report.id, report]));
+  return reports.map(report => loaded.get(report.id) || report);
+}
+
 function filteredWorklogReports() {
   const query = els.worklogSearchInput.value.trim();
-  return state.workLogReports
-    .filter(report => reportMatchesQuery(report, query))
+  const ready = worklogSearch.status === "ready" && worklogSearch.index;
+  let reports;
+  let highlightQuery = query;
+  if (query && ready) {
+    const found = searchReports(worklogSearch.index, query, { extraText: reportNoteText });
+    const byDate = (a, b) => String(b.report.created).localeCompare(String(a.report.created));
+    found.results.sort((a, b) => (a.exact === b.exact ? byDate(a, b) : a.exact ? -1 : 1));
+    reports = preferLoadedReports(found.results.map(result => result.report));
+    highlightQuery = [...found.terms, ...found.fuzzyWords.slice(0, 40)].join(" ");
+  } else if (!query && state.worklogModality && ready) {
+    reports = preferLoadedReports(indexedReports(worklogSearch.index))
+      .sort((a, b) => String(b.created).localeCompare(String(a.created)));
+  } else {
+    reports = state.workLogReports.filter(report => reportMatchesQuery(report, query));
+  }
+  reports = reports
     .filter(report => !state.worklogSelectedDate || dateKey(savedDate(report) || new Date(0)) === state.worklogSelectedDate)
     .filter(report => !state.worklogModality || (classifyWorklogModality(report.modality) || "Other") === state.worklogModality);
+  return { reports, highlightQuery };
+}
+
+function worklogSearchStatusHtml(query, matchCount) {
+  if (!query && !state.worklogModality) return "";
+  let text = "";
+  if (worklogSearch.status === "loading") {
+    const loaded = worklogSearch.index ? indexSize(worklogSearch.index) : 0;
+    text = `Showing matches in the newest ${state.workLogReports.length} reports. Loading all reports for search (${loaded} so far)...`;
+  } else if (worklogSearch.status === "failed") {
+    text = `Only the newest ${state.workLogReports.length} reports were searched. Older reports could not load.`;
+  } else if (worklogSearch.status === "ready" && query) {
+    text = `${matchCount} ${matchCount === 1 ? "match" : "matches"} in all ${indexSize(worklogSearch.index)} reports`;
+    if (matchCount > WORKLOG_SEARCH_RENDER_LIMIT) text += `. Showing the first ${WORKLOG_SEARCH_RENDER_LIMIT}; add another word to narrow it down`;
+  } else if (worklogSearch.status === "ready" && matchCount > WORKLOG_SEARCH_RENDER_LIMIT) {
+    text = `Showing the newest ${WORKLOG_SEARCH_RENDER_LIMIT} of ${matchCount} reports`;
+  }
+  return text ? `<div class="worklog-search-status">${escapeHtml(text)}</div>` : "";
 }
 
 const WORKLOG_MODALITIES = ["CT", "US", "CR", "MR", "MMG"];
@@ -6283,6 +6455,7 @@ async function loadWorkLog() {
   if (!isCurrentDataLoad("workLog", request)) return false;
   state.workLogReports = data.items;
   loadWorklogStats();
+  syncWorklogSearchIndex();
   if (state.selectedWorklogReport) {
     state.selectedWorklogReport = state.workLogReports.find(item => item.id === state.selectedWorklogReport.id)
       || (state.selectedWorklogReport.openedFromFollowUp ? state.selectedWorklogReport : null);
@@ -6317,6 +6490,7 @@ async function loadWorklogStats() {
   if (!isCurrentDataLoad("worklogStats", request)) return false;
   state.worklogStats = records;
   state.worklogStatsLoaded = true;
+  if (worklogSearch.status === "ready") pruneWorklogSearchIndex(records);
   renderWorkLog();
   return true;
 }
@@ -6367,7 +6541,9 @@ function ensureWorklogDayReports() {
 
 function renderWorkLog() {
   const query = els.worklogSearchInput.value.trim();
-  const reports = filteredWorklogReports();
+  const { reports: allMatches, highlightQuery } = filteredWorklogReports();
+  const reports = allMatches.slice(0, WORKLOG_SEARCH_RENDER_LIMIT);
+  const searchStatus = worklogSearchStatusHtml(query, allMatches.length);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const counts = worklogDateCounts();
@@ -6400,26 +6576,30 @@ function renderWorkLog() {
     els.worklogList.innerHTML = `<div class="empty">Loading reports for ${escapeHtml(state.worklogSelectedDate)}...</div>`;
     return;
   }
+  if (!reports.length && query) {
+    els.worklogList.innerHTML = `${searchStatus}<div class="empty">${worklogSearch.status === "loading" ? "No matches yet in the newest reports. Still loading the rest..." : `No reports match "${escapeHtml(query)}".`}</div>`;
+    return;
+  }
   if (!reports.length) {
-    els.worklogList.innerHTML = `<div class="empty">${state.worklogModality || state.worklogSelectedDate ? `No saved ${state.worklogModality ? `${escapeHtml(state.worklogModality)} ` : ""}reports${state.worklogSelectedDate ? ` on ${escapeHtml(state.worklogSelectedDate)}` : ""}.` : "Saved reports will build your personal work log here."}</div>`;
+    els.worklogList.innerHTML = `${searchStatus}<div class="empty">${state.worklogModality || state.worklogSelectedDate ? `No saved ${state.worklogModality ? `${escapeHtml(state.worklogModality)} ` : ""}reports${state.worklogSelectedDate ? ` on ${escapeHtml(state.worklogSelectedDate)}` : ""}.` : "Saved reports will build your personal work log here."}</div>`;
     return;
   }
   const followUps = openFollowUpsByReport();
-  els.worklogList.innerHTML = reports.map((report, index) => {
+  els.worklogList.innerHTML = searchStatus + reports.map((report, index) => {
     const date = savedDate(report);
     const personalNote = reportNoteText(report.id);
     const followUp = followUps.get(report.id);
-    const reportExcerpt = report.report ? snippet(report.report, query) : "";
+    const reportExcerpt = report.report ? snippet(report.report, highlightQuery) : "";
     return `
       <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-worklog-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
         <span>
-          <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}${followUp ? `<span class="follow-up-tag${isFollowUpDue(followUp) ? " due" : ""}">Follow-up ${escapeHtml(followUpDateLabel(followUp.dueDate, { weekday: false }))}</span>` : ""}</span>
+          <span class="result-title">${highlight(report.title || "Untitled", highlightQuery)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}${followUp ? `<span class="follow-up-tag${isFollowUpDue(followUp) ? " due" : ""}">Follow-up ${escapeHtml(followUpDateLabel(followUp.dueDate, { weekday: false }))}</span>` : ""}</span>
           <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
-          ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
-          ${report.note ? `<span class="result-snippet"><span class="copy-hn" data-copy-hn="${escapeHtml(report.note)}" title="Click to copy HN">${highlight(report.note, query)}</span></span>` : ""}
-          ${reportExcerpt ? `<span class="result-snippet result-report-snippet">${highlight(reportExcerpt, query)}</span>` : ""}
-          ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, query), query)}</span>` : ""}
+          ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, highlightQuery)}</span>` : ""}
+          ${report.note ? `<span class="result-snippet"><span class="copy-hn" data-copy-hn="${escapeHtml(report.note)}" title="Click to copy HN">${highlight(report.note, highlightQuery)}</span></span>` : ""}
+          ${reportExcerpt ? `<span class="result-snippet result-report-snippet">${highlight(reportExcerpt, highlightQuery)}</span>` : ""}
+          ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, highlightQuery), highlightQuery)}</span>` : ""}
         </span>
       </button>
     `;
@@ -6427,7 +6607,7 @@ function renderWorkLog() {
 }
 
 function selectWorklogReport(id) {
-  const report = state.workLogReports.find(item => item.id === id);
+  const report = findWorklogReport(id);
   if (!report) return;
   if (state.selectedWorklogReport?.id !== id) setReportNotePopoverOpen(false);
   state.selectedWorklogReport = report;
@@ -6555,7 +6735,7 @@ function stopWorklogRename() {
 async function commitWorklogRename() {
   const id = els.worklogTitleInput.dataset.reportId;
   const title = els.worklogTitleInput.value.trim().replace(/\s+/g, " ");
-  const report = state.workLogReports.find(item => item.id === id) || state.selectedWorklogReport;
+  const report = findWorklogReport(id) || state.selectedWorklogReport;
   stopWorklogRename();
   if (!id || !report || !title || title === (report.title || "")) return;
   const oldTitle = report.title || "";
@@ -6577,6 +6757,7 @@ async function commitWorklogRename() {
     if (item?.id === id) Object.assign(item, data);
   }
   if (state.reportDraftId === id) els.reportTitleInput.value = title;
+  syncWorklogSearchIndex();
   renderWorkLog();
   renderInterestingCases();
   renderWorklogPreview();
@@ -6662,7 +6843,7 @@ function pickReportDate(current) {
 }
 
 async function editWorklogDate(id) {
-  const report = state.workLogReports.find(item => item.id === id);
+  const report = findWorklogReport(id);
   if (!report) return;
   const currentDate = savedDate(report);
   const current = currentDate ? dateKey(currentDate) : dateKey(new Date());
@@ -6886,7 +7067,7 @@ function renderInterestingCases() {
 }
 
 async function openSavedReport(id) {
-  const report = state.workLogReports.find(item => item.id === id) || state.selectedWorklogReport;
+  const report = findWorklogReport(id) || state.selectedWorklogReport;
   if (!report) return;
   const canReplace = await discardWorkingDraft("Open this saved report and discard the current draft?");
   if (!canReplace) return false;
@@ -7878,6 +8059,10 @@ els.copyReportBtn.addEventListener("click", () => {
 els.saveReportBtn.addEventListener("click", () => {
   withButtonFeedback(els.saveReportBtn, "Saving...", saveFullReport, "Saved");
 });
+els.worklogSearchInput.addEventListener("focus", () => ensureWorklogSearchIndex());
+els.worklogSearchInput.addEventListener("input", () => {
+  if (els.worklogSearchInput.value.trim()) ensureWorklogSearchIndex();
+});
 els.worklogSearchInput.addEventListener("input", debounce(renderWorkLog));
 els.interestingSearchInput.addEventListener("input", debounce(renderInterestingCases));
 els.worklogSummary.addEventListener("click", event => {
@@ -7886,6 +8071,7 @@ els.worklogSummary.addEventListener("click", event => {
   const modality = card.dataset.worklogModality;
   state.worklogModality = modality && state.worklogModality !== modality ? modality : "";
   if (state.worklogModality) trackFeature("work_log.modality_filter");
+  if (state.worklogModality) ensureWorklogSearchIndex();
   renderWorkLog();
 });
 els.worklogHeatmap.addEventListener("click", event => {
@@ -7960,7 +8146,7 @@ els.worklogList.addEventListener("contextmenu", event => {
   if (!button) return;
   event.preventDefault();
   const id = button.dataset.worklogId;
-  const report = state.workLogReports.find(item => item.id === id);
+  const report = findWorklogReport(id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
     { label: "Rename report", run: () => startWorklogRename(id) },
@@ -7994,7 +8180,7 @@ els.interestingList.addEventListener("contextmenu", event => {
   if (!button) return;
   event.preventDefault();
   const id = button.dataset.interestingId;
-  const report = state.workLogReports.find(item => item.id === id);
+  const report = findWorklogReport(id);
   showContextMenu(event.clientX, event.clientY, [
     { label: "Open report", run: () => openSavedReport(id) },
     { label: "Rename report", run: () => startWorklogRename(id) },

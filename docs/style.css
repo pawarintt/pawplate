@@ -4993,3 +4993,10 @@ button.summary-card {
 .copy-hn:focus-visible::after {
   opacity: .8;
 }
+
+.worklog-search-status {
+  padding: 8px 14px;
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.4;
+}
