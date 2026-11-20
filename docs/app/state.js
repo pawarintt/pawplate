@@ -31,6 +31,9 @@ export function createInitialState(snippetDefaults) {
     guidelineDraftId: null,
     reportDraftId: null,
     reportDraftSourceDate: "",
+    // Topic, body part and keywords have no fields in the Report Writer; they
+    // come from the template or the opened report and save with it.
+    reportMeta: { topic: "", bodyPart: "", keywords: "" },
     reportNamedImpression: "",
     workingDraftId: "",
     workingDraftChecked: false,

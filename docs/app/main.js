@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-slim-details";
-import { collectDom } from "./dom.js?v=20261120-slim-details";
-import { createInitialState } from "./state.js?v=20261120-slim-details";
+} from "./constants.js?v=20261120-details-removed";
+import { collectDom } from "./dom.js?v=20261120-details-removed";
+import { createInitialState } from "./state.js?v=20261120-details-removed";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-slim-details";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-slim-details";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-slim-details";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-slim-details";
+} from "./utils.js?v=20261120-details-removed";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-details-removed";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-details-removed";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-details-removed";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +71,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-slim-details";
+} from "./prior-report.js?v=20261120-details-removed";
 import {
   createReportIndex,
   getIndexedReport,
@@ -81,7 +81,7 @@ import {
   searchReports,
   stripHtml,
   upsertReport
-} from "./report-search.js?v=20261120-slim-details";
+} from "./report-search.js?v=20261120-details-removed";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -705,9 +705,9 @@ function reportWorkingDraftPayload() {
     sourceDate: state.reportDraftSourceDate || "",
     title: els.reportTitleInput.value,
     modality: els.reportModalityInput.value,
-    topic: els.reportTopicInput.value,
-    bodyPart: els.reportBodyPartInput.value,
-    keywords: els.reportKeywordInput.value,
+    topic: state.reportMeta.topic,
+    bodyPart: state.reportMeta.bodyPart,
+    keywords: state.reportMeta.keywords,
     note: els.reportNoteInput.value,
     isInteresting: els.reportInterestingInput.checked,
     report: getEditorHtml(els.reportTextEditor),
@@ -892,15 +892,14 @@ function applyWorkingDraft(payload) {
   state.selectedTemplate = null;
   els.reportTitleInput.value = payload.title || "";
   els.reportModalityInput.value = payload.modality || "";
-  els.reportTopicInput.value = payload.topic || "";
-  els.reportBodyPartInput.value = payload.bodyPart || "";
-  els.reportKeywordInput.value = payload.keywords || "";
+  state.reportMeta.topic = payload.topic || "";
+  state.reportMeta.bodyPart = payload.bodyPart || "";
+  state.reportMeta.keywords = payload.keywords || "";
   els.reportNoteInput.value = payload.note || "";
   els.reportInterestingInput.checked = Boolean(payload.isInteresting);
   setEditorHtml(els.reportTextEditor, payload.report || "");
   setPrior(priorFromValue(payload.prior), { autosave: false });
   updateReportModeBadge();
-  updateEditorDatalists("report");
   state.suppressReportAutosave = false;
   showMode("writer");
 }
@@ -4100,7 +4099,6 @@ async function loadFacets() {
   state.oldFacetRecords = records;
   updateFilterOptions("old");
   renderWriterOldChips();
-  updateEditorDatalists("report");
   await loadTemplateFacets();
   return true;
 }
@@ -4585,7 +4583,7 @@ function closeWriterOldReport() {
 // Fill the search from the report being written: its keywords (or title)
 // and modality. Returns false when the report has nothing to match on.
 function matchWriterOldToReport() {
-  const words = els.reportKeywordInput.value.trim() || els.reportTitleInput.value.trim();
+  const words = state.reportMeta.keywords.trim() || els.reportTitleInput.value.trim();
   const modality = els.reportModalityInput.value.trim().toLowerCase();
   if (!words && !modality) return false;
   els.writerOldSearchInput.value = words.replace(/[,;/]+/g, " ").replace(/\s+/g, " ").trim();
@@ -4659,7 +4657,7 @@ function renderPrior() {
 // which region matters without being steered by today's diagnosis.
 function priorExamTitle() {
   const title = els.reportTitleInput.value.trim().replace(/^untitled.*$/i, "").split(" - ")[0].trim();
-  return title || [els.reportModalityInput.value.trim(), els.reportBodyPartInput.value.trim()].filter(Boolean).join(" ");
+  return title || [els.reportModalityInput.value.trim(), state.reportMeta.bodyPart.trim()].filter(Boolean).join(" ");
 }
 
 async function highlightPrior(rawText) {
@@ -5755,13 +5753,12 @@ async function useTemplateForReport(template = null) {
   resetReportDraft();
   els.reportTitleInput.value = source.title || "Untitled report";
   els.reportModalityInput.value = source.modality || "";
-  els.reportTopicInput.value = source.topic || "";
-  els.reportBodyPartInput.value = source.bodyPart || "";
-  els.reportKeywordInput.value = "";
+  state.reportMeta.topic = source.topic || "";
+  state.reportMeta.bodyPart = source.bodyPart || "";
+  state.reportMeta.keywords = "";
   els.reportNoteInput.value = "";
   els.reportInterestingInput.checked = false;
   setEditorHtml(els.reportTextEditor, source.report || "");
-  updateEditorDatalists("report");
   state.suppressReportAutosave = false;
   scheduleReportAutosave(100);
   showMode("writer");
@@ -5816,8 +5813,8 @@ function reportCombineSnapshot() {
     html: getEditorHtml(els.reportTextEditor),
     title: els.reportTitleInput.value,
     modality: els.reportModalityInput.value,
-    topic: els.reportTopicInput.value,
-    bodyPart: els.reportBodyPartInput.value
+    topic: state.reportMeta.topic,
+    bodyPart: state.reportMeta.bodyPart
   };
 }
 
@@ -5831,10 +5828,9 @@ function applyCombinedTemplate(template, before, html) {
     els.reportTitleInput.value = `${currentTitle} + ${addedTitle}`;
   }
   if (!before.modality.trim()) els.reportModalityInput.value = template.modality || "";
-  if (!before.topic.trim()) els.reportTopicInput.value = template.topic || "";
-  if (!before.bodyPart.trim()) els.reportBodyPartInput.value = template.bodyPart || "";
+  if (!before.topic.trim()) state.reportMeta.topic = template.topic || "";
+  if (!before.bodyPart.trim()) state.reportMeta.bodyPart = template.bodyPart || "";
   setEditorHtml(els.reportTextEditor, html);
-  updateEditorDatalists("report");
   scheduleReportAutosave(100);
 }
 
@@ -5847,10 +5843,9 @@ function undoCombinedTemplate(before, after, { track = true } = {}) {
   }
   els.reportTitleInput.value = before.title;
   els.reportModalityInput.value = before.modality;
-  els.reportTopicInput.value = before.topic;
-  els.reportBodyPartInput.value = before.bodyPart;
+  state.reportMeta.topic = before.topic;
+  state.reportMeta.bodyPart = before.bodyPart;
   setEditorHtml(els.reportTextEditor, before.html);
-  updateEditorDatalists("report");
   scheduleReportAutosave(100);
   if (track) trackFeature("template.combine.undo");
   return true;
@@ -5863,13 +5858,12 @@ function blankReport() {
   state.selectedTemplate = null;
   els.reportTitleInput.value = "";
   els.reportModalityInput.value = "";
-  els.reportTopicInput.value = "";
-  els.reportBodyPartInput.value = "";
-  els.reportKeywordInput.value = "";
+  state.reportMeta.topic = "";
+  state.reportMeta.bodyPart = "";
+  state.reportMeta.keywords = "";
   els.reportNoteInput.value = "";
   els.reportInterestingInput.checked = false;
   setEditorHtml(els.reportTextEditor, "");
-  updateEditorDatalists("report");
   state.suppressReportAutosave = false;
   showMode("writer");
   els.reportTitleInput.focus();
@@ -5908,7 +5902,7 @@ function editTemplate(id) {
 
 // Saved keywords are "title topic bodyPart keywords note" (see reportData).
 // Take back only the keywords part so re-saving doesn't stack copies of the
-// title and HN, which would now pile up unseen with the field hidden.
+// title and HN, which would otherwise pile up unseen (there's no field for it).
 function ownReportKeywords(report) {
   let words = report.keywords || "";
   const prefix = `${report.title || ""} ${report.topic || ""} ${report.bodyPart || ""} `;
@@ -5923,11 +5917,11 @@ function reportData() {
   return {
     title: els.reportTitleInput.value.trim() || "Untitled report",
     modality: els.reportModalityInput.value.trim(),
-    topic: els.reportTopicInput.value.trim(),
-    bodyPart: els.reportBodyPartInput.value.trim(),
+    topic: state.reportMeta.topic.trim(),
+    bodyPart: state.reportMeta.bodyPart.trim(),
     kind: "final-report",
     report: getEditorHtml(els.reportTextEditor),
-    keywords: `${els.reportTitleInput.value} ${els.reportTopicInput.value} ${els.reportBodyPartInput.value} ${els.reportKeywordInput.value} ${els.reportNoteInput.value}`,
+    keywords: `${els.reportTitleInput.value} ${state.reportMeta.topic} ${state.reportMeta.bodyPart} ${state.reportMeta.keywords} ${els.reportNoteInput.value}`,
     sourceType: "final-report",
     sourceDate: state.reportDraftSourceDate || new Date().toISOString(),
     note: els.reportNoteInput.value.trim(),
@@ -7156,9 +7150,9 @@ async function openSavedReport(id) {
   updateReportModeBadge();
   els.reportTitleInput.value = report.title || "";
   els.reportModalityInput.value = report.modality || "";
-  els.reportTopicInput.value = report.topic || "";
-  els.reportBodyPartInput.value = report.bodyPart || "";
-  els.reportKeywordInput.value = ownReportKeywords(report);
+  state.reportMeta.topic = report.topic || "";
+  state.reportMeta.bodyPart = report.bodyPart || "";
+  state.reportMeta.keywords = ownReportKeywords(report);
   els.reportNoteInput.value = report.note || "";
   els.reportInterestingInput.checked = Boolean(report.isInteresting);
   setEditorHtml(els.reportTextEditor, report.report || "");
@@ -7546,15 +7540,8 @@ els.templateSearchInput.addEventListener("input", debounce(() => loadViewData(lo
   els.templateTopicInput
 ].forEach(element => element.addEventListener("input", () => updateEditorDatalists("template")));
 [
-  els.reportModalityInput,
-  els.reportTopicInput
-].forEach(element => element.addEventListener("input", () => updateEditorDatalists("report")));
-[
   els.reportTitleInput,
   els.reportModalityInput,
-  els.reportTopicInput,
-  els.reportBodyPartInput,
-  els.reportKeywordInput,
   els.reportNoteInput
 ].forEach(element => element.addEventListener("input", scheduleReportAutosave));
 els.reportInterestingInput.addEventListener("change", () => {

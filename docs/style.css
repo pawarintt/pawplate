@@ -2184,12 +2184,6 @@ pre, textarea, .rich-editor {
   grid-template-columns: minmax(200px, 1fr) minmax(84px, 120px) minmax(130px, 200px) auto;
 }
 
-/* Topic, body part and keywords still fill in from templates and save with
-   the report; they're just not shown in the Report Writer bar. */
-#writerView .meta-grid > .writer-meta-hidden {
-  display: none;
-}
-
 .meta-grid > input:nth-of-type(1) {
   background: var(--field);
 }
@@ -5006,3 +5000,6 @@ button.summary-card {
   font-size: .8rem;
   line-height: 1.4;
 }
+
+/* Report Writer HN keeps its lilac now that it's the third field. */
+#writerView .meta-grid > #reportNoteInput { background: color-mix(in srgb, #efeafc 80%, transparent); }

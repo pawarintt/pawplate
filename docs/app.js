@@ -1,1 +1,1 @@
-import("./app/main.js?v=20261120-slim-details");
+import("./app/main.js?v=20261120-details-removed");
