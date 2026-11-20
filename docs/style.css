@@ -1263,7 +1263,7 @@ input[type="radio"] {
 
 .reference-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 8px;
   border-bottom: 1px solid var(--line);
@@ -4196,4 +4196,238 @@ span.follow-up-dot {
 
 .follow-up-quick-note .note-dot {
   margin: 0 5px 0 0;
+}
+
+/* Prior report tab (Report Writer) and its Work Log preview */
+.prior-reference {
+  grid-template-rows: auto minmax(0, 1fr);
+  border-bottom: 0;
+}
+
+.prior-reference .pane-head .quiet-button {
+  min-height: 28px;
+  padding: 2px 10px;
+  font-size: .8rem;
+}
+
+.prior-paste {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px;
+}
+
+.prior-paste.hidden,
+.prior-result.hidden {
+  display: none;
+}
+
+.prior-paste textarea {
+  resize: none;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  font-size: .86rem;
+  line-height: 1.5;
+}
+
+.prior-paste-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.prior-privacy {
+  color: var(--muted);
+  font-size: .76rem;
+  line-height: 1.35;
+}
+
+.prior-result {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px 14px;
+}
+
+.prior-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.prior-status.hidden {
+  display: none;
+}
+
+.prior-status .quiet-button {
+  min-height: 26px;
+  padding: 2px 10px;
+  font-size: .78rem;
+}
+
+.prior-loading::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 2px solid var(--rose-line);
+  border-top-color: var(--coffee);
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: prior-spin .8s linear infinite;
+}
+
+@keyframes prior-spin {
+  to { transform: rotate(360deg); }
+}
+
+.prior-error {
+  color: var(--danger);
+}
+
+.prior-section {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper-strong);
+}
+
+.prior-section h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+  color: var(--heading);
+  font-size: .8rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.prior-section ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.prior-section li {
+  margin: 2px 0;
+  font-size: .86rem;
+  line-height: 1.4;
+}
+
+.prior-findings {
+  border-color: var(--rose-line);
+  background: var(--rose-light);
+}
+
+.prior-check {
+  border-color: var(--yellow-line);
+  background: #fffbe6;
+}
+
+.prior-changes {
+  border-color: var(--sky-line);
+  background: var(--sky);
+}
+
+.prior-finding {
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.prior-finding:hover {
+  color: var(--rose-ink);
+  text-decoration: underline;
+}
+
+.prior-date {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: .78rem;
+}
+
+.prior-none {
+  margin: 0;
+  color: var(--muted);
+  font-size: .84rem;
+}
+
+.prior-legend {
+  display: inline-flex;
+  gap: 6px;
+  font-size: .7rem;
+  font-weight: var(--weight-medium);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.prior-legend mark {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--rose);
+  color: var(--ink);
+}
+
+.prior-original {
+  font-size: .84rem;
+  line-height: 1.5;
+}
+
+.prior-original .prior-key {
+  padding: 1px 2px;
+  border-radius: var(--radius-xs);
+  background: var(--rose);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.prior-normal {
+  color: #b3a3a0;
+}
+
+.prior-removed {
+  color: var(--muted);
+  font-size: .76rem;
+}
+
+.prior-flash {
+  animation: prior-flash 1.4s ease-out;
+}
+
+@keyframes prior-flash {
+  0%, 40% { box-shadow: 0 0 0 3px var(--coffee); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+
+.reference-tabs .note-dot {
+  margin-left: 5px;
+}
+
+.worklog-prior {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.worklog-prior.hidden {
+  display: none;
+}
+
+.worklog-prior summary {
+  cursor: pointer;
+  color: var(--heading);
+  font-size: .82rem;
+  font-weight: var(--weight-bold);
+}
+
+.worklog-prior .prior-summary {
+  margin-top: 8px;
 }

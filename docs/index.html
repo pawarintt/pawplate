@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20261120-default-text-color">
+  <link rel="stylesheet" href="style.css?v=20261120-prior-highlights">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -292,6 +292,7 @@
           <button class="active" type="button" data-reference-tab="templates">Templates</button>
           <button type="button" data-reference-tab="snippets">Snippets</button>
           <button type="button" data-reference-tab="old-reports">Ref</button>
+          <button type="button" data-reference-tab="prior">Prior<span id="priorTabDot" class="note-dot hidden" aria-label="Prior report attached"></span></button>
         </div>
         <div class="writer-reference reference-panel active" data-reference-panel="templates">
           <div class="pane-head">
@@ -348,6 +349,30 @@
           </div>
           <div id="writerOldList" class="result-list writer-old-list"></div>
         </div>
+        <div class="writer-reference prior-reference reference-panel" data-reference-panel="prior">
+          <div class="pane-head">
+            <h2>Prior Report</h2>
+            <div class="inline-actions">
+              <button id="editPriorBtn" class="quiet-button hidden" type="button">Paste again</button>
+              <button id="clearPriorBtn" class="quiet-button hidden" type="button">Clear</button>
+            </div>
+          </div>
+          <form id="priorPasteForm" class="prior-paste">
+            <textarea id="priorInput" spellcheck="false" placeholder="Paste the prior report(s) from PACS here. You can paste several at once." aria-label="Prior report text"></textarea>
+            <div class="prior-paste-actions">
+              <span class="prior-privacy">Names, HN and ID numbers are removed before anything is sent.</span>
+              <button id="highlightPriorBtn" class="primary-button" type="submit">Highlight</button>
+            </div>
+          </form>
+          <div id="priorResult" class="prior-result hidden">
+            <div id="priorStatus" class="prior-status" aria-live="polite"></div>
+            <div id="priorSummary" class="prior-summary"></div>
+            <section class="prior-section prior-original-section">
+              <h3>Prior report <span class="prior-legend"><mark>key</mark> <span class="prior-normal">normal</span></span></h3>
+              <div id="priorOriginal" class="prior-original report-document"></div>
+            </section>
+          </div>
+        </div>
       </aside>
       <button id="referenceDrawerBtn" class="reference-drawer-btn" type="button" aria-expanded="false" aria-controls="writerReferencePane">References</button>
       <div id="drawerBackdrop" class="drawer-backdrop hidden"></div>
@@ -377,6 +402,11 @@
           </div>
           <div id="worklogPreviewMeta" class="preview-meta"></div>
           <div id="worklogPreviewText" class="report-document"></div>
+          <details id="worklogPrior" class="worklog-prior hidden">
+            <summary>Prior report</summary>
+            <div id="worklogPriorSummary" class="prior-summary"></div>
+            <div id="worklogPriorOriginal" class="prior-original report-document"></div>
+          </details>
           <section id="reportNotePopover" class="report-note-popover hidden" role="dialog" aria-label="Report personal note">
             <div class="notes-popover-head">
               <strong>Personal note</strong>
@@ -492,6 +522,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="vendor/typo-1.3.2.js"></script>
-  <script type="module" src="app/main.js?v=20261120-default-text-color"></script>
+  <script type="module" src="app/main.js?v=20261120-prior-highlights"></script>
 </body>
 </html>

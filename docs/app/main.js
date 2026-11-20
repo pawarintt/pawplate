@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-default-text-color";
-import { collectDom } from "./dom.js?v=20261120-default-text-color";
-import { createInitialState } from "./state.js?v=20261120-default-text-color";
+} from "./constants.js?v=20261120-prior-highlights";
+import { collectDom } from "./dom.js?v=20261120-prior-highlights";
+import { createInitialState } from "./state.js?v=20261120-prior-highlights";
 import {
   copyText,
   debounce,
@@ -56,10 +56,22 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-default-text-color";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-default-text-color";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-default-text-color";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-default-text-color";
+} from "./utils.js?v=20261120-prior-highlights";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-prior-highlights";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-prior-highlights";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-prior-highlights";
+import {
+  PRIOR_KEY_PREFIX,
+  PRIOR_PROMPT,
+  PRIOR_SCHEMA,
+  cleanPriorText,
+  normalizePriorResult,
+  priorFromValue,
+  priorInput,
+  priorOriginalHtml,
+  priorSettingsValue,
+  priorSummaryHtml
+} from "./prior-report.js?v=20261120-prior-highlights";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -296,7 +308,7 @@ function choicesFromSelect(select) {
 // Scroll positions of the writer reference panels, keyed by tab, so switching
 // tabs (or re-rendering a list) never loses the user's place. Filter inputs
 // persist naturally in the DOM; only scroll needs explicit memory.
-const REFERENCE_SCROLLABLES = ["templateList", "snippetFields", "snippetFindingList", "writerOldList"];
+const REFERENCE_SCROLLABLES = ["templateList", "snippetFields", "snippetFindingList", "writerOldList", "priorResult"];
 
 function saveReferenceScroll(tab) {
   if (!REFERENCE_ROUTES[tab]) return;
@@ -336,6 +348,7 @@ function showReferenceTab(tab, options = {}) {
   if (tab === "old-reports") openWriterOldReports();
   else closeWriterOldReport();
   if (tab === "snippets") renderSnippetGenerator();
+  if (tab === "prior") renderPrior();
   if (options.updateRoute !== false && state.mode === "writer") updateRoute("writer", tab);
 }
 
@@ -688,13 +701,18 @@ function reportWorkingDraftPayload() {
     note: els.reportNoteInput.value,
     isInteresting: els.reportInterestingInput.checked,
     report: getEditorHtml(els.reportTextEditor),
-    followUpIds: [...state.draftFollowUpIds]
+    followUpIds: [...state.draftFollowUpIds],
+    prior: state.prior ? priorSettingsValue(state.prior) : null
   };
 }
 
-function hasReportWorkspaceContent(payload = reportWorkingDraftPayload()) {
+// A pasted prior alone keeps the draft (so it survives a reload) but does not
+// count when asking whether to replace the draft: picking a template after
+// pasting the prior must not ask.
+function hasReportWorkspaceContent(payload = reportWorkingDraftPayload(), { includePrior = true } = {}) {
   return Boolean(
-    plainText(payload.report).trim()
+    (includePrior && payload.prior?.text?.trim())
+    || plainText(payload.report).trim()
     || payload.title?.trim()
     || payload.modality?.trim()
     || payload.topic?.trim()
@@ -870,6 +888,7 @@ function applyWorkingDraft(payload) {
   els.reportNoteInput.value = payload.note || "";
   els.reportInterestingInput.checked = Boolean(payload.isInteresting);
   setEditorHtml(els.reportTextEditor, payload.report || "");
+  setPrior(priorFromValue(payload.prior), { autosave: false });
   updateReportModeBadge();
   updateEditorDatalists("report");
   state.suppressReportAutosave = false;
@@ -884,7 +903,8 @@ function showDraftRecoveryDialog(selected, useLocal) {
   const excerpt = plainText(payload.report).replace(/\s+/g, " ").trim();
   els.draftRecoveryReportTitle.textContent = payload.title?.trim() || "Untitled report";
   els.draftRecoveryMeta.textContent = `${savedLabel} · ${sourceLabel}`;
-  els.draftRecoveryExcerpt.textContent = excerpt || "Report metadata only";
+  const priorNote = payload.prior?.text ? "Prior report attached" : "";
+  els.draftRecoveryExcerpt.textContent = [excerpt || (priorNote ? "" : "Report metadata only"), priorNote].filter(Boolean).join(" · ");
   state.pendingWorkingDraft = { selected, useLocal };
   if (!els.draftRecoveryDialog.open) els.draftRecoveryDialog.showModal();
 }
@@ -973,9 +993,9 @@ async function discardWorkingDraft(message) {
   const hasDraft = Boolean(
     state.workingDraftId
     || state.reportAutosaveDirty
-    || (local && !local.cleared && hasReportWorkspaceContent(local.payload || {}))
+    || (local && !local.cleared && hasReportWorkspaceContent(local.payload || {}, { includePrior: false }))
   );
-  if (hasDraft && hasReportWorkspaceContent() && !confirm(message)) return false;
+  if (hasDraft && hasReportWorkspaceContent(undefined, { includePrior: false }) && !confirm(message)) return false;
   await clearWorkingDraft();
   return true;
 }
@@ -1807,6 +1827,8 @@ function logout(message = "") {
   state.guidelineFileTokenExpiresAt = 0;
   resetGuidelineDraft();
   resetReportDraft();
+  setPrior(null, { autosave: false });
+  state.priorSaved.clear();
   setReportAutosaveStatus();
   els.loginPasswordInput.value = "";
   els.loginError.textContent = message;
@@ -4572,6 +4594,200 @@ function openWriterOldReports() {
   }
 }
 
+// Prior report (Report Writer "Prior" tab): the prior pasted from PACS for
+// the case being written, with GPT's key findings and the original shown
+// with key sentences marked. It rides along in the working draft and is
+// saved with the report as its own user_settings record (PRIOR_KEY_PREFIX +
+// report id), so reopening the report or its Work Log preview shows it.
+function setPrior(prior, { autosave = true } = {}) {
+  state.priorRequest += 1;
+  state.prior = prior || null;
+  state.priorLoading = false;
+  state.priorError = "";
+  state.priorEditing = false;
+  if (!prior && els.priorInput) els.priorInput.value = "";
+  renderPrior();
+  if (autosave) scheduleReportAutosave();
+}
+
+function priorStatusHtml() {
+  const prior = state.prior;
+  const removed = prior?.removed
+    ? `<span class="prior-removed-note">${prior.removed} identifier${prior.removed === 1 ? "" : "s"} removed before sending.</span>`
+    : "";
+  if (state.priorLoading) return `<span class="prior-loading">Reading the prior...</span>${removed}`;
+  if (state.priorError) {
+    return `<span class="prior-error" role="alert">Highlights unavailable: ${escapeHtml(state.priorError)}</span>
+      <button type="button" class="quiet-button" data-prior-retry>Retry</button>`;
+  }
+  if (prior && !prior.result) {
+    return `<span>Not highlighted yet.</span> <button type="button" class="quiet-button" data-prior-retry>Highlight</button>`;
+  }
+  return removed;
+}
+
+function renderPrior() {
+  if (!els.priorResult) return;
+  const prior = state.prior;
+  const pasting = !prior || state.priorEditing;
+  els.priorPasteForm.classList.toggle("hidden", !pasting);
+  els.priorResult.classList.toggle("hidden", pasting);
+  els.editPriorBtn.classList.toggle("hidden", !prior);
+  els.editPriorBtn.textContent = state.priorEditing ? "Back" : "Paste again";
+  els.clearPriorBtn.classList.toggle("hidden", !prior);
+  els.priorTabDot.classList.toggle("hidden", !prior);
+  els.highlightPriorBtn.disabled = state.priorLoading;
+  if (pasting) return;
+  els.priorStatus.innerHTML = priorStatusHtml();
+  els.priorStatus.classList.toggle("hidden", !els.priorStatus.innerHTML.trim());
+  els.priorSummary.innerHTML = state.priorLoading ? "" : priorSummaryHtml(prior.result);
+  els.priorOriginal.innerHTML = priorOriginalHtml(prior.text, state.priorLoading ? null : prior.result);
+}
+
+// Today's exam without any " - diagnosis" part of the title, so GPT knows
+// which region matters without being steered by today's diagnosis.
+function priorExamTitle() {
+  const title = els.reportTitleInput.value.trim().replace(/^untitled.*$/i, "").split(" - ")[0].trim();
+  return title || [els.reportModalityInput.value.trim(), els.reportBodyPartInput.value.trim()].filter(Boolean).join(" ");
+}
+
+async function highlightPrior(rawText) {
+  const { text, removed } = cleanPriorText(rawText);
+  if (!text) {
+    showToast("Nothing to highlight", "Paste a prior report first.", "info");
+    return false;
+  }
+  const keptRemoved = state.prior?.text === text ? Math.max(removed, state.prior.removed || 0) : removed;
+  setPrior({ text, result: null, removed: keptRemoved, highlightedAt: "" });
+  const request = state.priorRequest;
+  state.priorLoading = true;
+  renderPrior();
+  els.priorResult.scrollTop = 0;
+  try {
+    const output = await askOpenAI({
+      instructions: PRIOR_PROMPT,
+      input: priorInput(text, priorExamTitle()),
+      schema: PRIOR_SCHEMA
+    });
+    if (request !== state.priorRequest) return false;
+    const result = normalizePriorResult(output, text);
+    if (!result) throw new Error("No highlights came back.");
+    state.prior.result = result;
+    state.prior.highlightedAt = new Date().toISOString();
+    trackFeature("prior.highlight");
+    return true;
+  } catch (error) {
+    if (request !== state.priorRequest) return false;
+    console.warn("Prior highlights failed.", error);
+    state.priorError = friendlyErrorMessage(error) || "Please try again.";
+    return false;
+  } finally {
+    if (request === state.priorRequest) {
+      state.priorLoading = false;
+      renderPrior();
+      scheduleReportAutosave();
+    }
+  }
+}
+
+function jumpToPriorSentences(numbers) {
+  const nodes = numbers
+    .map(n => els.priorOriginal.querySelector(`[data-prior-sentence="${n}"]`))
+    .filter(Boolean);
+  if (!nodes.length) return;
+  nodes[0].scrollIntoView({ block: "center", behavior: "smooth" });
+  nodes.forEach(node => {
+    node.classList.remove("prior-flash");
+    void node.offsetWidth;
+    node.classList.add("prior-flash");
+  });
+}
+
+function priorRecordFilter(reportId) {
+  return `owner="${escapeFilter(state.auth?.user?.id || "")}" && key="${escapeFilter(`${PRIOR_KEY_PREFIX}${reportId}`)}"`;
+}
+
+async function findPriorRecord(reportId) {
+  const data = await pbList("user_settings", { perPage: 1, filter: priorRecordFilter(reportId), fields: "id,value" });
+  return data.items?.[0] || null;
+}
+
+// Resolves with the saved prior (or null). Cached per report for the Work Log.
+async function loadSavedPrior(reportId) {
+  if (!reportId || !state.auth?.user?.id) return null;
+  if (state.priorSaved.has(reportId)) return state.priorSaved.get(reportId);
+  try {
+    const record = await findPriorRecord(reportId);
+    const prior = record ? priorFromValue(record.value) : null;
+    state.priorSaved.set(reportId, prior);
+    return prior;
+  } catch (error) {
+    console.warn("Saved prior unavailable.", error);
+    return null;
+  }
+}
+
+// Saves (or removes) the prior for a just-saved report. A failure leaves
+// the report saved and says so; returns false then.
+async function saveReportPrior(reportId) {
+  if (!reportId) return true;
+  const owner = state.auth?.user?.id || "";
+  try {
+    const record = await findPriorRecord(reportId);
+    if (!state.prior) {
+      if (record) await pbDelete("user_settings", record.id);
+      state.priorSaved.set(reportId, null);
+      return true;
+    }
+    const value = priorSettingsValue(state.prior);
+    if (record) {
+      await pbUpdate("user_settings", record.id, { value });
+    } else {
+      await pbCreate("user_settings", { owner, key: `${PRIOR_KEY_PREFIX}${reportId}`, value });
+    }
+    state.priorSaved.set(reportId, priorFromValue(value));
+    return true;
+  } catch (error) {
+    console.warn("Prior could not be saved with the report.", error);
+    state.priorSaved.delete(reportId);
+    showToast("Report saved, prior not attached", friendlyErrorMessage(error) || "The prior report could not be saved.", "error");
+    return false;
+  }
+}
+
+async function deleteSavedPrior(reportId) {
+  state.priorSaved.delete(reportId);
+  try {
+    const record = await findPriorRecord(reportId);
+    if (record) await pbDelete("user_settings", record.id);
+  } catch (error) {
+    console.warn("Saved prior cleanup failed.", error);
+  }
+}
+
+// Work Log preview: the attached prior, folded under the report.
+function renderWorklogPrior(reportId) {
+  if (!els.worklogPrior) return;
+  const show = prior => {
+    els.worklogPrior.classList.toggle("hidden", !prior);
+    els.worklogPriorSummary.innerHTML = prior?.result ? priorSummaryHtml(prior.result) : "";
+    els.worklogPriorOriginal.innerHTML = prior ? priorOriginalHtml(prior.text, prior.result) : "";
+  };
+  if (!reportId) {
+    show(null);
+    return;
+  }
+  if (state.priorSaved.has(reportId)) {
+    show(state.priorSaved.get(reportId));
+    return;
+  }
+  show(null);
+  els.worklogPrior.open = false;
+  loadSavedPrior(reportId).then(prior => {
+    if (state.selectedWorklogReport?.id === reportId) show(prior);
+  });
+}
+
 function blankTemplate() {
   resetTemplateDraft();
   els.templateTitleInput.value = "";
@@ -5632,6 +5848,7 @@ function undoCombinedTemplate(before, after, { track = true } = {}) {
 function blankReport() {
   state.suppressReportAutosave = true;
   resetReportDraft();
+  setPrior(null, { autosave: false });
   state.selectedTemplate = null;
   els.reportTitleInput.value = "";
   els.reportModalityInput.value = "";
@@ -5947,13 +6164,18 @@ async function saveFullReport() {
   }
   state.reportNamedImpression = namedImpression;
   await linkReportFollowUps(state.reportDraftId, data);
+  const priorSaved = await saveReportPrior(state.reportDraftId);
   await clearWorkingDraft();
   els.oldSearchInput.value = data.title;
   state.selectedOldReport = null;
   await loadOldReports();
   await loadWorkLog();
   trackFeature(wasExisting ? "report.save.updated" : "report.save.created");
-  showToast(wasExisting ? "Report updated" : "Report created", data.isInteresting ? "Saved and marked as interesting." : "Updated in Old Reports and Work Log.");
+  if (priorSaved) {
+    showToast(wasExisting ? "Report updated" : "Report created", data.isInteresting ? "Saved and marked as interesting." : "Updated in Old Reports and Work Log.");
+  }
+  // The next report is another case, so it starts without this prior.
+  setPrior(null, { autosave: false });
   showMode("builder");
   return true;
 }
@@ -6228,6 +6450,7 @@ function renderWorklogPreview() {
     els.worklogPreviewTitle.textContent = "Select a report";
     els.worklogPreviewMeta.textContent = "";
     els.worklogPreviewText.textContent = "Select a report to preview it here.";
+    renderWorklogPrior("");
     els.editWorklogReportBtn.disabled = true;
     els.quickReportNoteBtn.disabled = true;
     updateReportNoteButton();
@@ -6244,6 +6467,7 @@ function renderWorklogPreview() {
     report.note
   ].filter(Boolean).map(escapeHtml).join(" / ");
   els.worklogPreviewText.innerHTML = reportHtml(report.report);
+  renderWorklogPrior(report.id);
   els.editWorklogReportBtn.disabled = false;
   els.quickReportNoteBtn.disabled = false;
   updateReportNoteButton();
@@ -6570,9 +6794,13 @@ async function openSavedReport(id) {
   els.reportNoteInput.value = report.note || "";
   els.reportInterestingInput.checked = Boolean(report.isInteresting);
   setEditorHtml(els.reportTextEditor, report.report || "");
+  setPrior(null, { autosave: false });
   state.suppressReportAutosave = false;
   scheduleReportAutosave(100);
   showMode("writer");
+  loadSavedPrior(report.id).then(prior => {
+    if (prior && state.reportDraftId === report.id && !state.prior) setPrior(prior);
+  });
   return true;
 }
 
@@ -6650,7 +6878,7 @@ document.querySelectorAll("[data-reference-tab]").forEach(button => {
   button.addEventListener("click", () => {
     const tab = button.dataset.referenceTab;
     showReferenceTab(tab);
-    trackFeature({ templates: "reference.templates", snippets: "reference.snippets", "old-reports": "reference.old_reports" }[tab]);
+    trackFeature({ templates: "reference.templates", snippets: "reference.snippets", "old-reports": "reference.old_reports", prior: "reference.prior" }[tab]);
   });
 });
 els.referenceDrawerBtn?.addEventListener("click", () => {
@@ -6658,6 +6886,36 @@ els.referenceDrawerBtn?.addEventListener("click", () => {
   if (state.referenceDrawerOpen) showReferenceTab(state.referenceTab, { updateRoute: false });
 });
 els.drawerBackdrop?.addEventListener("click", () => setReferenceDrawer(false));
+els.priorPasteForm?.addEventListener("submit", event => {
+  event.preventDefault();
+  highlightPrior(els.priorInput.value);
+});
+els.priorInput?.addEventListener("keydown", event => {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    highlightPrior(els.priorInput.value);
+  }
+});
+els.editPriorBtn?.addEventListener("click", () => {
+  if (!state.prior) return;
+  state.priorEditing = !state.priorEditing;
+  if (state.priorEditing) els.priorInput.value = state.prior.text;
+  renderPrior();
+  if (state.priorEditing) els.priorInput.focus();
+});
+els.clearPriorBtn?.addEventListener("click", () => {
+  setPrior(null);
+  trackFeature("prior.clear");
+  els.priorInput.focus();
+});
+els.priorResult?.addEventListener("click", event => {
+  if (event.target.closest("[data-prior-retry]") && state.prior) {
+    highlightPrior(state.prior.text);
+    return;
+  }
+  const finding = event.target.closest("[data-prior-jump]");
+  if (finding) jumpToPriorSentences(finding.dataset.priorJump.split(",").map(Number).filter(Boolean));
+});
 els.templateModalityRadios?.addEventListener("click", event => {
   const button = event.target.closest("[data-choice-value]");
   if (!button) return;
@@ -6817,6 +7075,7 @@ els.oldReportList.addEventListener("contextmenu", event => {
     actions.push({ label: "Delete saved report", danger: true, run: async () => {
       if (!confirm("Delete this old report?")) return;
       await pbDelete("old_reports", id);
+      deleteSavedPrior(id);
       if (state.selectedOldReport?.id === id) state.selectedOldReport = null;
       if (state.selectedWorklogReport?.id === id) state.selectedWorklogReport = null;
       if (state.reportDraftId === id) {
@@ -7580,6 +7839,7 @@ els.worklogList.addEventListener("contextmenu", event => {
     { label: "Delete saved report", danger: true, run: async () => {
       if (!confirm("Delete this saved report?")) return;
       await pbDelete("old_reports", id);
+      deleteSavedPrior(id);
       if (state.reportDraftId === id) {
         resetReportDraft();
       }

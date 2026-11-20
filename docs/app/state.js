@@ -132,6 +132,14 @@ export function createInitialState(snippetDefaults) {
       source: "old-report",
       loaded: false
     },
+    // Prior report pasted for the case being written (prior-report.js):
+    // { text, result, removed, highlightedAt } or null.
+    prior: null,
+    priorLoading: false,
+    priorError: "",
+    priorEditing: false,
+    priorRequest: 0,
+    priorSaved: new Map(),
     tiptapReady: false,
     editorUpdateTimers: new WeakMap()
   };

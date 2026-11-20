@@ -30,7 +30,8 @@ export const ROUTE_MODES = Object.fromEntries(Object.entries(MODE_ROUTES).map(([
 export const REFERENCE_ROUTES = {
   templates: "templates",
   snippets: "snippets",
-  "old-reports": "old-reports"
+  "old-reports": "old-reports",
+  prior: "prior"
 };
 export const ROUTE_REFERENCES = Object.fromEntries(Object.entries(REFERENCE_ROUTES).map(([tab, route]) => [route, tab]));
 
