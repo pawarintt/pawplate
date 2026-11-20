@@ -2181,7 +2181,13 @@ pre, textarea, .rich-editor {
 }
 
 #writerView .meta-grid {
-  grid-template-columns: minmax(160px, 1.1fr) minmax(84px, .48fr) minmax(104px, .64fr) minmax(110px, .68fr) minmax(150px, .72fr) minmax(130px, .64fr) minmax(164px, auto);
+  grid-template-columns: minmax(200px, 1fr) minmax(84px, 120px) minmax(130px, 200px) auto;
+}
+
+/* Topic, body part and keywords still fill in from templates and save with
+   the report; they're just not shown in the Report Writer bar. */
+#writerView .meta-grid > .writer-meta-hidden {
+  display: none;
 }
 
 .meta-grid > input:nth-of-type(1) {
@@ -2777,7 +2783,7 @@ button.summary-card {
   }
 
   #writerView .meta-grid {
-    grid-template-columns: minmax(120px, 1.1fr) minmax(70px, .48fr) minmax(88px, .64fr) minmax(88px, .68fr) minmax(110px, .72fr) minmax(100px, .64fr) auto;
+    grid-template-columns: minmax(140px, 1fr) minmax(70px, 100px) minmax(100px, 160px) auto;
   }
 }
 

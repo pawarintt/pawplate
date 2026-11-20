@@ -1,1 +1,1 @@
-import("./app/main.js?v=20261120-interesting-all");
+import("./app/main.js?v=20261120-slim-details");

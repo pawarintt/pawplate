@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-interesting-all";
-import { collectDom } from "./dom.js?v=20261120-interesting-all";
-import { createInitialState } from "./state.js?v=20261120-interesting-all";
+} from "./constants.js?v=20261120-slim-details";
+import { collectDom } from "./dom.js?v=20261120-slim-details";
+import { createInitialState } from "./state.js?v=20261120-slim-details";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-interesting-all";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-interesting-all";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-interesting-all";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-interesting-all";
+} from "./utils.js?v=20261120-slim-details";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-slim-details";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-slim-details";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-slim-details";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +71,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-interesting-all";
+} from "./prior-report.js?v=20261120-slim-details";
 import {
   createReportIndex,
   getIndexedReport,
@@ -81,7 +81,7 @@ import {
   searchReports,
   stripHtml,
   upsertReport
-} from "./report-search.js?v=20261120-interesting-all";
+} from "./report-search.js?v=20261120-slim-details";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -5906,6 +5906,19 @@ function editTemplate(id) {
   focusEditor(els.templateTextEditor);
 }
 
+// Saved keywords are "title topic bodyPart keywords note" (see reportData).
+// Take back only the keywords part so re-saving doesn't stack copies of the
+// title and HN, which would now pile up unseen with the field hidden.
+function ownReportKeywords(report) {
+  let words = report.keywords || "";
+  const prefix = `${report.title || ""} ${report.topic || ""} ${report.bodyPart || ""} `;
+  if (!words.startsWith(prefix)) return words;
+  words = words.slice(prefix.length);
+  const suffix = ` ${report.note || ""}`;
+  if (words.endsWith(suffix)) words = words.slice(0, -suffix.length);
+  return words.trim();
+}
+
 function reportData() {
   return {
     title: els.reportTitleInput.value.trim() || "Untitled report",
@@ -7145,7 +7158,7 @@ async function openSavedReport(id) {
   els.reportModalityInput.value = report.modality || "";
   els.reportTopicInput.value = report.topic || "";
   els.reportBodyPartInput.value = report.bodyPart || "";
-  els.reportKeywordInput.value = report.keywords || "";
+  els.reportKeywordInput.value = ownReportKeywords(report);
   els.reportNoteInput.value = report.note || "";
   els.reportInterestingInput.checked = Boolean(report.isInteresting);
   setEditorHtml(els.reportTextEditor, report.report || "");
