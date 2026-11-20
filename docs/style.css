@@ -5138,8 +5138,8 @@ button.summary-card {
 }
 
 /* --- Follow-up inbox: Due and Upcoming read apart ------------------------ */
-/* Due = soft rose cards with a left accent bar and a rose pill.
-   Upcoming = quieter lavender cards. Done stays plain. */
+/* Glass cards: translucent tinted fills, a bright top edge and a soft glow.
+   Due = rose glass with a glowing left bar; Upcoming = clearer lavender glass. */
 
 .follow-up-list {
   padding: 4px 0 10px;
@@ -5168,88 +5168,97 @@ button.summary-card {
 .follow-up-count {
   min-width: 20px;
   padding: 1px 7px;
+  border: 1px solid rgba(255, 255, 255, .85);
   border-radius: 999px;
-  background: rgba(255, 255, 255, .8);
+  background: rgba(255, 255, 255, .55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
   color: inherit;
   font-size: .7rem;
   letter-spacing: 0;
   text-align: center;
 }
 .follow-up-section.is-due h4 { color: #c0506e; }
-.follow-up-section.is-due h4::before { background: #ee8fa8; }
-.follow-up-section.is-due .follow-up-count { background: #fde3ea; }
+.follow-up-section.is-due h4::before { background: #ee8fa8; box-shadow: 0 0 8px rgba(238, 143, 168, .8); }
+.follow-up-section.is-due .follow-up-count { background: rgba(253, 220, 230, .6); }
 .follow-up-section.is-upcoming h4 { color: #7466b0; }
-.follow-up-section.is-upcoming h4::before { background: #b6aaea; }
-.follow-up-section.is-upcoming .follow-up-count { background: #ece8fb; }
+.follow-up-section.is-upcoming h4::before { background: #b6aaea; box-shadow: 0 0 8px rgba(182, 170, 234, .8); }
+.follow-up-section.is-upcoming .follow-up-count { background: rgba(232, 226, 252, .6); }
 
 .follow-up-section .follow-up-item {
   position: relative;
-  margin-bottom: 6px;
-  padding: 9px 11px 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .6);
+  margin-bottom: 7px;
+  padding: 9px 11px 9px 13px;
+  border: 1px solid rgba(255, 255, 255, .8);
+  border-bottom-color: var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .34));
+  box-shadow: var(--glass-edge), 0 4px 14px rgba(110, 70, 110, .06);
   overflow: hidden;
 }
 .follow-up-section .follow-up-item::before {
   content: "";
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
+  top: 8px;
+  bottom: 8px;
+  left: 4px;
+  width: 3px;
+  border-radius: 3px;
 }
 
-/* Due */
+/* Due: rose glass, glowing bar */
 .follow-up-section.is-due .follow-up-item {
-  border-color: #f6cdd8;
-  background: #fff1f5;
+  background: linear-gradient(135deg, rgba(255, 228, 236, .78), rgba(255, 240, 246, .5) 60%, rgba(255, 255, 255, .42));
+  box-shadow: var(--glass-edge), 0 6px 18px rgba(232, 120, 150, .14);
 }
 .follow-up-section.is-due .follow-up-item::before {
   background: #ee8fa8;
+  box-shadow: 0 0 8px rgba(238, 143, 168, .75);
 }
 .follow-up-section.is-due .follow-up-item.unread {
-  background: #ffe8ef;
+  background: linear-gradient(135deg, rgba(255, 214, 227, .85), rgba(255, 233, 241, .58) 60%, rgba(255, 255, 255, .45));
 }
 .follow-up-section.is-due .follow-up-title {
   font-weight: var(--weight-bold);
 }
 
-/* Upcoming: lighter and quieter */
+/* Upcoming: clearer, quieter lavender glass */
 .follow-up-section.is-upcoming .follow-up-item {
-  border-color: #e4def8;
-  background: rgba(246, 243, 255, .75);
+  background: linear-gradient(135deg, rgba(240, 236, 255, .6), rgba(255, 255, 255, .32));
 }
 .follow-up-section.is-upcoming .follow-up-item::before {
-  background: #cfc6f3;
+  background: rgba(190, 178, 240, .7);
 }
 .follow-up-section.is-upcoming .follow-up-title {
   color: #4a4260;
   font-weight: var(--weight-medium);
 }
 
-/* Done: plain list as before */
+/* Done: plain glass */
 .follow-up-section.is-done .follow-up-item {
-  margin-bottom: 4px;
-  background: rgba(255, 255, 255, .45);
+  margin-bottom: 5px;
+  box-shadow: var(--glass-edge);
 }
 
-/* When pill */
+/* When pill: frosted */
 .follow-up-section .follow-up-when {
   padding: 2px 9px;
+  border: 1px solid rgba(255, 255, 255, .85);
   border-radius: 999px;
-  background: rgba(255, 255, 255, .8);
+  background: rgba(255, 255, 255, .5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
   color: var(--muted);
   font-size: .7rem;
 }
 .follow-up-section.is-due .follow-up-when {
-  background: #fde0e8;
+  background: rgba(252, 208, 222, .55);
   color: #b4486a;
 }
 .follow-up-section.is-due .follow-up-when.overdue {
-  background: #fbd3de;
+  background: rgba(250, 196, 213, .62);
   color: #a83a5e;
 }
 .follow-up-section.is-upcoming .follow-up-when {
-  background: #ebe6fb;
+  background: rgba(228, 222, 252, .6);
   color: #5a4a8a;
 }
 
@@ -5261,16 +5270,18 @@ button.summary-card {
   color: #9a4d66;
 }
 
+/* Buttons stay flat; just frosted white */
 .follow-up-section .follow-up-actions button {
   border-color: rgba(255, 255, 255, .9);
-  background: rgba(255, 255, 255, .85);
+  background: rgba(255, 255, 255, .6);
 }
 .follow-up-section .follow-up-actions [data-follow-up-action="done"] {
   border-color: var(--mint-line);
-  background: var(--mint);
+  background: rgba(231, 239, 227, .8);
   color: var(--mint-ink);
 }
 .follow-up-section.is-due .follow-up-item.unread .follow-up-dot {
   border-color: #e3708f;
   background: #e3708f;
+  box-shadow: 0 0 6px rgba(227, 112, 143, .6);
 }

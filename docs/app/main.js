@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-follow-up-sections";
-import { collectDom } from "./dom.js?v=20261120-follow-up-sections";
-import { createInitialState } from "./state.js?v=20261120-follow-up-sections";
+} from "./constants.js?v=20261120-follow-up-glass";
+import { collectDom } from "./dom.js?v=20261120-follow-up-glass";
+import { createInitialState } from "./state.js?v=20261120-follow-up-glass";
 import {
   copyText,
   debounce,
@@ -56,11 +56,11 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-follow-up-sections";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-follow-up-sections";
-import { markTerms as markPawletTerms, searchPawletNotes, searchTerms } from "./pawlet-search.js?v=20261120-follow-up-sections";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-follow-up-sections";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-follow-up-sections";
+} from "./utils.js?v=20261120-follow-up-glass";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-follow-up-glass";
+import { markTerms as markPawletTerms, searchPawletNotes, searchTerms } from "./pawlet-search.js?v=20261120-follow-up-glass";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-follow-up-glass";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-follow-up-glass";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -72,7 +72,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-follow-up-sections";
+} from "./prior-report.js?v=20261120-follow-up-glass";
 import {
   createReportIndex,
   getIndexedReport,
@@ -82,7 +82,7 @@ import {
   searchReports,
   stripHtml,
   upsertReport
-} from "./report-search.js?v=20261120-follow-up-sections";
+} from "./report-search.js?v=20261120-follow-up-glass";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
