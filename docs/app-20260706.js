@@ -1,1 +1,1 @@
-import("./app/main.js?v=20261120-search-all");
+import("./app/main.js?v=20261120-interesting-all");

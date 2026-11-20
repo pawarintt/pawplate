@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-search-all";
-import { collectDom } from "./dom.js?v=20261120-search-all";
-import { createInitialState } from "./state.js?v=20261120-search-all";
+} from "./constants.js?v=20261120-interesting-all";
+import { collectDom } from "./dom.js?v=20261120-interesting-all";
+import { createInitialState } from "./state.js?v=20261120-interesting-all";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-search-all";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-search-all";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-search-all";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-search-all";
+} from "./utils.js?v=20261120-interesting-all";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-interesting-all";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-interesting-all";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-interesting-all";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +71,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-search-all";
+} from "./prior-report.js?v=20261120-interesting-all";
 import {
   createReportIndex,
   getIndexedReport,
@@ -81,7 +81,7 @@ import {
   searchReports,
   stripHtml,
   upsertReport
-} from "./report-search.js?v=20261120-search-all";
+} from "./report-search.js?v=20261120-interesting-all";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -6231,10 +6231,11 @@ function reportMatchesQuery(report, query) {
 // The Work Log list loads only the newest 500 reports. Searching (or the
 // modality filter) loads every report into an in-memory index, never to disk,
 // and keeps it in sync with changes until sign-out.
-const worklogSearch = { index: null, status: "idle", syncedAt: "", generation: 0, syncing: null };
+const worklogSearch = { interesting: [], index: null, status: "idle", syncedAt: "", generation: 0, syncing: null };
 const WORKLOG_SEARCH_RENDER_LIMIT = 500;
 
 function resetWorklogSearchIndex() {
+  worklogSearch.interesting = [];
   worklogSearch.index = null;
   worklogSearch.status = "idle";
   worklogSearch.syncedAt = "";
@@ -6264,7 +6265,67 @@ function indexWorklogReports(items) {
 function findWorklogReport(id) {
   return state.workLogReports.find(item => item.id === id)
     || (worklogSearch.index && getIndexedReport(worklogSearch.index, id))
+    || worklogSearch.interesting.find(item => item.id === id)
     || null;
+}
+
+// Interesting reports can be older than the newest 500, so they are fetched
+// on their own (in memory only, like everything else here).
+async function loadInterestingReports() {
+  const request = beginDataLoad("interestingReports");
+  const items = [];
+  try {
+    for (let page = 1; page < 20; page += 1) {
+      const data = await pbList("old_reports", {
+        page,
+        perPage: 500,
+        sort: "-created",
+        filter: 'sourceType="final-report" && isInteresting=true',
+        fields: WORKLOG_REPORT_FIELDS
+      });
+      items.push(...data.items);
+      if (page >= data.totalPages) break;
+    }
+  } catch (error) {
+    console.warn("Interesting cases could not load", error);
+    return false;
+  }
+  if (!isCurrentDataLoad("interestingReports", request)) return false;
+  worklogSearch.interesting = items;
+  renderInterestingCases();
+  renderWorkLog();
+  return true;
+}
+
+// Every interesting report: fetched list, then the search index, with the
+// loaded Work Log copies (the ones edits update) winning.
+function allInterestingReports() {
+  const byId = new Map();
+  for (const report of worklogSearch.interesting) byId.set(report.id, report);
+  if (worklogSearch.status === "ready" && worklogSearch.index) {
+    for (const report of indexedReports(worklogSearch.index)) {
+      if (report.isInteresting || byId.has(report.id)) byId.set(report.id, report);
+    }
+  }
+  for (const report of state.workLogReports) {
+    if (report.isInteresting || byId.has(report.id)) byId.set(report.id, report);
+  }
+  return [...byId.values()]
+    .filter(report => report.isInteresting)
+    .sort((a, b) => String(b.created).localeCompare(String(a.created)));
+}
+
+function searchReportList(reports, query) {
+  if (!query) return { reports, highlightQuery: query };
+  const index = createReportIndex();
+  for (const report of reports) upsertReport(index, report, worklogSearchText(report));
+  const found = searchReports(index, query, { extraText: reportNoteText });
+  const byDate = (a, b) => String(b.report.created).localeCompare(String(a.report.created));
+  found.results.sort((a, b) => (a.exact === b.exact ? byDate(a, b) : a.exact ? -1 : 1));
+  return {
+    reports: found.results.map(result => result.report),
+    highlightQuery: [...found.terms, ...found.fuzzyWords.slice(0, 40)].join(" ")
+  };
 }
 
 const nextFrame = () => new Promise(resolve => window.setTimeout(resolve, 0));
@@ -6455,6 +6516,7 @@ async function loadWorkLog() {
   if (!isCurrentDataLoad("workLog", request)) return false;
   state.workLogReports = data.items;
   loadWorklogStats();
+  loadInterestingReports();
   syncWorklogSearchIndex();
   if (state.selectedWorklogReport) {
     state.selectedWorklogReport = state.workLogReports.find(item => item.id === state.selectedWorklogReport.id)
@@ -6548,7 +6610,7 @@ function renderWorkLog() {
   today.setHours(0, 0, 0, 0);
   const counts = worklogDateCounts();
   const todayCount = counts.get(dateKey(today))?.total || 0;
-  const interestingCount = state.workLogReports.filter(report => report.isInteresting).length;
+  const interestingCount = allInterestingReports().length;
   const activeDays = counts.size;
   const modalityCounts = worklogModalityCounts();
   els.worklogSummary.innerHTML = [
@@ -7040,26 +7102,28 @@ function renderWorklogTrends(today) {
 
 function renderInterestingCases() {
   const query = els.interestingSearchInput.value.trim();
-  const reports = state.workLogReports
-    .filter(report => report.isInteresting)
-    .filter(report => reportMatchesQuery(report, query));
+  const { reports, highlightQuery } = searchReportList(allInterestingReports(), query);
+  if (!reports.length && query) {
+    els.interestingList.innerHTML = `<div class="empty">No interesting cases match "${escapeHtml(query)}".</div>`;
+    return;
+  }
   if (!reports.length) {
     els.interestingList.innerHTML = `<div class="empty">Mark a saved report as interesting to keep it here for quick lookup.</div>`;
     return;
   }
   els.interestingList.innerHTML = reports.map((report, index) => {
     const personalNote = reportNoteText(report.id);
-    const reportExcerpt = report.report ? snippet(report.report, query) : "";
+    const reportExcerpt = report.report ? snippet(report.report, highlightQuery) : "";
     return `
       <button class="result-item ${state.selectedWorklogReport?.id === report.id ? "active" : ""}" data-interesting-id="${report.id}" type="button">
         <span class="result-no">${index + 1}.</span>
         <span>
-          <span class="result-title">${highlight(report.title || "Untitled", query)}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}</span>
+          <span class="result-title">${highlight(report.title || "Untitled", highlightQuery)}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}</span>
           <span class="result-meta">${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
-          ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
-          ${report.note ? `<span class="result-snippet"><span class="copy-hn" data-copy-hn="${escapeHtml(report.note)}" title="Click to copy HN">${highlight(report.note, query)}</span></span>` : ""}
-          ${reportExcerpt ? `<span class="result-snippet result-report-snippet">${highlight(reportExcerpt, query)}</span>` : ""}
-          ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, query), query)}</span>` : ""}
+          ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, highlightQuery)}</span>` : ""}
+          ${report.note ? `<span class="result-snippet"><span class="copy-hn" data-copy-hn="${escapeHtml(report.note)}" title="Click to copy HN">${highlight(report.note, highlightQuery)}</span></span>` : ""}
+          ${reportExcerpt ? `<span class="result-snippet result-report-snippet">${highlight(reportExcerpt, highlightQuery)}</span>` : ""}
+          ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, highlightQuery), highlightQuery)}</span>` : ""}
         </span>
       </button>
     `;
