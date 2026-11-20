@@ -5136,3 +5136,141 @@ button.summary-card {
     box-shadow: 0 0 0 3px rgba(160, 140, 235, .7);
   }
 }
+
+/* --- Follow-up inbox: Due and Upcoming read apart ------------------------ */
+/* Due = soft rose cards with a left accent bar and a rose pill.
+   Upcoming = quieter lavender cards. Done stays plain. */
+
+.follow-up-list {
+  padding: 4px 0 10px;
+}
+.follow-up-section {
+  padding: 0 10px;
+}
+.follow-up-section + .follow-up-section {
+  margin-top: 6px;
+}
+.follow-up-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 4px 6px;
+  font-size: .72rem;
+  letter-spacing: .05em;
+}
+.follow-up-section h4::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.follow-up-count {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .8);
+  color: inherit;
+  font-size: .7rem;
+  letter-spacing: 0;
+  text-align: center;
+}
+.follow-up-section.is-due h4 { color: #c0506e; }
+.follow-up-section.is-due h4::before { background: #ee8fa8; }
+.follow-up-section.is-due .follow-up-count { background: #fde3ea; }
+.follow-up-section.is-upcoming h4 { color: #7466b0; }
+.follow-up-section.is-upcoming h4::before { background: #b6aaea; }
+.follow-up-section.is-upcoming .follow-up-count { background: #ece8fb; }
+
+.follow-up-section .follow-up-item {
+  position: relative;
+  margin-bottom: 6px;
+  padding: 9px 11px 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .6);
+  overflow: hidden;
+}
+.follow-up-section .follow-up-item::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+}
+
+/* Due */
+.follow-up-section.is-due .follow-up-item {
+  border-color: #f6cdd8;
+  background: #fff1f5;
+}
+.follow-up-section.is-due .follow-up-item::before {
+  background: #ee8fa8;
+}
+.follow-up-section.is-due .follow-up-item.unread {
+  background: #ffe8ef;
+}
+.follow-up-section.is-due .follow-up-title {
+  font-weight: var(--weight-bold);
+}
+
+/* Upcoming: lighter and quieter */
+.follow-up-section.is-upcoming .follow-up-item {
+  border-color: #e4def8;
+  background: rgba(246, 243, 255, .75);
+}
+.follow-up-section.is-upcoming .follow-up-item::before {
+  background: #cfc6f3;
+}
+.follow-up-section.is-upcoming .follow-up-title {
+  color: #4a4260;
+  font-weight: var(--weight-medium);
+}
+
+/* Done: plain list as before */
+.follow-up-section.is-done .follow-up-item {
+  margin-bottom: 4px;
+  background: rgba(255, 255, 255, .45);
+}
+
+/* When pill */
+.follow-up-section .follow-up-when {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .8);
+  color: var(--muted);
+  font-size: .7rem;
+}
+.follow-up-section.is-due .follow-up-when {
+  background: #fde0e8;
+  color: #b4486a;
+}
+.follow-up-section.is-due .follow-up-when.overdue {
+  background: #fbd3de;
+  color: #a83a5e;
+}
+.follow-up-section.is-upcoming .follow-up-when {
+  background: #ebe6fb;
+  color: #5a4a8a;
+}
+
+/* Notes in purple-grey instead of brown */
+.follow-up-note {
+  color: #6f6585;
+}
+.follow-up-section.is-due .follow-up-note {
+  color: #9a4d66;
+}
+
+.follow-up-section .follow-up-actions button {
+  border-color: rgba(255, 255, 255, .9);
+  background: rgba(255, 255, 255, .85);
+}
+.follow-up-section .follow-up-actions [data-follow-up-action="done"] {
+  border-color: var(--mint-line);
+  background: var(--mint);
+  color: var(--mint-ink);
+}
+.follow-up-section.is-due .follow-up-item.unread .follow-up-dot {
+  border-color: #e3708f;
+  background: #e3708f;
+}

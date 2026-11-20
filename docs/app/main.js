@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-pawlet-search";
-import { collectDom } from "./dom.js?v=20261120-pawlet-search";
-import { createInitialState } from "./state.js?v=20261120-pawlet-search";
+} from "./constants.js?v=20261120-follow-up-sections";
+import { collectDom } from "./dom.js?v=20261120-follow-up-sections";
+import { createInitialState } from "./state.js?v=20261120-follow-up-sections";
 import {
   copyText,
   debounce,
@@ -56,11 +56,11 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-pawlet-search";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-pawlet-search";
-import { markTerms as markPawletTerms, searchPawletNotes, searchTerms } from "./pawlet-search.js?v=20261120-pawlet-search";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-pawlet-search";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-pawlet-search";
+} from "./utils.js?v=20261120-follow-up-sections";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-follow-up-sections";
+import { markTerms as markPawletTerms, searchPawletNotes, searchTerms } from "./pawlet-search.js?v=20261120-follow-up-sections";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-follow-up-sections";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-follow-up-sections";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -72,7 +72,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-pawlet-search";
+} from "./prior-report.js?v=20261120-follow-up-sections";
 import {
   createReportIndex,
   getIndexedReport,
@@ -82,7 +82,7 @@ import {
   searchReports,
   stripHtml,
   upsertReport
-} from "./report-search.js?v=20261120-pawlet-search";
+} from "./report-search.js?v=20261120-follow-up-sections";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -2232,6 +2232,15 @@ function followUpWhenLabel(item, today) {
   return followUpDateLabel(item.dueDate);
 }
 
+// Inbox pill text: overdue items say how late they are, so they read apart from upcoming ones.
+function followUpInboxWhen(item, today) {
+  if (!item.doneAt && item.dueDate < today) {
+    const days = Math.round((dateFromKey(today) - dateFromKey(item.dueDate)) / 86400000);
+    return days === 1 ? "Overdue 1 day" : `Overdue ${days} days`;
+  }
+  return followUpWhenLabel(item, today);
+}
+
 function followUpReport(item) {
   if (!item.reportId) return null;
   if (state.selectedWorklogReport?.id === item.reportId) return state.selectedWorklogReport;
@@ -2384,7 +2393,7 @@ function followUpItemHtml(item, today) {
         ${item.note ? `<span class="follow-up-note">${escapeHtml(item.note)}</span>` : ""}
         ${quickNote ? `<span class="follow-up-quick-note" title="Quick note"><span class="note-dot" aria-hidden="true"></span>${escapeHtml(snippet(quickNote, ""))}</span>` : ""}
       </button>
-      <span class="follow-up-when${overdue ? " overdue" : ""}">${escapeHtml(followUpWhenLabel(item, today))}</span>
+      <span class="follow-up-when${overdue ? " overdue" : ""}">${escapeHtml(followUpInboxWhen(item, today))}</span>
       <div class="follow-up-actions">${actions}</div>
     </div>`;
 }
@@ -2416,8 +2425,8 @@ function renderFollowUps() {
     els.followUpList.innerHTML = `<div class="empty">${state.followUpsLoadPromise ? "Loading follow-ups..." : "Follow-ups could not load. Check the connection; they will retry."}</div>`;
     return;
   }
-  const section = (label, items, extra = "") => items.length
-    ? `<div class="follow-up-section"><h4>${label}${extra}</h4>${items.map(item => followUpItemHtml(item, today)).join("")}</div>`
+  const section = (label, items) => items.length
+    ? `<div class="follow-up-section is-${label.toLowerCase()}"><h4><span class="follow-up-section-label">${label}</span><span class="follow-up-count">${items.length}</span></h4>${items.map(item => followUpItemHtml(item, today)).join("")}</div>`
     : "";
   const doneToggle = done.length
     ? `<button class="follow-up-done-toggle quiet-button" type="button" data-follow-up-action="toggle-done">${state.followUpsShowDone ? "Hide done" : `Show done (${done.length})`}</button>`

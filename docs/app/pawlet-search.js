@@ -3,7 +3,7 @@
 // text; English words of 4+ letters also match a word that starts one typo
 // away (two for 9+ letters). Thai has no spaces, so it matches as plain text.
 
-import { normalizeSearchText, prefixWithin, typoAllowance } from "./report-search.js?v=20261120-pawlet-search";
+import { normalizeSearchText, prefixWithin, typoAllowance } from "./report-search.js?v=20261120-follow-up-sections";
 
 const WORD_RE = /[\p{L}\p{N}]+/gu;
 
