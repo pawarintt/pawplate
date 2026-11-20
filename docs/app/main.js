@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-details-removed";
-import { collectDom } from "./dom.js?v=20261120-details-removed";
-import { createInitialState } from "./state.js?v=20261120-details-removed";
+} from "./constants.js?v=20261120-pawlet-search";
+import { collectDom } from "./dom.js?v=20261120-pawlet-search";
+import { createInitialState } from "./state.js?v=20261120-pawlet-search";
 import {
   copyText,
   debounce,
@@ -56,10 +56,11 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-details-removed";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-details-removed";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-details-removed";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-details-removed";
+} from "./utils.js?v=20261120-pawlet-search";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-pawlet-search";
+import { markTerms as markPawletTerms, searchPawletNotes, searchTerms } from "./pawlet-search.js?v=20261120-pawlet-search";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-pawlet-search";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-pawlet-search";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +72,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-details-removed";
+} from "./prior-report.js?v=20261120-pawlet-search";
 import {
   createReportIndex,
   getIndexedReport,
@@ -81,7 +82,7 @@ import {
   searchReports,
   stripHtml,
   upsertReport
-} from "./report-search.js?v=20261120-details-removed";
+} from "./report-search.js?v=20261120-pawlet-search";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -3045,7 +3046,10 @@ function renderPersonalNotes() {
   observePersonalNoteSizes();
   fitPersonalNotesToBoardWidth();
   sizePersonalNotesBoard();
-  mountPersonalNoteEditors();
+  applyPawletSearchHighlights();
+  mountPersonalNoteEditors()
+    .then(() => applyPawletSearchHighlights())
+    .catch(() => {});
 }
 
 function destroyPersonalNoteEditors() {
@@ -3917,6 +3921,218 @@ async function deletePersonalNote(id) {
   await deletePawletAssets(note.images);
 }
 
+// --- Pawlet search ---------------------------------------------------------
+// Type to list matching notes; click one (or press Enter for the top match)
+// to scroll the board to it. Enter again goes to the next match.
+
+const pawletSearch = { results: [], active: 0, jumped: -1 };
+
+function pawletSearchOpen(open) {
+  const show = Boolean(open) && Boolean(els.pawletSearchInput.value.trim());
+  els.pawletSearchResults.classList.toggle("hidden", !show);
+  els.pawletSearchInput.setAttribute("aria-expanded", String(show));
+}
+
+function updatePawletSearchCount() {
+  const total = pawletSearch.results.length;
+  let label = "";
+  if (els.pawletSearchInput.value.trim()) {
+    if (!total) label = "None";
+    else if (pawletSearch.jumped >= 0) label = `${pawletSearch.jumped + 1} of ${total}`;
+    else label = String(total);
+  }
+  els.pawletSearchCount.textContent = label;
+}
+
+function renderPawletSearchResults() {
+  const terms = searchTerms(els.pawletSearchInput.value);
+  const { results, active } = pawletSearch;
+  els.pawletSearchResults.innerHTML = results.length
+    ? results.map(({ note, snippet }, index) => `
+      <button class="pawlet-search-result ${index === active ? "is-active" : ""}" type="button" role="option" aria-selected="${index === active}" data-pawlet-search-index="${index}">
+        <span class="pawlet-search-swatch" data-note-color="${note.color}" aria-hidden="true"></span>
+        <span class="pawlet-search-text">
+          <strong>${markPawletTerms(note.title, terms, escapeHtml)}</strong>
+          ${snippet ? `<span>${markPawletTerms(snippet, terms, escapeHtml)}</span>` : ""}
+        </span>
+      </button>
+    `).join("")
+    : '<div class="pawlet-search-empty">No notes match</div>';
+  els.pawletSearchResults.querySelector(".is-active")?.scrollIntoView({ block: "nearest" });
+}
+
+function runPawletSearch() {
+  pawletSearch.results = searchPawletNotes(state.personalNotes.notes, els.pawletSearchInput.value);
+  pawletSearch.active = 0;
+  pawletSearch.jumped = -1;
+  renderPawletSearchResults();
+  updatePawletSearchCount();
+  pawletSearchOpen(true);
+  applyPawletSearchHighlights();
+}
+
+function clearPawletSearch() {
+  els.pawletSearchInput.value = "";
+  pawletSearch.results = [];
+  pawletSearch.active = 0;
+  pawletSearch.jumped = -1;
+  els.pawletSearchResults.innerHTML = "";
+  updatePawletSearchCount();
+  pawletSearchOpen(false);
+  applyPawletSearchHighlights();
+}
+
+function movePawletSearchActive(step) {
+  const total = pawletSearch.results.length;
+  if (!total) return;
+  pawletSearch.active = (pawletSearch.active + step + total) % total;
+  renderPawletSearchResults();
+  pawletSearchOpen(true);
+}
+
+function jumpToPawletSearchResult(index) {
+  const result = pawletSearch.results[index];
+  if (!result) return;
+  pawletSearch.active = index;
+  pawletSearch.jumped = index;
+  updatePawletSearchCount();
+  pawletSearchOpen(false);
+  jumpToPawletNote(result.note.id);
+  trackFeature("always_notes.search_jump");
+}
+
+// Marks every search word inside the notes on the board (CSS Custom
+// Highlight API; skipped quietly where the browser lacks it).
+function applyPawletSearchHighlights() {
+  const highlights = globalThis.CSS?.highlights;
+  if (!highlights || typeof Highlight === "undefined") return;
+  const terms = state.alwaysNotesOpen ? searchTerms(els.pawletSearchInput?.value || "") : [];
+  if (!terms.length) {
+    highlights.delete("pawlet-search");
+    return;
+  }
+  const ranges = [];
+  const walker = document.createTreeWalker(els.personalNotesBoard, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const lower = node.nodeValue.toLowerCase();
+    for (const term of terms) {
+      let from = 0;
+      while (from < lower.length) {
+        const index = lower.indexOf(term, from);
+        if (index < 0) break;
+        const range = new Range();
+        range.setStart(node, index);
+        range.setEnd(node, index + term.length);
+        ranges.push(range);
+        from = index + term.length;
+      }
+    }
+  }
+  highlights.set("pawlet-search", new Highlight(...ranges));
+}
+
+function jumpToPawletNote(id) {
+  const note = state.personalNotes.notes.find(item => item.id === id);
+  let card = els.personalNotesBoard.querySelector(`[data-personal-note-id="${CSS.escape(id)}"]`);
+  if (!note || !card) return;
+  if (note.collapsed) {
+    const button = card.querySelector("[data-note-collapse]");
+    if (button) togglePersonalNoteCollapsed(id, card, button);
+  }
+  bringPersonalNoteToFront(id, card);
+  // Small zoom makes a note hard to read, so come back to 100% first.
+  if (pawletZoom() < 0.8) applyPawletZoom(1);
+  const zoom = pawletZoom();
+  const canvas = els.personalNotesCanvas;
+  const pad = 28;
+  const width = note.width * zoom;
+  const height = (note.collapsed ? 38 : note.height) * zoom;
+  const left = width + pad * 2 <= canvas.clientWidth
+    ? note.x * zoom - (canvas.clientWidth - width) / 2
+    : note.x * zoom - pad;
+  const top = height + pad * 2 <= canvas.clientHeight
+    ? note.y * zoom - (canvas.clientHeight - height) / 3
+    : note.y * zoom - pad;
+  sizePersonalNotesBoard({ reachX: Math.max(0, left), reachY: Math.max(0, top) });
+  const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  canvas.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior: smooth ? "smooth" : "auto" });
+  schedulePawletMinimap();
+  scrollPawletNoteToMatch(card);
+  card.classList.remove("is-search-hit");
+  void card.offsetWidth;
+  card.classList.add("is-search-hit");
+  window.clearTimeout(card.__searchHitTimer);
+  card.__searchHitTimer = window.setTimeout(() => card.classList.remove("is-search-hit"), 1800);
+}
+
+// Long notes scroll inside themselves: bring the first match into view.
+function scrollPawletNoteToMatch(card) {
+  const scroller = card.querySelector(".personal-note-content");
+  const terms = searchTerms(els.pawletSearchInput.value);
+  if (!scroller || !terms.length) return;
+  const walker = document.createTreeWalker(scroller, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const lower = node.nodeValue.toLowerCase();
+    const index = Math.min(...terms.map(term => lower.indexOf(term)).filter(at => at >= 0));
+    if (!Number.isFinite(index)) continue;
+    const range = new Range();
+    range.setStart(node, index);
+    range.setEnd(node, index + 1);
+    const zoom = pawletZoom();
+    const offset = (range.getBoundingClientRect().top - scroller.getBoundingClientRect().top) / zoom;
+    if (offset < 0 || offset > scroller.clientHeight - 24) {
+      scroller.scrollTop = Math.max(0, scroller.scrollTop + offset - scroller.clientHeight / 3);
+    }
+    return;
+  }
+}
+
+els.pawletSearchInput.addEventListener("input", debounce(runPawletSearch, 120));
+els.pawletSearchInput.addEventListener("focus", () => {
+  if (els.pawletSearchInput.value.trim() && pawletSearch.jumped < 0) pawletSearchOpen(true);
+});
+els.pawletSearchInput.addEventListener("blur", () => pawletSearchOpen(false));
+els.pawletSearchInput.addEventListener("keydown", event => {
+  const listOpen = !els.pawletSearchResults.classList.contains("hidden");
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    if (!listOpen && els.pawletSearchInput.value.trim()) {
+      pawletSearchOpen(true);
+      renderPawletSearchResults();
+      return;
+    }
+    movePawletSearchActive(event.key === "ArrowDown" ? 1 : -1);
+    return;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    if (!pawletSearch.results.length) return;
+    const index = listOpen || pawletSearch.jumped < 0
+      ? pawletSearch.active
+      : (pawletSearch.jumped + (event.shiftKey ? -1 : 1) + pawletSearch.results.length) % pawletSearch.results.length;
+    jumpToPawletSearchResult(index);
+    return;
+  }
+  if (event.key === "Escape") {
+    if (listOpen) {
+      event.stopPropagation();
+      pawletSearchOpen(false);
+    } else if (els.pawletSearchInput.value) {
+      event.stopPropagation();
+      clearPawletSearch();
+    }
+  }
+});
+els.pawletSearchInput.addEventListener("search", () => {
+  if (!els.pawletSearchInput.value) clearPawletSearch();
+});
+// Keep focus in the box while picking a result with the mouse.
+els.pawletSearchResults.addEventListener("mousedown", event => event.preventDefault());
+els.pawletSearchResults.addEventListener("click", event => {
+  const row = event.target.closest("[data-pawlet-search-index]");
+  if (row) jumpToPawletSearchResult(Number(row.dataset.pawletSearchIndex));
+});
+
 function setAlwaysNotesOpen(open) {
   state.alwaysNotesOpen = Boolean(open);
   if (state.alwaysNotesOpen) setShorthandOpen(false);
@@ -3935,6 +4151,8 @@ function setAlwaysNotesOpen(open) {
     }
     trackFeature("always_notes.open");
   } else {
+    pawletSearchOpen(false);
+    applyPawletSearchHighlights();
     Promise.resolve(savePersonalNotes()).then(sweepPawletAssets).catch(() => {});
   }
 }

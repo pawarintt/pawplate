@@ -1,6 +1,6 @@
 // Local report name suggestions from the impression, used when GPT title
 // suggestions are unavailable (offline, server error).
-import { impressionLines } from "./template-combine.js?v=20261120-details-removed";
+import { impressionLines } from "./template-combine.js?v=20261120-pawlet-search";
 
 const MAX_PHRASE = 70;
 const LEADING_FILLER = [

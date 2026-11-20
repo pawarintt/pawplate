@@ -5003,3 +5003,136 @@ button.summary-card {
 
 /* Report Writer HN keeps its lilac now that it's the third field. */
 #writerView .meta-grid > #reportNoteInput { background: color-mix(in srgb, #efeafc 80%, transparent); }
+
+/* --- Pawlet search ------------------------------------------------------- */
+
+.pawlet-search {
+  position: relative;
+  flex: 0 1 260px;
+  min-width: 150px;
+}
+.pawlet-search input {
+  width: 100%;
+  min-height: 29px;
+  padding: 4px 58px 4px 30px;
+  border-color: rgba(255, 255, 255, .9);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, .72) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238f7fcf' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 11px center;
+  font-size: .78rem;
+}
+.pawlet-search input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+.pawlet-search-count {
+  position: absolute;
+  top: 50%;
+  right: 30px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: var(--weight-semibold);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.pawlet-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: min(380px, 80vw);
+  max-height: min(380px, 60vh);
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, .9));
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .92);
+  box-shadow: var(--glass-edge, none), var(--glass-shadow-pop, 0 16px 38px rgba(82, 55, 45, .16));
+  -webkit-backdrop-filter: var(--glass-blur-strong, none);
+  backdrop-filter: var(--glass-blur-strong, none);
+}
+.pawlet-search-results.hidden {
+  display: none;
+}
+.pawlet-search-result {
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+}
+.pawlet-search-result:hover,
+.pawlet-search-result.is-active {
+  border-color: var(--accent-line, var(--line));
+  background: var(--accent-soft, var(--lilac));
+}
+.pawlet-search-swatch {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  margin-top: 3px;
+  border: 1px solid #e6d487;
+  border-radius: 3px;
+  background: var(--yellow-light);
+}
+.pawlet-search-swatch[data-note-color="1"] { border-color: #eabcc1; background: #fbdde0; }
+.pawlet-search-swatch[data-note-color="2"] { border-color: #bdd8cc; background: var(--mint-light); }
+.pawlet-search-swatch[data-note-color="3"] { border-color: #bcd6dd; background: #dff0f3; }
+.pawlet-search-swatch[data-note-color="4"] { border-color: #d4c4dc; background: #eee1f3; }
+.pawlet-search-swatch[data-note-color="5"] { border-color: #e4c6ad; background: var(--peach); }
+.pawlet-search-text {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.pawlet-search-text strong {
+  overflow: hidden;
+  font-size: .8rem;
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pawlet-search-text span {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.35;
+}
+.pawlet-search-text mark {
+  border-radius: 3px;
+  background: rgba(160, 140, 235, .32);
+  color: inherit;
+}
+.pawlet-search-empty {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: .76rem;
+}
+::highlight(pawlet-search) {
+  background-color: rgba(160, 140, 235, .38);
+  color: inherit;
+}
+.personal-note-card.is-search-hit {
+  animation: pawlet-search-hit 1.8s ease-out;
+}
+@keyframes pawlet-search-hit {
+  0%, 35% { box-shadow: 0 0 0 4px rgba(160, 140, 235, .75), 0 13px 30px rgba(82, 55, 45, .2); }
+  100% { box-shadow: 0 0 0 0 rgba(160, 140, 235, 0), 0 7px 20px rgba(82, 55, 45, .13); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .personal-note-card.is-search-hit {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(160, 140, 235, .7);
+  }
+}

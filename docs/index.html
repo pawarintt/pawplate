@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PawPlate</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20261120-details-removed">
+  <link rel="stylesheet" href="style.css?v=20261120-pawlet-search">
 </head>
 <body>
   <section id="loginView" class="login-view hidden">
@@ -39,6 +39,11 @@
               <span>Personal notes desktop</span>
             </div>
             <span id="alwaysNotesStatus" class="notes-save-status" aria-live="polite"></span>
+            <div class="pawlet-search">
+              <input id="pawletSearchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search notes" aria-label="Search notes" aria-controls="pawletSearchResults" aria-expanded="false">
+              <span id="pawletSearchCount" class="pawlet-search-count" aria-live="polite"></span>
+              <div id="pawletSearchResults" class="pawlet-search-results hidden" role="listbox" aria-label="Matching notes"></div>
+            </div>
             <button id="newPersonalNoteBtn" type="button">New note</button>
             <button id="newPersonalImageBtn" class="quiet-button" type="button">Image</button>
             <button id="closeAlwaysNotesBtn" class="icon-button" type="button" aria-label="Close notes" title="Close notes">&times;</button>
@@ -523,6 +528,6 @@
   <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="config.js"></script>
   <script src="vendor/typo-1.3.2.js"></script>
-  <script type="module" src="app/main.js?v=20261120-details-removed"></script>
+  <script type="module" src="app/main.js?v=20261120-pawlet-search"></script>
 </body>
 </html>
