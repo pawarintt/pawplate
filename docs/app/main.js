@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-rename-report";
-import { collectDom } from "./dom.js?v=20261120-rename-report";
-import { createInitialState } from "./state.js?v=20261120-rename-report";
+} from "./constants.js?v=20261120-copy-hn";
+import { collectDom } from "./dom.js?v=20261120-copy-hn";
+import { createInitialState } from "./state.js?v=20261120-copy-hn";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-rename-report";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-rename-report";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-rename-report";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-rename-report";
+} from "./utils.js?v=20261120-copy-hn";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-copy-hn";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-copy-hn";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-copy-hn";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +71,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-rename-report";
+} from "./prior-report.js?v=20261120-copy-hn";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -2369,7 +2369,7 @@ function followUpItemHtml(item, today) {
     <div class="follow-up-item${unread ? " unread" : ""}${due ? " due" : ""}${item.doneAt ? " done" : ""}" data-follow-up-id="${escapeHtml(item.id)}">
       ${dot}
       <button class="follow-up-main" type="button" data-follow-up-action="open" title="${item.reportId ? "Open the report" : "Edit this follow-up"}">
-        <span class="follow-up-title">${escapeHtml(followUpTitle(item))}${hn ? ` <span class="follow-up-hn">${escapeHtml(hn)}</span>` : ""}</span>
+        <span class="follow-up-title">${escapeHtml(followUpTitle(item))}${hn ? ` <span class="follow-up-hn copy-hn" data-copy-hn="${escapeHtml(hn)}" title="Click to copy HN">${escapeHtml(hn)}</span>` : ""}</span>
         ${item.note ? `<span class="follow-up-note">${escapeHtml(item.note)}</span>` : ""}
         ${quickNote ? `<span class="follow-up-quick-note" title="Quick note"><span class="note-dot" aria-hidden="true"></span>${escapeHtml(snippet(quickNote, ""))}</span>` : ""}
       </button>
@@ -6417,7 +6417,7 @@ function renderWorkLog() {
           <span class="result-title">${highlight(report.title || "Untitled", query)}${report.isInteresting ? '<span class="interesting-badge">Interesting</span>' : ""}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}${followUp ? `<span class="follow-up-tag${isFollowUpDue(followUp) ? " due" : ""}">Follow-up ${escapeHtml(followUpDateLabel(followUp.dueDate, { weekday: false }))}</span>` : ""}</span>
           <span class="result-meta">${escapeHtml(date ? dateKey(date) : "No date")} / ${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
           ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
-          ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
+          ${report.note ? `<span class="result-snippet"><span class="copy-hn" data-copy-hn="${escapeHtml(report.note)}" title="Click to copy HN">${highlight(report.note, query)}</span></span>` : ""}
           ${reportExcerpt ? `<span class="result-snippet result-report-snippet">${highlight(reportExcerpt, query)}</span>` : ""}
           ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, query), query)}</span>` : ""}
         </span>
@@ -6467,9 +6467,10 @@ function renderWorklogPreview() {
     date ? dateKey(date) : "",
     report.modality,
     report.topic,
-    report.bodyPart,
-    report.note
-  ].filter(Boolean).map(escapeHtml).join(" / ");
+    report.bodyPart
+  ].filter(Boolean).map(escapeHtml)
+    .concat(report.note ? [copyHnHtml(report.note)] : [])
+    .join(" / ");
   els.worklogPreviewText.innerHTML = reportHtml(report.report);
   renderWorklogPrior(report.id);
   els.editWorklogReportBtn.disabled = false;
@@ -6477,6 +6478,53 @@ function renderWorklogPreview() {
   updateReportNoteButton();
   updateFollowUpButtons();
 }
+
+// HN (hospital number) is copied with one click wherever it is shown:
+// Work Log preview, Work Log and Interesting lists, follow-up inbox.
+function copyHnHtml(hn) {
+  return `<span class="copy-hn" data-copy-hn="${escapeHtml(hn)}" title="Click to copy HN" role="button" tabindex="0">${escapeHtml(hn)}</span>`;
+}
+
+async function copyHn(hn) {
+  const text = String(hn || "").trim();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    if (!ok) {
+      showToast("HN not copied", "The browser blocked copying.", "error");
+      return;
+    }
+  }
+  showToast("HN copied", text);
+  trackFeature("hn.copy");
+}
+
+document.addEventListener("click", event => {
+  const target = event.target.closest?.("[data-copy-hn]");
+  if (!target) return;
+  // In the follow-up inbox the HN sits inside the "open report" button;
+  // copying should not also leave the inbox.
+  if (target.closest(".follow-up-main")) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  copyHn(target.dataset.copyHn);
+}, true);
+document.addEventListener("keydown", event => {
+  const target = event.target.closest?.("[data-copy-hn][tabindex]");
+  if (!target || (event.key !== "Enter" && event.key !== " ")) return;
+  event.preventDefault();
+  copyHn(target.dataset.copyHn);
+});
 
 // Rename a saved report right in the Work Log preview: double-click the
 // title (or press the pencil) to edit it in place. Enter or clicking away
@@ -6828,7 +6876,7 @@ function renderInterestingCases() {
           <span class="result-title">${highlight(report.title || "Untitled", query)}${personalNote ? '<span class="note-dot" aria-label="Has personal note"></span>' : ""}</span>
           <span class="result-meta">${escapeHtml(report.modality || "Modality")} / ${escapeHtml(report.topic || "Topic")} / ${escapeHtml(report.bodyPart || "Body part")}</span>
           ${report.keywords ? `<span class="result-snippet"><strong>Keywords:</strong> ${highlight(report.keywords, query)}</span>` : ""}
-          ${report.note ? `<span class="result-snippet">${highlight(report.note, query)}</span>` : ""}
+          ${report.note ? `<span class="result-snippet"><span class="copy-hn" data-copy-hn="${escapeHtml(report.note)}" title="Click to copy HN">${highlight(report.note, query)}</span></span>` : ""}
           ${reportExcerpt ? `<span class="result-snippet result-report-snippet">${highlight(reportExcerpt, query)}</span>` : ""}
           ${personalNote ? `<span class="report-note-snippet">${highlight(snippet(personalNote, query), query)}</span>` : ""}
         </span>
