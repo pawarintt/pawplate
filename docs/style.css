@@ -4431,3 +4431,45 @@ span.follow-up-dot {
 .worklog-prior .prior-summary {
   margin-top: 8px;
 }
+
+.prior-finding-list {
+  list-style: none;
+  padding-left: 0 !important;
+}
+
+.prior-finding-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin: 3px 0;
+}
+
+.prior-review-check {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--coffee);
+  cursor: pointer;
+}
+
+.prior-review-check:disabled {
+  cursor: default;
+}
+
+.prior-finding-row.reviewed .prior-finding {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.prior-reviewed-count {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: var(--weight-medium);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.prior-reviewed-count.all {
+  color: var(--sage-ink);
+}

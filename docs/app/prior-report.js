@@ -2,7 +2,7 @@
 // pastes a prior report from PACS; identifiers are removed here, in the
 // browser, before anything is sent. GPT only picks sentence numbers for the
 // highlighted original, so the original wording is never rewritten.
-import { escapeHtml } from "./utils.js?v=20261120-prior-highlights";
+import { escapeHtml } from "./utils.js?v=20261120-prior-review";
 
 export const PRIOR_KEY_PREFIX = "prior:";
 export const PRIOR_TEXT_LIMIT = 24000;
@@ -221,13 +221,21 @@ function listHtml(items, render) {
 }
 
 // Summary sections shown above the original.
-export function priorSummaryHtml(result) {
+// reviewed: indexes of key findings ticked as reviewed. readOnly shows the
+// ticks without letting them change (Work Log preview).
+export function priorSummaryHtml(result, { reviewed = [], readOnly = false } = {}) {
   if (!result) return "";
   const sections = [];
+  const done = new Set(reviewed);
+  const count = result.keyFindings.filter((_, index) => done.has(index)).length;
+  const total = result.keyFindings.length;
   sections.push(`<section class="prior-section prior-findings">
-    <h3>Key findings</h3>
-    ${result.keyFindings.length
-      ? listHtml(result.keyFindings, item => `<li class="prior-finding" data-prior-jump="${item.sentences.join(",")}" title="Show in the prior">${escapeHtml(item.finding)}${item.date ? ` <span class="prior-date">${escapeHtml(item.date)}</span>` : ""}</li>`)
+    <h3>Key findings${total ? ` <span class="prior-reviewed-count${count === total ? " all" : ""}">${count}/${total} reviewed</span>` : ""}</h3>
+    ${total
+      ? `<ul class="prior-finding-list">${result.keyFindings.map((item, index) => `<li class="prior-finding-row${done.has(index) ? " reviewed" : ""}">
+          <input type="checkbox" class="prior-review-check" data-prior-review="${index}" ${done.has(index) ? "checked" : ""} ${readOnly ? "disabled" : ""} aria-label="Reviewed: ${escapeHtml(item.finding)}">
+          <span class="prior-finding" data-prior-jump="${item.sentences.join(",")}" title="Show in the prior">${escapeHtml(item.finding)}${item.date ? ` <span class="prior-date">${escapeHtml(item.date)}</span>` : ""}</span>
+        </li>`).join("")}</ul>`
       : '<p class="prior-none">No positive findings. The prior reads as normal.</p>'}
   </section>`);
   if (result.toCheck.length) {
@@ -251,7 +259,8 @@ export function priorSettingsValue(prior) {
     text: String(prior.text || "").slice(0, PRIOR_TEXT_LIMIT),
     result: prior.result || null,
     removed: Number(prior.removed) || 0,
-    highlightedAt: prior.highlightedAt || ""
+    highlightedAt: prior.highlightedAt || "",
+    reviewed: Array.isArray(prior.reviewed) ? prior.reviewed : []
   };
 }
 
@@ -262,6 +271,7 @@ export function priorFromValue(value) {
     text,
     result: normalizePriorResult(value.result, text),
     removed: Number(value.removed) || 0,
-    highlightedAt: String(value.highlightedAt || "").slice(0, 40)
+    highlightedAt: String(value.highlightedAt || "").slice(0, 40),
+    reviewed: [...new Set((Array.isArray(value.reviewed) ? value.reviewed : []).map(Number).filter(n => Number.isInteger(n) && n >= 0 && n < 40))]
   };
 }

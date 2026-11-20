@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-prior-highlights";
-import { collectDom } from "./dom.js?v=20261120-prior-highlights";
-import { createInitialState } from "./state.js?v=20261120-prior-highlights";
+} from "./constants.js?v=20261120-prior-review";
+import { collectDom } from "./dom.js?v=20261120-prior-review";
+import { createInitialState } from "./state.js?v=20261120-prior-review";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-prior-highlights";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-prior-highlights";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-prior-highlights";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-prior-highlights";
+} from "./utils.js?v=20261120-prior-review";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-prior-review";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-prior-review";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-prior-review";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +71,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-prior-highlights";
+} from "./prior-report.js?v=20261120-prior-review";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -4640,7 +4640,7 @@ function renderPrior() {
   if (pasting) return;
   els.priorStatus.innerHTML = priorStatusHtml();
   els.priorStatus.classList.toggle("hidden", !els.priorStatus.innerHTML.trim());
-  els.priorSummary.innerHTML = state.priorLoading ? "" : priorSummaryHtml(prior.result);
+  els.priorSummary.innerHTML = state.priorLoading ? "" : priorSummaryHtml(prior.result, { reviewed: prior.reviewed });
   els.priorOriginal.innerHTML = priorOriginalHtml(prior.text, state.priorLoading ? null : prior.result);
 }
 
@@ -4658,7 +4658,7 @@ async function highlightPrior(rawText) {
     return false;
   }
   const keptRemoved = state.prior?.text === text ? Math.max(removed, state.prior.removed || 0) : removed;
-  setPrior({ text, result: null, removed: keptRemoved, highlightedAt: "" });
+  setPrior({ text, result: null, removed: keptRemoved, highlightedAt: "", reviewed: [] });
   const request = state.priorRequest;
   state.priorLoading = true;
   renderPrior();
@@ -4770,7 +4770,7 @@ function renderWorklogPrior(reportId) {
   if (!els.worklogPrior) return;
   const show = prior => {
     els.worklogPrior.classList.toggle("hidden", !prior);
-    els.worklogPriorSummary.innerHTML = prior?.result ? priorSummaryHtml(prior.result) : "";
+    els.worklogPriorSummary.innerHTML = prior?.result ? priorSummaryHtml(prior.result, { reviewed: prior.reviewed, readOnly: true }) : "";
     els.worklogPriorOriginal.innerHTML = prior ? priorOriginalHtml(prior.text, prior.result) : "";
   };
   if (!reportId) {
@@ -6907,6 +6907,20 @@ els.clearPriorBtn?.addEventListener("click", () => {
   setPrior(null);
   trackFeature("prior.clear");
   els.priorInput.focus();
+});
+// Ticking a key finding as reviewed. Saved with the draft, and with the
+// report when it is saved.
+els.priorResult?.addEventListener("change", event => {
+  const box = event.target.closest("[data-prior-review]");
+  if (!box || !state.prior) return;
+  const index = Number(box.dataset.priorReview);
+  const reviewed = new Set(state.prior.reviewed || []);
+  if (box.checked) reviewed.add(index);
+  else reviewed.delete(index);
+  state.prior.reviewed = [...reviewed].sort((a, b) => a - b);
+  renderPrior();
+  scheduleReportAutosave();
+  trackFeature("prior.review");
 });
 els.priorResult?.addEventListener("click", event => {
   if (event.target.closest("[data-prior-retry]") && state.prior) {
