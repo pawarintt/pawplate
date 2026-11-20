@@ -2367,6 +2367,14 @@ textarea {
 .color-swatch.rose { background: #7f5f3b; }
 .color-swatch.mint { background: var(--sage-ink); }
 
+.default-color-button {
+  border-radius: var(--radius-pill);
+  font-size: 15px;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
 .highlight-swatch {
   width: 34px;
   border-radius: var(--radius-pill);

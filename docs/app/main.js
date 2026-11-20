@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261107-worklog-old-days";
-import { collectDom } from "./dom.js?v=20261107-worklog-old-days";
-import { createInitialState } from "./state.js?v=20261107-worklog-old-days";
+} from "./constants.js?v=20261120-default-text-color";
+import { collectDom } from "./dom.js?v=20261120-default-text-color";
+import { createInitialState } from "./state.js?v=20261120-default-text-color";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261107-worklog-old-days";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261107-worklog-old-days";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261107-worklog-old-days";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261107-worklog-old-days";
+} from "./utils.js?v=20261120-default-text-color";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-default-text-color";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-default-text-color";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-default-text-color";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
@@ -6610,6 +6610,7 @@ function runFormatCommand(button) {
     if (button.dataset.command === "foreColor" && value) chain.setColor(value).run();
     if (button.dataset.command === "backColor" && value) chain.setHighlight({ color: value }).run();
     if (button.dataset.command === "clearHighlight") chain.unsetHighlight().run();
+    if (button.dataset.command === "clearColor") chain.unsetColor().run();
     trackFeature("always_notes.format");
     return;
   }
@@ -6625,10 +6626,15 @@ function runFormatCommand(button) {
     if (button.dataset.command === "foreColor" && value) chain.setColor(value).run();
     if (button.dataset.command === "backColor" && value) chain.setHighlight({ color: value }).run();
     if (button.dataset.command === "clearHighlight") chain.unsetHighlight().run();
+    if (button.dataset.command === "clearColor") chain.unsetColor().run();
     updateProofing(editor, { fallback: false });
     return;
   }
   editor.focus();
+  if (button.dataset.command === "clearColor") {
+    document.execCommand("foreColor", false, getComputedStyle(editor).color);
+    return;
+  }
   if (button.dataset.command === "clearHighlight") {
     document.execCommand("backColor", false, "transparent");
     return;
