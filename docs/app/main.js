@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261120-prior-review";
-import { collectDom } from "./dom.js?v=20261120-prior-review";
-import { createInitialState } from "./state.js?v=20261120-prior-review";
+} from "./constants.js?v=20261120-liquid-glass";
+import { collectDom } from "./dom.js?v=20261120-liquid-glass";
+import { createInitialState } from "./state.js?v=20261120-liquid-glass";
 import {
   copyText,
   debounce,
@@ -56,10 +56,10 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261120-prior-review";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-prior-review";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-prior-review";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-prior-review";
+} from "./utils.js?v=20261120-liquid-glass";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261120-liquid-glass";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261120-liquid-glass";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261120-liquid-glass";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -71,7 +71,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261120-prior-review";
+} from "./prior-report.js?v=20261120-liquid-glass";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
