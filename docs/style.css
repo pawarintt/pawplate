@@ -4890,6 +4890,81 @@ button.summary-card {
   }
 }
 
+/* --- Motion: glass that responds like macOS ----------------------------- */
+/* Hover lifts a control a hair and a soft shine follows the mouse
+   (--mx/--my come from app/glass-motion.js). Press squishes it in. */
+
+:is(button, .mode-tabs > a):not(.result-item, .calendar-day, .color-swatch, .highlight-swatch, .summary-card) {
+  transition:
+    transform .2s cubic-bezier(.2, .8, .2, 1),
+    box-shadow .2s ease,
+    background-color .2s ease,
+    color .2s ease,
+    filter .2s ease;
+}
+:is(button, .mode-tabs > a):not(.result-item, .calendar-day, .color-swatch, .highlight-swatch, .summary-card):not(:disabled):not(#_g):hover {
+  background-image: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, .75), rgba(255, 255, 255, 0) 65%);
+  transform: translateY(-1px);
+}
+:is(button, .mode-tabs > a):not(.result-item, .calendar-day, .color-swatch, .highlight-swatch, .summary-card):not(:disabled):not(#_g):active {
+  transform: scale(.96);
+  transition-duration: .08s;
+}
+
+/* Tab strips: one glass lens slides to the active tab. */
+.has-lens {
+  position: relative;
+  isolation: isolate;
+}
+.has-lens > :not(.tab-lens) {
+  position: relative;
+  z-index: 1;
+}
+.tab-lens {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--lens-tint, var(--accent-soft)) 42%, white);
+  box-shadow: var(--highlight), 0 2px 8px rgba(96, 68, 76, .12);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform .42s cubic-bezier(.3, 1.25, .5, 1),
+    width .42s cubic-bezier(.3, 1.25, .5, 1),
+    height .42s cubic-bezier(.3, 1.25, .5, 1),
+    background-color .3s ease,
+    opacity .2s ease;
+}
+.tab-lens.no-slide {
+  transition: opacity .2s ease;
+}
+/* With the lens drawing the pill, the active tab itself stays clear. */
+.has-lens > a:is(#builderModeBtn, #writerModeBtn, #worklogModeBtn, #interestingModeBtn, #guidelineModeBtn).active,
+.reference-tabs.has-lens button.active {
+  border-color: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+/* Tabs shine on hover but don't lift, so they stay lined up with the lens. */
+.has-lens > :is(a, button):not(#_g):not(#_h):hover,
+.has-lens > :is(a, button):not(#_g):not(#_h):active {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(button, .mode-tabs > a),
+  .tab-lens {
+    transition: none;
+  }
+  :is(button, .mode-tabs > a):hover,
+  :is(button, .mode-tabs > a):active {
+    transform: none;
+  }
+}
+
 /* Work Log preview: rename the report in place (double-click the title or
    press the pencil). */
 .preview-title-wrap {

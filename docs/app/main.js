@@ -43,9 +43,9 @@ import {
   TEMPLATE_ORDER_SETTINGS_KEY,
   TIPTAP_BUNDLE_URL,
   TRACKED_FEATURES
-} from "./constants.js?v=20261121-design-system";
-import { collectDom } from "./dom.js?v=20261121-design-system";
-import { createInitialState } from "./state.js?v=20261121-design-system";
+} from "./constants.js?v=20261121-glass-motion";
+import { collectDom } from "./dom.js?v=20261121-glass-motion";
+import { createInitialState } from "./state.js?v=20261121-glass-motion";
 import {
   copyText,
   debounce,
@@ -56,11 +56,11 @@ import {
   isHtml,
   plainText,
   reportHtml
-} from "./utils.js?v=20261121-design-system";
-import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261121-design-system";
-import { markTerms as markPawletTerms, searchPawletNotes, searchTerms } from "./pawlet-search.js?v=20261121-design-system";
-import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261121-design-system";
-import { impressionText, suggestReportNames } from "./report-name.js?v=20261121-design-system";
+} from "./utils.js?v=20261121-glass-motion";
+import { createPawletImageNode, docAssets, docFromTextAndImages, docText, isValidDoc, pawletImageNodeAttrs } from "./pawlet-doc.js?v=20261121-glass-motion";
+import { markTerms as markPawletTerms, searchPawletNotes, searchTerms } from "./pawlet-search.js?v=20261121-glass-motion";
+import { combineTemplateHtml, sectionLabel } from "./template-combine.js?v=20261121-glass-motion";
+import { impressionText, suggestReportNames } from "./report-name.js?v=20261121-glass-motion";
 import {
   PRIOR_KEY_PREFIX,
   PRIOR_PROMPT,
@@ -72,7 +72,7 @@ import {
   priorOriginalHtml,
   priorSettingsValue,
   priorSummaryHtml
-} from "./prior-report.js?v=20261121-design-system";
+} from "./prior-report.js?v=20261121-glass-motion";
 import {
   createReportIndex,
   getIndexedReport,
@@ -82,7 +82,7 @@ import {
   searchReports,
   stripHtml,
   upsertReport
-} from "./report-search.js?v=20261121-design-system";
+} from "./report-search.js?v=20261121-glass-motion";
 const PROOFING_PATTERNS = [
   { pattern: /\bteh\b/gi, label: "teh", suggestion: "the" },
   { pattern: /\badn\b/gi, label: "adn", suggestion: "and" },
