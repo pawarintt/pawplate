@@ -4508,12 +4508,12 @@ span.follow-up-dot {
   --radius-control: 10px;
 
   /* Palette: lavender to pink to mint fade, purple ink (Toey's pick) */
-  --bg-base: #f5ecf4;
-  --bg-blob-1: rgba(232, 224, 250, .9);
-  --bg-blob-2: rgba(236, 228, 252, .85);
-  --bg-blob-3: rgba(222, 240, 232, .85);
-  --bg-blob-4: rgba(226, 241, 234, .85);
-  --bg-sheen: linear-gradient(180deg, #ebe3fa 0%, #f6e6f4 32%, #fbe6ee 52%, #f1ebed 74%, #e0efe8 100%);
+  --bg-base: #fbeee9;
+  --bg-blob-1: rgba(253, 226, 236, .9);
+  --bg-blob-2: rgba(253, 228, 236, .85);
+  --bg-blob-3: rgba(224, 242, 233, .85);
+  --bg-blob-4: rgba(226, 243, 235, .85);
+  --bg-sheen: linear-gradient(180deg, #fde3ec 0%, #fde6e6 25%, #fde8de 45%, #f8ecdf 65%, #eef0e2 82%, #dff3e9 100%);
   --pane-wash: rgba(255, 255, 255, .25);
   --accent: #8f7fcf;
   --accent-ink: #5a4a8a;
