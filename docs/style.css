@@ -4475,318 +4475,330 @@ span.follow-up-dot {
 }
 
 /* ==========================================================================
-   Liquid glass theme (2026-11-20)
-   Same pastel palette and layout, restyled as frosted glass: translucent
-   panels with backdrop blur over a soft pastel backdrop, a bright top edge,
-   and soft shadows. Writing surfaces stay near-opaque for readability.
-   Backdrop blur is only used on floating surfaces (popovers, menus,
-   dialogs) where there is content behind them, never on list items.
+   PawPlate design system (2026-11-21)
+   One layer on top of the base styles. Everything below reads these tokens;
+   new CSS should use them instead of raw colours.
+
+   Surfaces (back to front)
+     background  the pink > peach > mint fade, shared by the whole window
+     bar         translucent glass: top bar and the big panes
+     control     lighter glass: fields, quiet buttons, chips
+     paper       near-solid white: where reports are read and written
+     float       frosted glass with blur: popovers, menus, dialogs
+
+   Colour rule
+     Fills are glass or white. Colour marks only (a) the active item, as a
+     tinted glass pill, (b) the main action (pink), or (c) a state or data
+     value (saved, overdue, modality counts, highlights). Elsewhere colour
+     lives in text or a small icon or dot.
    ========================================================================== */
 
 :root {
-  --ink: #2a2328;
-  --muted: #7d6d70;
-  --heading: #5a5466;
-  --line: rgba(122, 92, 98, .16);
-  --line-strong: rgba(122, 92, 98, .26);
-  --coffee: #85593f;
-  --coffee-deep: #6e4732;
-  --ring: 0 0 0 3px rgba(200, 140, 160, .28);
+  /* Palette (Toey, 2026-11-21) */
+  --ink: #353535;
+  --heading: #60444c;
+  --muted: #7c6d71;
+  --accent: #b96989;
+  --accent-soft: #ffd9e6;
+  --accent-ink: #7b3e58;
+  --focus: #e6a0ba;
+  --danger: #b95569;
 
-  /* Glass */
-  --glass: rgba(255, 255, 255, .5);
-  --glass-strong: rgba(255, 255, 255, .8);
-  --glass-paper: rgba(255, 255, 255, .86);
-  --glass-control: rgba(255, 255, 255, .62);
-  --glass-border: rgba(255, 255, 255, .78);
-  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 0 0 1px rgba(255, 255, 255, .22);
-  --glass-blur: saturate(170%) blur(24px);
-  --glass-blur-strong: saturate(180%) blur(34px);
-  --glass-shadow: 0 1px 2px rgba(96, 56, 70, .05), 0 12px 32px rgba(120, 70, 92, .11);
-  --glass-shadow-pop: 0 2px 6px rgba(96, 56, 70, .08), 0 24px 60px rgba(110, 60, 84, .22);
-  --radius-glass: 18px;
-  --radius-control: 10px;
+  /* Pastels: a tint for pills and a readable ink for text on or near it */
+  --tint-sage: #cfe8bd;     --ink-sage: #485d32;
+  --tint-peach: #ffd5b4;    --ink-peach: #724b2b;
+  --tint-sky: #bbe5fe;      --ink-sky: #2f5f78;
+  --tint-rose: #ffcfe0;     --ink-rose: #744457;
+  --tint-yellow: #fbe7a6;   --ink-yellow: #615523;
+  --tint-mint: #b3edd3;     --ink-mint: #2a624b;
+  --tint-lavender: #e0d8ff; --ink-lavender: #54468a;
 
-  /* Palette: lavender to pink to mint fade, purple ink (Toey's pick) */
-  --bg-base: #fbeee9;
-  --bg-blob-1: rgba(253, 226, 236, .9);
-  --bg-blob-2: rgba(253, 228, 236, .85);
-  --bg-blob-3: rgba(224, 242, 233, .85);
-  --bg-blob-4: rgba(226, 243, 235, .85);
-  --bg-sheen: linear-gradient(180deg, #fde3ec 0%, #fde6e6 25%, #fde8de 45%, #f8ecdf 65%, #eef0e2 82%, #dff3e9 100%);
-  --pane-wash: rgba(255, 255, 255, .25);
-  --accent: #8f7fcf;
-  --accent-ink: #5a4a8a;
-  --accent-soft: rgba(236, 230, 252, .95);
-  --accent-line: rgba(143, 127, 207, .45);
-  --primary-top: #8576c4;
-  --coffee: #6c5ca8;
-  --coffee-deep: #5a4a8a;
-  --muted: #776d82;
-  --heading: #5a4a8a;
-  --ink: #2c2638;
-  /* Cool whites instead of the old cream/ivory */
-  --cream: #fefcff;
-  --cream-rgb: 255, 254, 255;
-  --field: #fdfbff;
-  --paper: rgba(255, 255, 255, .86);
+  /* Background */
+  --background: linear-gradient(180deg, #fde3ec 0%, #fde6e6 25%, #fde8de 45%, #f8ecdf 65%, #eef0e2 82%, #dff3e9 100%);
+
+  /* Surfaces */
+  --surface-bar: rgba(255, 255, 255, .52);
+  --surface-control: rgba(255, 255, 255, .66);
+  --surface-track: rgba(255, 255, 255, .34);
+  --surface-paper: rgba(255, 255, 255, .92);
+  --surface-float: rgba(255, 255, 255, .8);
+  --blur-float: saturate(160%) blur(28px);
+
+  /* Edges and depth */
+  --edge: rgba(255, 255, 255, .82);
+  --hairline: rgba(96, 68, 76, .11);
+  --highlight: inset 0 1px 0 rgba(255, 255, 255, .92);
+  --shadow-1: 0 1px 3px rgba(96, 68, 76, .07);
+  --shadow-2: 0 8px 28px rgba(96, 68, 76, .07);
+  --shadow-3: 0 2px 8px rgba(96, 68, 76, .08), 0 24px 60px rgba(96, 68, 76, .18);
+  --ring: 0 0 0 3px rgba(230, 160, 186, .4);
+
+  /* Shape */
+  --r-control: 10px;
+  --r-pill: 999px;
+  --r-bar: 16px;
+  --r-card: 18px;
+  --r-float: 20px;
+
+  /* Older names, mapped so base styles follow the system */
+  --line: var(--hairline);
+  --line-strong: rgba(96, 68, 76, .2);
+  --paper: var(--surface-paper);
   --paper-strong: rgba(255, 255, 255, .96);
-  --line: rgba(110, 96, 140, .16);
-  --line-strong: rgba(110, 96, 140, .26);
+  --cream: #fffdfc;
+  --cream-rgb: 255, 253, 252;
+  --field: #ffffff;
+  --coffee: var(--accent-ink);
+  --sage-ink: var(--ink-sage);
+  --peach-ink: var(--ink-peach);
+  --rose-ink: var(--ink-rose);
+  --yellow-ink: var(--ink-yellow);
+  --mint-ink: var(--ink-mint);
+  --accent-line: rgba(185, 105, 137, .35);
+  --glass-border: var(--edge);
+  --glass-edge: var(--highlight);
+  --glass-shadow-pop: var(--shadow-3);
+  --glass-blur-strong: var(--blur-float);
 }
 
 body {
-  background-color: var(--bg-base);
-  background:
-    radial-gradient(60vw 55vh at 8% 0%, var(--bg-blob-1), transparent 70%),
-    radial-gradient(50vw 60vh at 100% 8%, var(--bg-blob-2), transparent 70%),
-    radial-gradient(55vw 60vh at 85% 100%, var(--bg-blob-3), transparent 70%),
-    radial-gradient(45vw 50vh at 0% 100%, var(--bg-blob-4), transparent 70%),
-    var(--bg-sheen);
+  background-color: #fde8e4;
+  background: var(--background);
   background-attachment: fixed;
+  color: var(--ink);
 }
 
-/* App name in the theme's purple, like a sidebar title. */
 .topbar h1 {
-  color: #7a68c0;
+  color: var(--heading);
 }
 
-/* --- Large glass surfaces ------------------------------------------------ */
+/* --- Bar surfaces: top bar and panes ------------------------------------ */
 
 .topbar,
 .lookup-pane, .editor-pane, .guideline-editor-pane, .guideline-preview-pane,
+.secondary-pane, .templates-pane,
 .worklog-main, .interesting-list-pane, .interesting-pane {
-  border: 1px solid var(--glass-border);
-  background-color: var(--glass);
-  box-shadow: var(--glass-edge), var(--glass-shadow);
-  /* No backdrop-filter here on purpose: these sit over the still page
-     backdrop, where blur adds nothing visible, and a filter on the topbar
-     would trap its fixed popovers (Pawlet, Shorthands, Follow-ups). */
+  border: 1px solid var(--edge);
+  background: var(--surface-bar);
+  box-shadow: var(--highlight), var(--shadow-2);
+  /* No backdrop-filter: these sit on the still background, where blur shows
+     nothing, and a filter on the top bar would trap its fixed popovers. */
 }
-
 .topbar {
-  border-radius: 16px;
-  background: var(--glass);
+  border-radius: var(--r-bar);
   margin-bottom: 8px;
 }
-
 .lookup-pane, .editor-pane, .guideline-editor-pane, .guideline-preview-pane,
 .worklog-main, .interesting-list-pane, .interesting-pane {
-  border-radius: var(--radius-glass);
+  border-radius: var(--r-card);
 }
 
-/* One faint wash at the top of every pane. */
-.editor-pane, .guideline-editor-pane, .secondary-pane, .guideline-preview-pane,
-.templates-pane, .worklog-main, .interesting-list-pane, .interesting-pane {
-  background: linear-gradient(180deg, var(--pane-wash), rgba(255, 255, 255, 0) 200px), var(--glass);
-}
-
-/* Bars inside panes become clear, separated by hairlines. */
+/* Bars inside panes: clear, split by hairlines. */
 .pane-head,
 .preview-head,
 .worklog-preview,
 .format-toolbar,
 .meta-grid,
 .filter-grid,
-.reference-tabs,
-.result-list {
+.result-list,
+.notes-popover-head,
+.writer-old-popover .notes-popover-head,
+.follow-up-popover .notes-popover-head {
   background: transparent;
-  border-color: var(--line);
+  border-color: var(--hairline);
 }
 .pane-head {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
-/* Writing surfaces: near-opaque paper so long reading stays crisp. */
+/* --- Paper: reading and writing ----------------------------------------- */
+
 .rich-editor,
 textarea {
-  background: var(--glass-paper);
+  background: var(--surface-paper);
 }
 .editor-pane > .rich-editor,
 .guideline-editor-pane > .rich-editor {
   margin: 0 8px 8px;
   width: calc(100% - 16px);
   height: calc(100% - 8px);
-  border: 1px solid rgba(255, 255, 255, .9);
+  border: 1px solid var(--edge);
   border-radius: 12px;
-  box-shadow: inset 0 1px 2px rgba(96, 56, 70, .05);
+  box-shadow: inset 0 1px 2px rgba(96, 68, 76, .04);
 }
 
-/* --- Controls ------------------------------------------------------------ */
+/* --- Fields -------------------------------------------------------------- */
 
-button {
-  border-radius: var(--radius-control);
-  transition: transform .14s ease, box-shadow .14s ease, filter .14s ease, background-color .14s ease;
-}
-
-input, select {
-  border-radius: var(--radius-control);
-  border-color: rgba(255, 255, 255, .85);
-  background-color: var(--glass-control);
-  box-shadow: inset 0 1px 2px rgba(96, 56, 70, .06);
+input, select,
+.meta-grid > input:nth-of-type(n),
+.filter-grid select:nth-of-type(n),
+.filter-grid input,
+#writerView .meta-grid > #reportNoteInput {
+  border-color: var(--hairline);
+  border-radius: var(--r-control);
+  background: var(--surface-control);
+  box-shadow: inset 0 1px 2px rgba(96, 68, 76, .04);
 }
 input:focus, select:focus {
-  background-color: rgba(255, 255, 255, .9);
+  background-color: rgba(255, 255, 255, .92);
 }
 
-/* Fields keep their own soft colours, frosted. */
-.meta-grid > input:nth-of-type(1),
-.filter-grid input { background: rgba(255, 255, 255, .78); }
-.meta-grid > input:nth-of-type(2),
-.filter-grid select:nth-of-type(1) { background: color-mix(in srgb, var(--peach-light) 75%, transparent); }
-.meta-grid > input:nth-of-type(3),
-.filter-grid select:nth-of-type(2) { background: color-mix(in srgb, var(--sage-light) 75%, transparent); }
-.meta-grid > input:nth-of-type(4),
-.filter-grid select:nth-of-type(3) { background: color-mix(in srgb, #eaf5f3 75%, transparent); }
-.meta-grid > input:nth-of-type(5),
-.filter-grid select:nth-of-type(4) { background: color-mix(in srgb, var(--rose-light) 75%, transparent); }
-.meta-grid > input:nth-of-type(6) { background: color-mix(in srgb, #efeafc 80%, transparent); }
-.meta-grid > input,
-.filter-grid select,
-.filter-grid input { border-color: rgba(255, 255, 255, .9); }
+/* --- Buttons ------------------------------------------------------------- */
 
-/* Topbar chips: each keeps its own pastel, all at the same soft strength. */
-.always-notes-trigger,
-.shorthand-trigger,
-.mode-badge,
-.autosave-status,
-#copyReportBtn,
-#newTemplateBtn,
-#useTemplateBtn,
-#useOldReportBtn,
-.logout-button {
-  border-color: rgba(255, 255, 255, .85);
-}
-.always-notes-trigger { background: #fdf2c4; color: var(--yellow-ink); }
-.shorthand-trigger { background: #e2eff2; color: var(--ink); }
-.shorthand-trigger > span:first-child { color: #6f8f97; }
-.mode-badge { background: #e8f0dc; color: var(--sage-ink); }
-.mode-badge.editing { background: #fae6d7; color: var(--peach-ink); }
-.autosave-status { background: rgba(255, 255, 255, .75); }
-.autosave-status.saved { background: #e8f0dc; color: var(--sage-ink); }
-#copyReportBtn,
-#newTemplateBtn { background: #fae6d7; color: var(--peach-ink); }
-#useTemplateBtn,
-#useOldReportBtn { background: #dff0e6; color: var(--mint-ink); }
-.logout-button { background: #fbdfe5; color: var(--danger); }
-
-.check-filter,
-.interesting-toggle,
-.choice-chip {
-  border-color: rgba(255, 255, 255, .9);
-  background: rgba(255, 255, 255, .7);
-}
-.choice-chip.active {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-}
-
-/* Primary actions: glossy mocha. */
-/* Default and primary buttons: pastel lavender with purple text. */
+/* Quiet: the default for every button. */
 button {
-  border-color: rgba(190, 176, 236, .55);
-  background: #ece6fc;
-  color: var(--accent-ink);
-}
-#saveTemplateBtn,
-#saveReportBtn,
-.login-card button {
-  border-color: rgba(176, 160, 230, .6);
-  background: #e2d9fa;
-  color: #4a3a80;
+  border-color: var(--hairline);
+  border-radius: var(--r-control);
+  background: var(--surface-control);
+  color: var(--ink);
   box-shadow: none;
 }
-
-/* Secondary buttons: frosted chips with a bright top edge. */
+button:hover {
+  filter: none;
+  background-color: rgba(255, 255, 255, .85);
+}
+.quiet-button,
+.follow-up-button,
+.follow-up-trigger,
+.icon-button,
 .inline-actions button:first-child,
 .preview-head button,
-.icon-button,
-.format-toolbar button,
-.pawlet-zoom button {
-  border-color: rgba(255, 255, 255, .85);
-  background: rgba(255, 255, 255, .7);
-  box-shadow: none;
+.pawlet-zoom button,
+.format-toolbar button:not(.color-swatch):not(.highlight-swatch),
+#copyReportBtn, #newTemplateBtn, #useTemplateBtn, #useOldReportBtn,
+#newPersonalNoteBtn, #newPersonalImageBtn,
+.logout-button {
+  border-color: var(--hairline);
+  background: var(--surface-control);
+  box-shadow: var(--shadow-1);
+}
+/* Quiet buttons that carry a meaning keep it in their text colour. */
+#copyReportBtn, #newTemplateBtn { color: var(--ink-peach); }
+#useTemplateBtn, #useOldReportBtn, #newPersonalImageBtn { color: var(--ink-mint); }
+#newPersonalNoteBtn { color: var(--ink-yellow); }
+.logout-button { color: var(--danger); }
+.quiet-button { color: var(--muted); }
+
+/* Main action: pink glass. One or two per screen. */
+#saveTemplateBtn,
+#saveReportBtn,
+#newReportBtn,
+.primary-button,
+.draft-recovery-actions .primary-button,
+.login-card button {
+  border-color: var(--edge);
+  background: color-mix(in srgb, var(--accent-soft) 85%, white);
+  color: var(--accent-ink);
+  box-shadow: var(--highlight), var(--shadow-1), 0 0 0 1px rgba(185, 105, 137, .14);
 }
 
-#copyReportBtn,
-#newTemplateBtn,
-#useTemplateBtn,
-#useOldReportBtn,
+/* --- Chips: status and shortcuts in the top bar -------------------------- */
+
 .always-notes-trigger,
 .shorthand-trigger,
-.logout-button,
 .mode-badge,
-.autosave-status {
-  box-shadow: none;
+.mode-badge.editing,
+.autosave-status,
+.autosave-status.saved,
+.autosave-status.saving,
+.autosave-status.unsaved,
+.autosave-status.offline {
+  border-color: var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--surface-control);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
 }
+/* Colour stays in the icon, dot or count. */
+.always-notes-count,
+.shorthand-count { background: color-mix(in srgb, var(--tint-yellow) 55%, white); }
+.shorthand-count { background: color-mix(in srgb, var(--tint-sky) 55%, white); }
+.shorthand-trigger > span:first-child { color: var(--ink-sky); }
+.mode-badge { color: var(--ink-sage); }
+.mode-badge.editing { color: var(--ink-peach); }
+.autosave-status.saved { color: var(--ink-sage); }
+.autosave-status.saving { color: var(--ink-sky); }
+.autosave-status.unsaved { color: var(--ink-peach); }
+.autosave-status.offline { color: var(--danger); }
 
-.format-group {
-  border-color: rgba(255, 255, 255, .8);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .42);
-}
+/* --- Tab strips: one shared glass track, a tinted pill on the active tab - */
 
-/* Page switcher: an iOS-style segmented control. */
-.mode-tabs {
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid rgba(255, 255, 255, .7);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .45);
-  box-shadow: inset 0 1px 2px rgba(96, 56, 70, .06);
-}
-.mode-tabs a {
-  border-radius: 9px;
-}
-#builderModeBtn, #writerModeBtn, #guidelineModeBtn, #worklogModeBtn, #interestingModeBtn {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-/* Each page tab keeps its own pastel; the open one is brighter and lifted. */
-.mode-tabs a:is([id], #builderModeBtn) { border-color: rgba(255, 255, 255, .6); }
-.mode-tabs #builderModeBtn { background: rgba(232, 240, 220, .75); color: var(--sage-ink); }
-.mode-tabs #writerModeBtn { background: rgba(250, 230, 215, .75); color: var(--peach-ink); }
-.mode-tabs #worklogModeBtn { background: rgba(222, 238, 241, .8); color: #4e6970; }
-.mode-tabs #interestingModeBtn { background: rgba(251, 223, 230, .75); color: var(--rose-ink); }
-.mode-tabs #builderModeBtn.active { background: #e8f0dc; }
-.mode-tabs #writerModeBtn.active { background: #fae6d7; }
-.mode-tabs #worklogModeBtn.active { background: #dfeef1; }
-.mode-tabs #interestingModeBtn.active { background: #fbdfe6; }
-.mode-tabs a:is([id], #builderModeBtn).active {
-  border-color: rgba(255, 255, 255, .95);
-  box-shadow: 0 1px 3px rgba(96, 56, 70, .1);
-}
-.mode-tabs a:is([id], #builderModeBtn):hover { filter: brightness(1.02); }
-
-/* Writer side tabs: the same segmented look. */
+.mode-tabs,
 .reference-tabs {
   gap: 2px;
-  margin: 8px;
   padding: 3px;
-  border: 1px solid rgba(255, 255, 255, .7);
-  border-radius: 14px;
-  background: rgba(120, 90, 100, .08);
-  box-shadow: inset 0 1px 2px rgba(96, 56, 70, .08);
+  border: 1px solid var(--edge);
+  border-radius: 13px;
+  background: var(--surface-track);
+  box-shadow: inset 0 1px 2px rgba(96, 68, 76, .07);
 }
-.reference-tabs button {
-  min-height: 30px;
-  border-radius: 11px;
-  background: transparent;
-}
-.reference-tabs button:hover {
-  background: rgba(255, 255, 255, .4);
-}
-.reference-tabs button.active {
-  border-color: rgba(255, 255, 255, .95);
-  background: rgba(255, 255, 255, .82);
-  color: var(--coffee-deep);
-  box-shadow: inset 0 1px 0 #fff, 0 2px 8px rgba(96, 56, 70, .14);
+.reference-tabs {
+  margin: 8px;
+  grid-template-columns: repeat(4, minmax(max-content, 1fr));
 }
 
-/* Lists: rounded glass highlight instead of a full-width bar. */
+.mode-tabs > a:is(#builderModeBtn, #writerModeBtn, #worklogModeBtn, #interestingModeBtn, #guidelineModeBtn),
+.reference-tabs button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--tab-ink, var(--muted));
+  white-space: nowrap;
+}
+.mode-tabs > a:is(#builderModeBtn, #writerModeBtn, #worklogModeBtn, #interestingModeBtn, #guidelineModeBtn):hover,
+.reference-tabs button:hover {
+  filter: none;
+  background: rgba(255, 255, 255, .4);
+}
+.mode-tabs > a:is(#builderModeBtn, #writerModeBtn, #worklogModeBtn, #interestingModeBtn, #guidelineModeBtn).active,
+.reference-tabs button.active {
+  border-color: var(--edge);
+  background: color-mix(in srgb, var(--tab-tint, var(--accent-soft)) 42%, white);
+  color: var(--tab-ink, var(--accent-ink));
+  box-shadow: var(--highlight), 0 2px 8px rgba(96, 68, 76, .12);
+}
+#builderModeBtn { --tab-tint: var(--tint-sage); --tab-ink: var(--ink-sage); }
+#writerModeBtn { --tab-tint: var(--tint-peach); --tab-ink: var(--ink-peach); }
+#worklogModeBtn { --tab-tint: var(--tint-sky); --tab-ink: var(--ink-sky); }
+#interestingModeBtn { --tab-tint: var(--tint-rose); --tab-ink: var(--ink-rose); }
+#guidelineModeBtn { --tab-tint: var(--tint-lavender); --tab-ink: var(--ink-lavender); }
+.reference-tabs button { --tab-ink: var(--muted); }
+.reference-tabs button.active { --tab-tint: var(--accent-soft); --tab-ink: var(--accent-ink); }
+
+/* Filter chips: clear pills; the chosen one is a pink glass pill. */
+.choice-chip {
+  border-color: var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--surface-track);
+  color: var(--muted);
+  box-shadow: none;
+}
+.choice-chip.active {
+  border-color: var(--edge);
+  background: color-mix(in srgb, var(--accent-soft) 60%, white);
+  color: var(--accent-ink);
+  box-shadow: var(--highlight), var(--shadow-1);
+}
+.check-filter,
+.interesting-toggle {
+  border-color: var(--hairline);
+  background: var(--surface-control);
+}
+
+/* --- Format toolbar ------------------------------------------------------ */
+
+.format-group {
+  border-color: var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-track);
+}
+
+/* --- Lists: the selected row is a white pill ----------------------------- */
+
 .result-list {
   padding: 4px 6px;
 }
@@ -4799,27 +4811,31 @@ button {
 }
 .result-item.active {
   background: #fff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, .9), 0 4px 14px rgba(90, 74, 138, .12);
+  box-shadow: 0 0 0 1px var(--edge), 0 4px 14px rgba(96, 68, 76, .1);
 }
 
-/* Work Log calendar days: small frosted tiles. */
+/* --- Work Log calendar --------------------------------------------------- */
+
 .calendar-day {
-  border-color: rgba(255, 255, 255, .8);
+  border-color: var(--edge);
   border-radius: 8px;
-  background: rgba(255, 255, 255, .55);
+  background: rgba(255, 255, 255, .45);
 }
 .calendar-day.level-1,
 .calendar-day.level-2,
 .calendar-day.level-3,
 .calendar-day.level-4 {
-  background: rgba(255, 255, 255, .82);
-  border-color: rgba(255, 255, 255, .95);
+  background: rgba(255, 255, 255, .85);
+  border-color: var(--edge);
+}
+.calendar-day.selected {
+  border-color: var(--accent);
 }
 button.summary-card {
   border-radius: 9px;
 }
 
-/* --- Floating glass: popovers, menus, dialogs ---------------------------- */
+/* --- Float surfaces: popovers, menus, dialogs ---------------------------- */
 
 .always-notes-popover,
 .report-note-popover,
@@ -4828,65 +4844,49 @@ button.summary-card {
 .follow-up-popover,
 .follow-up-composer,
 .context-menu,
-.draft-recovery-dialog {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-glass);
-  background: var(--glass-strong);
-  box-shadow: var(--glass-edge), var(--glass-shadow-pop);
-  -webkit-backdrop-filter: var(--glass-blur-strong);
-  backdrop-filter: var(--glass-blur-strong);
+.draft-recovery-dialog,
+.login-card {
+  border: 1px solid var(--edge);
+  border-radius: var(--r-float);
+  background: var(--surface-float);
+  box-shadow: var(--highlight), var(--shadow-3);
+  -webkit-backdrop-filter: var(--blur-float);
+  backdrop-filter: var(--blur-float);
 }
 .context-menu {
   border-radius: 14px;
-  background: rgba(255, 255, 255, .8);
 }
 .context-menu button {
+  border: 0;
   border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
 }
-.notes-popover-head,
-.writer-old-popover .notes-popover-head,
-.follow-up-popover .notes-popover-head {
-  border-bottom-color: var(--line);
-  background: rgba(255, 255, 255, .35);
+.context-menu button:hover {
+  background: rgba(255, 255, 255, .8);
 }
 .pawlet-zoom {
-  border-color: rgba(255, 255, 255, .9);
+  border-color: var(--edge);
   border-radius: 14px;
-  background: rgba(255, 255, 255, .7);
-  box-shadow: var(--glass-edge), var(--glass-shadow);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  background: var(--surface-float);
+  box-shadow: var(--highlight), var(--shadow-2);
+  -webkit-backdrop-filter: var(--blur-float);
+  backdrop-filter: var(--blur-float);
 }
 .drawer-backdrop {
   background: rgba(60, 40, 50, .22);
 }
 
-.login-card {
-  border: 1px solid var(--glass-border);
-  border-radius: 22px;
-  background: var(--glass);
-  box-shadow: var(--glass-edge), var(--glass-shadow-pop);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-}
-
-/* Without blur support, or when the system asks for less transparency,
-   fall back to solid pastel paper. */
+/* Without blur, or with reduced transparency: solid surfaces. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .topbar,
-  .lookup-pane, .editor-pane, .guideline-editor-pane, .guideline-preview-pane,
-  .worklog-main, .interesting-list-pane, .interesting-pane,
-  .always-notes-popover, .report-note-popover, .shorthand-popover,
-  .writer-old-popover, .follow-up-popover, .follow-up-composer,
-  .context-menu, .draft-recovery-dialog, .login-card {
-    background-color: rgba(255, 252, 250, .94);
-  }
+  :root { --surface-float: rgba(255, 252, 251, .97); }
 }
 @media (prefers-reduced-transparency: reduce) {
   :root {
-    --glass: rgba(255, 251, 249, .95);
-    --glass-strong: #fffcfa;
-    --glass-paper: #fff;
+    --surface-bar: rgba(255, 252, 251, .95);
+    --surface-control: #fff;
+    --surface-float: #fffcfb;
+    --surface-paper: #fff;
   }
 }
 

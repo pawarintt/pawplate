@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PawPlate style guide</title>
+  <link rel="stylesheet" href="style.css?v=styleguide">
+  <style>
+    /* Page-only layout; every component below uses the app's own classes. */
+    html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
+    html { background: #fde8e4 var(--background); }
+    body { background: transparent; }
+    .sg > *, .sg-two > * { min-width: 0; }
+    .sg { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; display: grid; gap: 18px; }
+    .sg h1 { margin: 0; color: var(--heading); font-size: 1.6rem; }
+    .sg h2 { margin: 0 0 4px; color: var(--heading); font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; }
+    .sg p.lead { margin: 4px 0 0; color: var(--muted); max-width: 760px; line-height: 1.5; }
+    .sg-card { padding: 18px 20px; border: 1px solid var(--edge); border-radius: var(--r-card); background: var(--surface-bar); box-shadow: var(--highlight), var(--shadow-2); display: grid; gap: 12px; }
+    .sg-note { margin: 0; color: var(--muted); font-size: .86rem; line-height: 1.45; }
+    .sg-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+    .sg-swatch { border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; background: #fff; box-shadow: var(--shadow-1); font-size: .76rem; }
+    .sg-swatch i { display: block; height: 46px; }
+    .sg-swatch span { display: block; padding: 6px 8px; color: var(--ink); font-weight: 600; }
+    .sg-swatch small { display: block; padding: 0 8px 7px; color: var(--muted); }
+    .sg-surfaces { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; padding: 14px; border-radius: 16px; background: var(--background); }
+    .sg-surface { min-height: 92px; padding: 12px; border: 1px solid var(--edge); font-size: .8rem; color: var(--ink); }
+    .sg-surface b { display: block; margin-bottom: 4px; }
+    .sg-surface span { color: var(--muted); }
+    .sg-two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .sg-pane { height: 300px; display: grid; grid-template-rows: auto auto 1fr; overflow: hidden; }
+    .sg-list { padding: 4px 6px; }
+    .sg-pop { position: static; display: block; width: auto; height: auto; max-height: none; overflow: hidden; }
+    .sg-pop .notes-popover-head { padding: 10px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--hairline); }
+    .sg-pop .sg-pop-body { padding: 12px; color: var(--muted); font-size: .86rem; }
+    .sg-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 520px; }
+    .sg-days .calendar-day { min-height: 46px; font-size: .74rem; font-weight: 700; }
+    .sg .topbar { position: static; flex-wrap: wrap; row-gap: 8px; }
+    .sg-days .calendar-day { background-clip: padding-box; }
+    .sg-cal { background: var(--background); border-radius: 14px; padding: 10px; }
+    @media (max-width: 760px) { .sg-two { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="sg">
+    <header>
+      <h1>PawPlate style guide</h1>
+      <p class="lead">One shared background, glass on top, and colour only where it means something. Every piece below is drawn with the app's real CSS, so this page changes whenever the app does.</p>
+    </header>
+
+    <section class="sg-card">
+      <h2>Colour rule</h2>
+      <p class="sg-note">Fills are glass or white. Colour marks only (1) the active item, as a tinted glass pill; (2) the main action, in pink; (3) a state or a data value, such as saved, overdue, modality counts or highlights. Everywhere else, colour lives in the text or in a small icon or dot.</p>
+    </section>
+
+    <section class="sg-card">
+      <h2>Palette</h2>
+      <div class="sg-grid">
+        <div class="sg-swatch"><i style="background:var(--ink)"></i><span>Ink</span><small>#353535 · text</small></div>
+        <div class="sg-swatch"><i style="background:var(--heading)"></i><span>Heading</span><small>#60444c · titles</small></div>
+        <div class="sg-swatch"><i style="background:var(--muted)"></i><span>Muted</span><small>#7c6d71 · secondary text</small></div>
+        <div class="sg-swatch"><i style="background:var(--accent-soft)"></i><span>Accent soft</span><small>#ffd9e6 · main button</small></div>
+        <div class="sg-swatch"><i style="background:var(--accent)"></i><span>Accent</span><small>#b96989 · lines, focus</small></div>
+        <div class="sg-swatch"><i style="background:var(--accent-ink)"></i><span>Accent ink</span><small>#7b3e58 · text on pink</small></div>
+        <div class="sg-swatch"><i style="background:var(--danger)"></i><span>Danger</span><small>#b95569 · delete, sign out</small></div>
+      </div>
+      <div class="sg-grid">
+        <div class="sg-swatch"><i style="background:var(--tint-sage)"></i><span style="color:var(--ink-sage)">Sage</span><small>Template Builder</small></div>
+        <div class="sg-swatch"><i style="background:var(--tint-peach)"></i><span style="color:var(--ink-peach)">Peach</span><small>Report Writer, Copy</small></div>
+        <div class="sg-swatch"><i style="background:var(--tint-sky)"></i><span style="color:var(--ink-sky)">Sky</span><small>Work Log, Shorthands</small></div>
+        <div class="sg-swatch"><i style="background:var(--tint-rose)"></i><span style="color:var(--ink-rose)">Rose</span><small>Interesting Cases</small></div>
+        <div class="sg-swatch"><i style="background:var(--tint-yellow)"></i><span style="color:var(--ink-yellow)">Yellow</span><small>Pawlet</small></div>
+        <div class="sg-swatch"><i style="background:var(--tint-mint)"></i><span style="color:var(--ink-mint)">Mint</span><small>Use, Image</small></div>
+        <div class="sg-swatch"><i style="background:var(--tint-lavender)"></i><span style="color:var(--ink-lavender)">Lavender</span><small>HN field</small></div>
+      </div>
+    </section>
+
+    <section class="sg-card">
+      <h2>Surfaces</h2>
+      <p class="sg-note">From back to front. Blur is used only on floating glass, where there's real content behind it.</p>
+      <div class="sg-surfaces">
+        <div class="sg-surface" style="background:transparent;border-style:dashed;border-radius:14px"><b>Background</b><span>Pink, then peach, then mint, shared by the whole window</span></div>
+        <div class="sg-surface" style="background:var(--surface-bar);border-radius:var(--r-card);box-shadow:var(--highlight),var(--shadow-2)"><b>Bar</b><span>Top bar and panes</span></div>
+        <div class="sg-surface" style="background:var(--surface-control);border-radius:var(--r-control);box-shadow:var(--shadow-1)"><b>Control</b><span>Fields, quiet buttons, chips</span></div>
+        <div class="sg-surface" style="background:var(--surface-paper);border-radius:12px"><b>Paper</b><span>Where reports are read and written</span></div>
+        <div class="sg-surface" style="background:var(--surface-float);border-radius:var(--r-float);box-shadow:var(--highlight),var(--shadow-3);backdrop-filter:var(--blur-float)"><b>Float</b><span>Popovers, menus, dialogs (blurred)</span></div>
+      </div>
+    </section>
+
+    <section class="sg-card">
+      <h2>Top bar</h2>
+      <header class="topbar">
+        <h1>PawPlate</h1>
+        <button class="always-notes-trigger" type="button"><span class="folded-note-icon"></span>Pawlet <span class="always-notes-count">3</span></button>
+        <button class="shorthand-trigger" type="button"><span>@</span>Shorthands <span class="shorthand-count">4</span></button>
+        <span class="mode-badge">New report</span>
+        <span class="autosave-status saved">Draft saved 1:30 PM</span>
+        <button id="newReportBtn" type="button">New</button>
+        <button id="copyReportBtn" type="button">Copy</button>
+        <button id="saveReportBtn" type="button">Save Report</button>
+        <nav class="mode-tabs" style="margin-left:auto">
+          <a id="builderModeBtn" href="#">Template Builder</a>
+          <a id="writerModeBtn" class="active" href="#">Report Writer</a>
+          <a id="worklogModeBtn" href="#">Work Log</a>
+          <a id="interestingModeBtn" href="#">Interesting Cases</a>
+        </nav>
+        <button class="logout-button" type="button">Sign Out</button>
+      </header>
+    </section>
+
+    <section class="sg-card">
+      <h2>Tab strip</h2>
+      <p class="sg-note">One glass track for all the tabs. Inactive tabs are just coloured text, and the active tab is a glass pill tinted in its own colour.</p>
+      <div class="sg-row">
+        <nav class="mode-tabs"><a id="builderModeBtn" class="active" href="#">Template Builder</a><a id="writerModeBtn" href="#">Report Writer</a><a id="worklogModeBtn" href="#">Work Log</a><a id="interestingModeBtn" href="#">Interesting Cases</a></nav>
+        <nav class="mode-tabs"><a id="builderModeBtn" href="#">Template Builder</a><a id="writerModeBtn" href="#">Report Writer</a><a id="worklogModeBtn" class="active" href="#">Work Log</a><a id="interestingModeBtn" href="#">Interesting Cases</a></nav>
+      </div>
+      <div class="reference-tabs" style="display:grid;max-width:420px;margin:0">
+        <button class="active" type="button">Templates</button><button type="button">Snippets</button><button type="button">Ref</button><button type="button">Prior</button>
+      </div>
+    </section>
+
+    <section class="sg-card">
+      <h2>Buttons</h2>
+      <p class="sg-note">The main button is pink, with one or two per screen. Every other button is quiet glass, and a quiet button that means something keeps that meaning in its text colour.</p>
+      <div class="sg-row">
+        <button id="saveTemplateBtn" type="button">Save Template</button>
+        <button class="primary-button" type="button">Highlight</button>
+        <button type="button">Close</button>
+        <button class="quiet-button" type="button">Clear</button>
+        <button id="useTemplateBtn" type="button">Use as Template</button>
+        <button id="newTemplateBtn" type="button">New</button>
+        <button class="follow-up-button" type="button">Follow up</button>
+        <button class="icon-button" type="button">×</button>
+        <button type="button" disabled>Edit</button>
+      </div>
+    </section>
+
+    <section class="sg-card">
+      <h2>Chips and fields</h2>
+      <div class="sg-row">
+        <button class="choice-chip active" type="button">All modalities</button>
+        <button class="choice-chip" type="button">CT</button>
+        <button class="choice-chip" type="button">MR</button>
+        <button class="choice-chip" type="button">US</button>
+        <span class="autosave-status unsaved">Unsaved</span>
+        <span class="autosave-status offline">Offline</span>
+      </div>
+      <div class="meta-grid" style="border:0;padding:0;grid-template-columns:1.4fr .6fr 1fr">
+        <input placeholder="Report title" value="CT Brain non-contrast">
+        <input placeholder="Modality" value="CT">
+        <input placeholder="Topic">
+      </div>
+      <div class="filter-grid" style="border:0;padding:0;max-width:520px">
+        <select><option>All topics</option></select>
+        <select><option>All body parts</option></select>
+      </div>
+    </section>
+
+    <div class="sg-two">
+      <section class="lookup-pane templates-pane sg-pane" style="resize:none">
+        <div class="pane-head"><h2>Templates</h2><input type="search" placeholder="search"></div>
+        <div class="filter-grid" style="grid-template-columns:1fr"><div class="sg-row"><button class="choice-chip active" type="button">All</button><button class="choice-chip" type="button">CT</button></div></div>
+        <div class="result-list sg-list">
+          <button class="result-item active" type="button"><span class="result-no">1.</span><span><span class="result-title">CT Brain non-contrast</span><span class="result-meta">CT / Neuro / Brain</span></span></button>
+          <button class="result-item" type="button"><span class="result-no">2.</span><span><span class="result-title">CT Chest with contrast</span><span class="result-meta">CT / Chest / Chest</span></span></button>
+          <button class="result-item" type="button"><span class="result-no">3.</span><span><span class="result-title">US Upper abdomen</span><span class="result-meta">US / Abdomen / Liver</span></span></button>
+        </div>
+      </section>
+
+      <div style="display:grid;gap:18px;align-content:start">
+        <section class="shorthand-popover sg-pop">
+          <div class="notes-popover-head"><strong style="margin-right:auto">Floating glass</strong><button class="icon-button" type="button">×</button></div>
+          <div class="sg-pop-body">Popovers, menus and dialogs use the float surface: frosted, blurred, with a deeper shadow.</div>
+        </section>
+        <section class="sg-card" style="padding:14px">
+          <h2>Calendar</h2>
+          <div class="sg-cal"><div class="sg-days">
+            <span class="calendar-day">1</span><span class="calendar-day level-2">2</span><span class="calendar-day level-1">3</span><span class="calendar-day selected level-3">4</span><span class="calendar-day">5</span><span class="calendar-day level-1">6</span><span class="calendar-day">7</span>
+          </div></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
